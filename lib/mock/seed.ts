@@ -13,7 +13,7 @@ import type {
 import { daysAgo, toIsoDate, addDays } from "@/lib/utils/date";
 
 /** 構造を変えたら上げる。localStorage 側が古ければ自動でシードに戻る */
-export const SEED_VERSION = 6;
+export const SEED_VERSION = 7;
 
 /**
  * 決定的な擬似乱数。リセットのたびに同じデータが再現されるようにする
@@ -256,8 +256,16 @@ function buildAll(): Built {
     const [companyName, industry, corporateNumber] = pick(COMPANIES);
 
     // 最終接触日は意図的に散らす（30日以内 / 90日超 / 180日超）
-    const bucket = i % 3;
-    let lastContactDays = bucket === 0 ? int(2, 30) : bucket === 1 ? int(95, 150) : int(185, 320);
+    // 経過日数は4つの帯に均等に散らす。ダッシュボードの分布に穴が空かないように
+    const bucket = i % 4;
+    let lastContactDays =
+      bucket === 0
+        ? int(2, 30)
+        : bucket === 1
+          ? int(31, 90)
+          : bucket === 2
+            ? int(95, 175)
+            : int(185, 320);
 
     // 顧客の担当。同じ顧客の採寸・受注・送信もこの人が行った想定にする
     const staffId = pick(STAFF).id;
@@ -430,7 +438,9 @@ function buildAll(): Built {
     const orderCount = isTokieda ? 4 : thick ? int(2, 4) : minimal ? 0 : int(0, 2);
     for (let o = 0; o < orderCount; o++) {
       const orderId = `ord-${id}-${o + 1}`;
-      const orderedAt = daysAgo(int(40, 1500));
+      // 一部は直近の受注にして、今月の実績が空にならないようにする
+      const recent = o === 0 && rand() < 0.3;
+      const orderedAt = recent ? daysAgo(int(1, 26)) : daysAgo(int(60, 1500));
       const orderedDate = new Date(`${orderedAt}T00:00:00`);
       const purpose = pick<Order["purpose"]>(["business", "business", "business", "formal", "wedding", "casual"]);
       const itemCount = purpose === "business" ? int(2, 3) : int(1, 2);
@@ -446,8 +456,9 @@ function buildAll(): Built {
         orderNumber: `J1-${String(int(100, 999))}-${String(int(100, 999))}`,
         orderedAt,
         dueDate: toIsoDate(addDays(orderedDate, 43)),
-        deliveredAt: toIsoDate(addDays(orderedDate, int(40, 52))),
-        status: "delivered",
+        // 納期前のものを納品済みにしない
+        deliveredAt: recent ? undefined : toIsoDate(addDays(orderedDate, int(40, 52))),
+        status: recent ? "in_production" : "delivered",
         purpose,
         // 注文合計はアイテム金額の合計と必ず一致させる
         totalAmount: itemTypes.reduce((sum, t) => sum + priceOf(t), 0),

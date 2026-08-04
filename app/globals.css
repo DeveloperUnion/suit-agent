@@ -103,6 +103,13 @@
   --chart-5: #8b98a4;
   --radius: 0.375rem;
 
+  /* 経過日数の順序ランプ。1色相 light→dark、放置が長いほど濃い。
+     dataviz の validate_palette.js で --ordinal 検証済み（ライト面）*/
+  --recency-1: #8fb8d8;
+  --recency-2: #5f95c4;
+  --recency-3: #376ea6;
+  --recency-4: #17497a;
+
   --sidebar: #1c2839;
   --sidebar-foreground: #c3ccd6;
   --sidebar-primary: #f6f8fa;
@@ -145,6 +152,13 @@
   --chart-3: #8d99a5;
   --chart-4: #d9705c;
   --chart-5: #5f6b78;
+
+  /* 暗い面では明るいほど手前に出るため、ランプの向きを入れ替える。
+     こちらも --ordinal で検証済み */
+  --recency-1: #2b5b86;
+  --recency-2: #3f7bad;
+  --recency-3: #6ba0cb;
+  --recency-4: #9cc3e0;
 
   --sidebar: #101720;
   --sidebar-foreground: #a8b4c1;

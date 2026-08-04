@@ -1,7 +1,18 @@
-import type { ColorFamily, Fabric, ItemTypeId, Order, OrderItem, Uuid } from "@/lib/types";
-import { getDb } from "@/lib/store/mock-db";
+import type {
+  ColorFamily,
+  Fabric,
+  IsoDate,
+  ItemTypeId,
+  Order,
+  OrderItem,
+  OrderPurpose,
+  SpecSelection,
+  Uuid,
+} from "@/lib/types";
+import { getDb, mutateDb, newId } from "@/lib/store/mock-db";
 import { ITEM_TYPE_MAP } from "@/lib/constants/measurement-fields";
 import { COLOR_FAMILY_LABEL, FABRIC_PATTERN_LABEL } from "@/lib/constants/labels";
+import { toIsoDate } from "@/lib/utils/date";
 
 export type OrderItemView = OrderItem & { fabric?: Fabric };
 
@@ -78,3 +89,131 @@ export async function getOwnedItemSummary(customerId: Uuid): Promise<OwnedItemSu
       .map((id) => ({ itemTypeId: id, name: ITEM_TYPE_MAP[id].name })),
   };
 }
+
+// ── 注文の登録 ──────────────────────────────────
+
+export async function listFabrics(keyword = ""): Promise<Fabric[]> {
+  const q = keyword.trim().toLowerCase();
+  return getDb().fabrics.filter((f) => {
+    if (!q) return true;
+    return `${f.brand} ${f.productNumber} ${f.color}`.toLowerCase().includes(q);
+  });
+}
+
+/**
+ * その生地と同系統のものを、顧客がすでに何着持っているか。
+ *
+ * 「紺の無地を既に3着持つ顧客に紺の無地を勧める」事故は高価格帯の信頼商売で
+ * 致命的（要件3.1）。注文履歴を見に行かないと気づけないのでは遅いため、
+ * 生地を選ぶその瞬間に出す。
+ */
+export type FabricOverlap = { label: string; count: number };
+
+export async function checkFabricOverlap(
+  customerId: Uuid,
+  fabricId: Uuid,
+): Promise<FabricOverlap | null> {
+  const db = getDb();
+  const fabric = db.fabrics.find((f) => f.id === fabricId);
+  if (!fabric) return null;
+
+  const orderIds = new Set(db.orders.filter((o) => o.customerId === customerId).map((o) => o.id));
+  const count = db.orderItems.filter((item) => {
+    if (!orderIds.has(item.orderId)) return false;
+    // 上衣だけ数える。同じ生地のジャケットとパンツを二重に数えないため
+    if (item.itemTypeId !== "jacket" && item.itemTypeId !== "coat") return false;
+    const f = db.fabrics.find((x) => x.id === item.fabricId);
+    return f?.colorFamily === fabric.colorFamily && f?.pattern === fabric.pattern;
+  }).length;
+
+  if (count === 0) return null;
+  return {
+    label: `${COLOR_FAMILY_LABEL[fabric.colorFamily]}${FABRIC_PATTERN_LABEL[fabric.pattern]}`,
+    count,
+  };
+}
+
+/** 直近の注文で使った仕様。リピートが多いためプリセットに使う */
+export async function getPreviousSpecs(
+  customerId: Uuid,
+  itemTypeId: ItemTypeId,
+): Promise<SpecSelection | null> {
+  const db = getDb();
+  const orders = db.orders
+    .filter((o) => o.customerId === customerId)
+    .sort((a, b) => b.orderedAt.localeCompare(a.orderedAt));
+  for (const order of orders) {
+    const item = db.orderItems.find(
+      (i) => i.orderId === order.id && i.itemTypeId === itemTypeId,
+    );
+    if (item) return item.specs;
+  }
+  return null;
+}
+
+export type CreateOrderInput = {
+  customerId: Uuid;
+  staffId: Uuid;
+  orderedAt: IsoDate;
+  dueDate?: IsoDate;
+  purpose: OrderPurpose;
+  /** どの寸法で作るか。リピートは前回の採寸票をそのまま使うことが多い */
+  measurementSheetId?: Uuid;
+  items: { itemTypeId: ItemTypeId; fabricId: Uuid; specs: SpecSelection; amount: number }[];
+};
+
+export async function createOrder(input: CreateOrderInput): Promise<Uuid> {
+  const orderId = newId("ord");
+  const total = input.items.reduce((sum, i) => sum + i.amount, 0);
+  const seq = Math.floor(Math.random() * 900) + 100;
+
+  mutateDb((db) => ({
+    ...db,
+    orders: [
+      ...db.orders,
+      {
+        id: orderId,
+        customerId: input.customerId,
+        orderNumber: `J1-${seq}-${Math.floor(Math.random() * 900) + 100}`,
+        orderedAt: input.orderedAt,
+        dueDate: input.dueDate,
+        status: "ordered",
+        purpose: input.purpose,
+        totalAmount: total,
+        staffId: input.staffId,
+      },
+    ],
+    orderItems: [
+      ...db.orderItems,
+      ...input.items.map((item, i) => ({
+        id: `${orderId}-item-${i + 1}`,
+        orderId,
+        itemTypeId: item.itemTypeId,
+        fabricId: item.fabricId,
+        specs: item.specs,
+        amount: item.amount,
+      })),
+    ],
+    // 採寸票を注文に紐づける（どの寸法で作ったかを後から追えるように）
+    measurementSheets: input.measurementSheetId
+      ? db.measurementSheets.map((s) =>
+          s.id === input.measurementSheetId ? { ...s, orderId } : s,
+        )
+      : db.measurementSheets,
+    // 注文＝来店なので最終接触日も動く。放置リストに残り続けるのを防ぐ
+    customers: db.customers.map((c) =>
+      c.id === input.customerId ? { ...c, lastContactedAt: toIsoDate(new Date()) } : c,
+    ),
+  }));
+
+  return orderId;
+}
+
+/** アイテム種別ごとの標準価格。本来は生地・仕様から決まるが、モックでは固定 */
+export const ITEM_BASE_PRICE: Record<ItemTypeId, number> = {
+  jacket: 95000,
+  pants: 45000,
+  vest: 30000,
+  shirt: 18000,
+  coat: 120000,
+};

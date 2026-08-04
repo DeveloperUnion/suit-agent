@@ -11,6 +11,7 @@ import { MessagesTab } from "@/components/customer/tabs/messages-tab";
 import { OrdersTab } from "@/components/customer/tabs/orders-tab";
 import { ProfileTab } from "@/components/customer/tabs/profile-tab";
 import { MeasurementSheetView } from "@/components/measurement/measurement-sheet-view";
+import { OrderCreateDialog } from "@/components/order/order-create-dialog";
 import { SilhouetteThumb } from "@/components/silhouette/silhouette-thumb";
 import { Button } from "@/components/ui/button";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
@@ -40,6 +41,7 @@ export function CustomerDetailView({
   initialApproachId?: string;
 }) {
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [orderOpen, setOrderOpen] = useState(false);
   const [tab, setTab] = useState(
     initialTab && TABS.some((t) => t.value === initialTab) ? initialTab : "profile",
   );
@@ -150,7 +152,11 @@ export function CustomerDetailView({
             1タップで届くようヘッダーに残している。
           */}
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" className="h-11 gap-1.5 sm:h-10">
+            <Button
+              variant="outline"
+              className="h-11 gap-1.5 sm:h-10"
+              onClick={() => setOrderOpen(true)}
+            >
               <Plus className="size-4" />
               <span className="hidden sm:inline">注文を追加</span>
             </Button>
@@ -198,6 +204,14 @@ export function CustomerDetailView({
         customerName={customer.name}
         open={sheetOpen}
         onOpenChange={setSheetOpen}
+      />
+
+      <OrderCreateDialog
+        customerId={customerId}
+        customerName={customer.name}
+        open={orderOpen}
+        onOpenChange={setOrderOpen}
+        onOpenMeasurement={() => setSheetOpen(true)}
       />
     </div>
   );

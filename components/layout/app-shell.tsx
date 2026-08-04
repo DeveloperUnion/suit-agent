@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
@@ -63,14 +64,19 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function Wordmark() {
+/** ロゴは白抜きのため、暗い面（サイドバー・ドロワー・スマホのヘッダー）でだけ使う */
+function Wordmark({ className }: { className?: string }) {
   return (
-    <div className="flex flex-col gap-0.5 px-3 py-4">
-      <span className="font-heading text-[0.625rem] uppercase tracking-[0.28em] text-sidebar-foreground/60">
-        Bespoke
-      </span>
-      <span className="font-heading text-base font-medium text-sidebar-primary">顧客カルテ</span>
-    </div>
+    <Link href="/dashboard" className={cn("flex items-center px-3 py-4", className)}>
+      <Image
+        src="/logo.png"
+        alt="TORICO"
+        width={1018}
+        height={233}
+        priority
+        className="h-6 w-auto"
+      />
+    </Link>
   );
 }
 
@@ -149,10 +155,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* lg 未満はドロワーに畳んで本文の横幅を確保する */}
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background/85 px-3 backdrop-blur lg:hidden">
+        {/* ロゴが白抜きのため、スマホのヘッダーもサイドバーと同じ暗い面にする */}
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-sidebar-border bg-sidebar px-3 lg:hidden">
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="size-11" aria-label="メニューを開く">
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="メニューを開く"
+                className="size-11 text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-primary"
+              >
                 <Menu className="size-5" />
               </Button>
             </SheetTrigger>
@@ -178,7 +190,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </div>
             </SheetContent>
           </Sheet>
-          <span className="font-heading text-sm font-medium">顧客カルテ</span>
+          <Wordmark className="py-0" />
         </header>
 
         <main className="min-w-0 flex-1">{children}</main>

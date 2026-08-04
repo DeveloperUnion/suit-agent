@@ -13,7 +13,7 @@ import type {
 import { daysAgo, toIsoDate, addDays } from "@/lib/utils/date";
 
 /** 構造を変えたら上げる。localStorage 側が古ければ自動でシードに戻る */
-export const SEED_VERSION = 7;
+export const SEED_VERSION = 8;
 
 /**
  * 決定的な擬似乱数。リセットのたびに同じデータが再現されるようにする
@@ -33,9 +33,9 @@ function mulberry32(seed: number) {
 // ── スタッフ ────────────────────────────────────────────
 
 const STAFF: Staff[] = [
-  { id: "staff-1", name: "藤原 健司", email: "fujiwara@example.com", role: "admin", isActive: true },
-  { id: "staff-2", name: "岡部 涼", email: "okabe@example.com", role: "member", isActive: true },
-  { id: "staff-3", name: "三宅 沙耶", email: "miyake@example.com", role: "member", isActive: true },
+  { id: "staff-1", name: "細川 憲佑", email: "hosokawa@example.com", role: "admin", isActive: true },
+  { id: "staff-2", name: "白髭 崇", email: "shirahige@example.com", role: "member", isActive: true },
+  { id: "staff-3", name: "野﨑 匠", email: "nozaki@example.com", role: "member", isActive: true },
 ];
 
 // ── 生地マスタ ──────────────────────────────────────────

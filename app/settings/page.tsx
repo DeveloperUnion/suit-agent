@@ -1,6 +1,6 @@
 import { ComingSoon } from "@/components/common/coming-soon";
 
-export const metadata = { title: "設定 | 顧客カルテ" };
+export const metadata = { title: "設定 | TORICO" };
 
 export default function SettingsPage() {
   return (

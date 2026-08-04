@@ -39,7 +39,7 @@ const plexCondensed = IBM_Plex_Sans_Condensed({
 });
 
 export const metadata: Metadata = {
-  title: "顧客カルテ | オーダースーツ顧客管理",
+  title: "TORICO",
   description: "採寸・注文・やり取りを1枚にまとめた顧客カルテ",
 };
 

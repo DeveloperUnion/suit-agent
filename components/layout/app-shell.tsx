@@ -3,13 +3,30 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { LayoutDashboard, Menu, RotateCcw, Settings, Users, Waypoints } from "lucide-react";
+import {
+  Check,
+  ChevronsUpDown,
+  LayoutDashboard,
+  Menu,
+  RotateCcw,
+  Settings,
+  UserRound,
+  Users,
+  Waypoints,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { getCurrentStaff, listStaffForSwitcher, switchStaff } from "@/lib/auth/current-staff";
 import { cn } from "@/lib/utils";
-import { useResetMockDb } from "@/lib/hooks/use-mock-db";
+import { useMockQuery, useResetMockDb } from "@/lib/hooks/use-mock-db";
 
 const NAV = [
   { href: "/dashboard", label: "ダッシュボード", icon: LayoutDashboard },
@@ -57,6 +74,47 @@ function Wordmark() {
   );
 }
 
+/**
+ * ログイン中のスタッフ。顧客はスタッフごとに分割されているため、
+ * 誰でログインしているかで見える顧客が変わる。
+ * モックでは挙動を確認できるよう切り替えられるようにしてある。
+ */
+function StaffSwitcher() {
+  const { data } = useMockQuery(
+    async () => ({ current: getCurrentStaff(), staff: listStaffForSwitcher() }),
+    [],
+  );
+  if (!data?.current) return null;
+
+  return (
+    <div className="flex flex-col gap-1 px-2 pb-2">
+      <span className="px-1 font-label text-[0.6875rem] uppercase tracking-[0.14em] text-sidebar-foreground/60">
+        ログイン中
+      </span>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="flex min-h-11 items-center gap-2 rounded-md px-2 text-left text-sm text-sidebar-primary transition-colors hover:bg-sidebar-accent/50"
+          >
+            <UserRound className="size-4 shrink-0" strokeWidth={1.75} />
+            <span className="flex-1 truncate">{data.current.name}</span>
+            <ChevronsUpDown className="size-3.5 shrink-0 opacity-60" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-52">
+          {data.staff.map((staff) => (
+            <DropdownMenuItem key={staff.id} onClick={() => switchStaff(staff.id)}>
+              <span className="flex-1">{staff.name}</span>
+              {staff.id === data.current?.id && <Check className="size-3.5" />}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const reset = useResetMockDb();
@@ -72,6 +130,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* 本文が縦に伸びてもナビとリセットは視界に残す */}
       <aside className="hidden w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:sticky lg:top-0 lg:flex lg:h-dvh">
         <Wordmark />
+        <StaffSwitcher />
         <div className="px-2">
           <NavList />
         </div>
@@ -102,6 +161,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <SheetTitle>メニュー</SheetTitle>
               </SheetHeader>
               <Wordmark />
+              <StaffSwitcher />
               <div className="px-2">
                 <NavList onNavigate={() => setOpen(false)} />
               </div>

@@ -1,5 +1,6 @@
 import type { Customer, CustomerAnniversary, Staff, Uuid } from "@/lib/types";
 import { getDb, mutateDb, newId } from "@/lib/store/mock-db";
+import { getCurrentStaffId } from "@/lib/auth/current-staff";
 import { daysSince } from "@/lib/utils/date";
 import { ELAPSED_DAYS_THRESHOLD } from "@/lib/constants/labels";
 
@@ -29,10 +30,16 @@ function decorate(customer: Customer): CustomerListItem {
   };
 }
 
+/**
+ * 顧客はスタッフごとに分割されている。ログインした人には自分の顧客しか返さない。
+ * 絞り込みはこの層で必ず効かせ、画面側の実装漏れで他人の顧客が出ないようにする。
+ */
 export async function listCustomers(filter: CustomerFilter = {}): Promise<CustomerListItem[]> {
   const db = getDb();
+  const staffId = getCurrentStaffId();
   const keyword = filter.keyword?.trim();
   return db.customers
+    .filter((c) => c.staffId === staffId)
     .filter((c) => {
       if (!keyword) return true;
       const haystack = `${c.name}${c.nameKana}${c.companyName ?? ""}`;
@@ -42,9 +49,11 @@ export async function listCustomers(filter: CustomerFilter = {}): Promise<Custom
     .sort((a, b) => (b.elapsedDays ?? -1) - (a.elapsedDays ?? -1));
 }
 
+/** 担当外の顧客は null を返す。URL を直接叩かれても開けない */
 export async function getCustomer(id: Uuid): Promise<CustomerListItem | null> {
   const customer = getDb().customers.find((c) => c.id === id);
-  return customer ? decorate(customer) : null;
+  if (!customer || customer.staffId !== getCurrentStaffId()) return null;
+  return decorate(customer);
 }
 
 export async function listAnniversaries(customerId: Uuid): Promise<CustomerAnniversary[]> {
@@ -69,16 +78,26 @@ export async function listStaff(): Promise<Staff[]> {
   return getDb().staff;
 }
 
+export type SimilarCustomer = CustomerListItem & {
+  /** 他のスタッフが担当している顧客か。詳細は開けないが、二重登録は防ぐ */
+  isOtherStaff: boolean;
+};
+
 /**
  * 似た顧客を探す。
  * 顧客1,000名規模だと、再来店の見落としや同姓同名による二重登録が必ず起きるため、
  * 新規登録の入力中に候補を出して気づけるようにする。
+ *
+ * ここだけは担当の境界を越えて全顧客を見る。他のスタッフが担当している人を
+ * 二重に登録してしまうと、データが分裂して後から直せないため。
+ * ただし他人の顧客は氏名以外を返さない。
  */
 export async function findSimilarCustomers(input: {
   name?: string;
   nameKana?: string;
   phone?: string;
-}): Promise<CustomerListItem[]> {
+}): Promise<SimilarCustomer[]> {
+  const staffId = getCurrentStaffId();
   const name = input.name?.replace(/[\s　]/g, "") ?? "";
   const kana = input.nameKana?.replace(/[\s　]/g, "") ?? "";
   const phone = input.phone?.replace(/[^0-9]/g, "") ?? "";
@@ -95,7 +114,14 @@ export async function findSimilarCustomers(input: {
       return false;
     })
     .slice(0, 5)
-    .map(decorate);
+    .map((c) => {
+      const isOtherStaff = c.staffId !== staffId;
+      // 他人の顧客は存在と氏名だけ。会社名や接触状況は出さない
+      const safe = isOtherStaff
+        ? ({ ...c, companyName: undefined, phone: undefined, lastContactedAt: undefined } as Customer)
+        : c;
+      return { ...decorate(safe), isOtherStaff };
+    });
 }
 
 export async function updateCustomer(id: Uuid, patch: Partial<Customer>): Promise<void> {
@@ -114,6 +140,8 @@ export async function createCustomer(
     customers: [
       ...db.customers,
       {
+        // 登録した人が担当になる
+        staffId: getCurrentStaffId(),
         isKeyAccount: false,
         createdAt: new Date().toISOString().slice(0, 10),
         ...input,

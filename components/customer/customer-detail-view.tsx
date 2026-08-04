@@ -70,10 +70,13 @@ export function CustomerDetailView({
   }
 
   if (!customer) {
+    // 存在しないか、他のスタッフが担当している顧客。どちらかは区別しない
     return (
-      <div className="mx-auto w-full max-w-6xl p-8">
-        <p className="text-sm text-muted-foreground">この顧客は見つかりませんでした。</p>
-        <Link href="/customers" className="mt-3 inline-flex text-sm text-navy hover:underline">
+      <div className="mx-auto flex w-full max-w-6xl flex-col items-start gap-3 p-8">
+        <p className="text-sm text-muted-foreground">
+          このカルテは開けません。存在しないか、他のスタッフが担当している顧客です。
+        </p>
+        <Link href="/customers" className="text-sm text-navy hover:underline">
           顧客一覧に戻る
         </Link>
       </div>

@@ -79,12 +79,20 @@ export type Customer = {
   ngNotes?: string;
 
   /**
+   * 担当スタッフ。顧客はスタッフごとに分割して持ち、ログインした人には
+   * 自分の顧客だけが見える。画面に「担当 ○○」とは出さない — 誰の顧客かは
+   * 見えている時点で自明なので、表示する情報量がないため。
+   *
+   * 各レコードの staffId（採寸者・受注者・送信者）とは別物。あちらは
+   * 「誰が操作したか」の記録。
+   */
+  staffId: Uuid;
+
+  /**
    * 重要顧客フラグ。企業ニュース巡回の対象になる。
    *
-   * 顧客ランク（A/B/C）と担当スタッフは意図的に持たない。
-   * ランクは手で付ける序列が形骸化するうえ、接客中に見せる画面に顧客の格付けを
-   * 出すことになるため。担当はスタッフ3名で顧客を分割せず全員で見る運用のため
-   * （「誰が操作したか」は各レコードの staffId が持つ。担当とは別物）。
+   * 顧客ランク（A/B/C）は意図的に持たない。手で付ける序列は形骸化するうえ、
+   * 接客中に見せる画面に顧客の格付けを出すことになるため。
    */
   isKeyAccount: boolean;
   firstVisitDate?: IsoDate;
@@ -331,6 +339,11 @@ export type CompanyNews = {
 
 export type MockDatabase = {
   version: number;
+  /**
+   * ログイン中のスタッフ。本来は認証セッションが持つものだが、
+   * モックでは切り替えて挙動を確認できるようここに置いている。
+   */
+  session: { staffId: Uuid };
   staff: Staff[];
   customers: Customer[];
   anniversaries: CustomerAnniversary[];

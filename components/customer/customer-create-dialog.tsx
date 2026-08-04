@@ -152,30 +152,42 @@ export function CustomerCreateDialog({
                 似た顧客がすでに登録されています
               </span>
               <ul className="flex flex-col">
-                {similar.map((c) => (
-                  <li key={c.id}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onOpenChange(false);
-                        reset();
-                        router.push(`/customers/${c.id}`);
-                      }}
-                      className="flex min-h-10 w-full items-center gap-3 rounded-sm px-1 text-left text-sm hover:bg-accent/50"
+                {similar.map((c) =>
+                  c.isOtherStaff ? (
+                    // 他のスタッフの顧客は開けない。二重登録を防ぐために存在だけ知らせる
+                    <li
+                      key={c.id}
+                      className="flex min-h-10 items-center gap-3 px-1 text-sm text-muted-foreground"
                     >
-                      <span className="font-medium">{c.name}</span>
-                      <span className="truncate text-xs text-muted-foreground">
-                        {c.companyName ?? c.nameKana}
-                      </span>
-                      <span className="ml-auto shrink-0">
-                        <ElapsedDays days={c.elapsedDays} />
-                      </span>
-                    </button>
-                  </li>
-                ))}
+                      <span className="font-medium text-foreground">{c.name}</span>
+                      <span className="text-xs">{c.nameKana}</span>
+                      <span className="ml-auto shrink-0 text-xs">他のスタッフが担当</span>
+                    </li>
+                  ) : (
+                    <li key={c.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onOpenChange(false);
+                          reset();
+                          router.push(`/customers/${c.id}`);
+                        }}
+                        className="flex min-h-10 w-full items-center gap-3 rounded-sm px-1 text-left text-sm hover:bg-accent/50"
+                      >
+                        <span className="font-medium">{c.name}</span>
+                        <span className="truncate text-xs text-muted-foreground">
+                          {c.companyName ?? c.nameKana}
+                        </span>
+                        <span className="ml-auto shrink-0">
+                          <ElapsedDays days={c.elapsedDays} />
+                        </span>
+                      </button>
+                    </li>
+                  ),
+                )}
               </ul>
               <p className="text-xs text-muted-foreground">
-                同じ方であれば、新しく登録せず既存のカルテを開いてください。
+                同じ方であれば、新しく登録しないでください。他のスタッフの担当であれば、その人に確認してください。
               </p>
             </div>
           )}

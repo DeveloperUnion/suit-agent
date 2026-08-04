@@ -2,7 +2,6 @@ import type {
   AnniversaryType,
   ApproachStatus,
   ColorFamily,
-  CustomerRank,
   FabricPattern,
   FabricSeason,
   MeasurementInputMethod,
@@ -14,12 +13,6 @@ import type {
 } from "@/lib/types";
 
 /** 日本語ラベルはここに集約する。コード中に文字列を散らさない */
-
-export const RANK_LABEL: Record<CustomerRank, string> = {
-  A: "A",
-  B: "B",
-  C: "C",
-};
 
 export const STAFF_ROLE_LABEL: Record<StaffRole, string> = {
   admin: "管理者",

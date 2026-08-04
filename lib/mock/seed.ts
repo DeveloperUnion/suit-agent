@@ -13,7 +13,7 @@ import type {
 import { daysAgo, toIsoDate, addDays } from "@/lib/utils/date";
 
 /** 構造を変えたら上げる。localStorage 側が古ければ自動でシードに戻る */
-export const SEED_VERSION = 2;
+export const SEED_VERSION = 3;
 
 /**
  * 決定的な擬似乱数。リセットのたびに同じデータが再現されるようにする
@@ -292,7 +292,6 @@ function buildAll(): Built {
       familyInfo: minimal ? undefined : pick(["妻・長男（中学生）", "妻・長女（小学生）・次女", "独身", "妻のみ", "妻・長男・次男"]),
       ngNotes: undefined,
       staffId,
-      rank: thick ? (i < 3 ? "A" : "B") : pick<"A" | "B" | "C">(["B", "C", "C"]),
       isKeyAccount,
       firstVisitDate: minimal ? daysAgo(int(5, 60)) : daysAgo(int(200, 1600)),
       acquisitionChannel: pick(CHANNELS),
@@ -312,7 +311,6 @@ function buildAll(): Built {
       customer.jobTitle = "部長";
       customer.industry = "総合商社";
       customer.listingStatus = "listed";
-      customer.rank = "A";
       customer.isKeyAccount = true;
       customer.hobbies = "ゴルフ・ワイン";
       customer.familyInfo = "妻・長男（高校生）・長女（中学生）";

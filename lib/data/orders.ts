@@ -29,16 +29,20 @@ export type OwnedItemSummary = {
   byItemType: { itemTypeId: ItemTypeId; name: string; count: number }[];
   /** 色×柄の内訳。同系統を重ねて勧めないための判定材料 */
   byColorPattern: { label: string; count: number }[];
-  totalOrders: number;
-  totalAmount: number;
   /** まだ 1 着も持っていないアイテム種別 */
   missingItemTypes: { itemTypeId: ItemTypeId; name: string }[];
+  /** 注文が 1 件でもあるか。表示の出し分けにだけ使う */
+  hasOrders: boolean;
 };
 
 /**
  * 保有アイテム構成の集計。
  * 「紺の無地を既に3着持つ顧客に紺の無地を勧める」事故を防ぐための材料であり、
  * 注文タブの最上部に出す。
+ *
+ * 累計購入額・購入回数はここに含めない。顧客を金額で格付けする表示は、
+ * 本システムが信頼関係の維持を目的としていることと衝突するため
+ * （個々の注文の金額は事実の記録として注文カードに残す）。
  */
 export async function getOwnedItemSummary(customerId: Uuid): Promise<OwnedItemSummary> {
   const db = getDb();
@@ -68,8 +72,7 @@ export async function getOwnedItemSummary(customerId: Uuid): Promise<OwnedItemSu
     byColorPattern: [...colorPatternCounts.entries()]
       .map(([label, count]) => ({ label, count }))
       .sort((a, b) => b.count - a.count),
-    totalOrders: orders.length,
-    totalAmount: orders.reduce((sum, o) => sum + o.totalAmount, 0),
+    hasOrders: orders.length > 0,
     missingItemTypes: tracked
       .filter((id) => !itemCounts.get(id))
       .map((id) => ({ itemTypeId: id, name: ITEM_TYPE_MAP[id].name })),

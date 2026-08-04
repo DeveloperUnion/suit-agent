@@ -6,7 +6,6 @@ import { Search, Star } from "lucide-react";
 
 import { ElapsedDays } from "@/components/common/elapsed-days";
 import { PageHeader } from "@/components/common/page-header";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -57,7 +56,6 @@ export function CustomerListView() {
                   <TableHead className="field-label">顧客</TableHead>
                   <TableHead className="field-label">勤務先</TableHead>
                   <TableHead className="field-label">担当</TableHead>
-                  <TableHead className="field-label w-24">ランク</TableHead>
                   <TableHead className="field-label w-32 text-right">最終接触</TableHead>
                 </TableRow>
               </TableHeader>
@@ -79,11 +77,6 @@ export function CustomerListView() {
                       {c.companyName ?? "—"}
                     </TableCell>
                     <TableCell className="text-sm">{c.staffName}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="font-mono">
-                        {c.rank}
-                      </Badge>
-                    </TableCell>
                     <TableCell className="text-right">
                       <ElapsedDays days={c.elapsedDays} />
                     </TableCell>
@@ -113,10 +106,7 @@ export function CustomerListView() {
                     </span>
                     <span className="text-xs text-muted-foreground">担当 {c.staffName}</span>
                   </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    <Badge variant="outline" className="font-mono">
-                      {c.rank}
-                    </Badge>
+                  <div className="shrink-0">
                     <ElapsedDays days={c.elapsedDays} />
                   </div>
                 </Link>

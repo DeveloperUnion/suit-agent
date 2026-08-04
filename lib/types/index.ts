@@ -27,8 +27,6 @@ export type Staff = {
 
 // ── 顧客 ────────────────────────────────────────────────
 
-export type CustomerRank = "A" | "B" | "C";
-
 export type AnniversaryType = "birthday" | "first_purchase" | "wedding" | "other";
 
 export type CustomerAnniversary = {
@@ -81,8 +79,11 @@ export type Customer = {
   ngNotes?: string;
 
   staffId: Uuid;
-  rank: CustomerRank;
-  /** 重要顧客フラグ。企業ニュース巡回の対象になる */
+  /**
+   * 重要顧客フラグ。企業ニュース巡回の対象になる。
+   * 顧客ランク（A/B/C）は意図的に持たない — 手で付ける序列は形骸化するうえ、
+   * 接客中に見せる画面に顧客の格付けを出すことになるため。
+   */
   isKeyAccount: boolean;
   firstVisitDate?: IsoDate;
   acquisitionChannel?: string;

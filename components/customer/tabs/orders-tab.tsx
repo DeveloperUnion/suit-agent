@@ -30,10 +30,10 @@ export function OrdersTab({ customerId }: { customerId: string }) {
   return (
     <div className="flex flex-col gap-8">
       {/* 手持ちと被らない提案をするための材料。注文の詳細より先に置く */}
-      {summary && summary.totalOrders > 0 && (
+      {summary?.hasOrders && (
         <section className="flex flex-col gap-3 rounded-md border border-border bg-card p-4">
           <SectionTitle>保有アイテム構成</SectionTitle>
-          <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
             <div className="flex flex-col gap-1.5">
               <span className="field-label">アイテム</span>
               <ul className="flex flex-col gap-1">
@@ -77,11 +77,6 @@ export function OrdersTab({ customerId }: { customerId: string }) {
               )}
             </div>
 
-            <div className="flex flex-col gap-1.5">
-              <span className="field-label">累計</span>
-              <span className="tnum font-mono text-sm">{summary.totalOrders} 件</span>
-              <span className="tnum font-mono text-sm">¥{formatAmount(summary.totalAmount)}</span>
-            </div>
           </div>
         </section>
       )}

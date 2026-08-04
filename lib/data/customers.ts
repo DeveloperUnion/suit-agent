@@ -74,7 +74,6 @@ export async function createCustomer(
     customers: [
       ...db.customers,
       {
-        rank: "C",
         isKeyAccount: false,
         createdAt: new Date().toISOString().slice(0, 10),
         ...input,

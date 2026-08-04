@@ -12,7 +12,6 @@ import { OrdersTab } from "@/components/customer/tabs/orders-tab";
 import { ProfileTab } from "@/components/customer/tabs/profile-tab";
 import { MeasurementSheetView } from "@/components/measurement/measurement-sheet-view";
 import { SilhouetteThumb } from "@/components/silhouette/silhouette-thumb";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -90,9 +89,6 @@ export function CustomerDetailView({ customerId }: { customerId: string }) {
                   <TooltipContent>企業ニュースの定期巡回対象です</TooltipContent>
                 </Tooltip>
               )}
-              <Badge variant="outline" className="font-mono">
-                {customer.rank}
-              </Badge>
             </div>
 
             <p className="text-sm text-muted-foreground">{customer.nameKana}</p>

@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
-import { Search, Star } from "lucide-react";
+import { Search, Star, UserPlus } from "lucide-react";
 
 import { ElapsedDays } from "@/components/common/elapsed-days";
 import { PageHeader } from "@/components/common/page-header";
+import { CustomerCreateDialog } from "@/components/customer/customer-create-dialog";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -14,6 +16,7 @@ import { useMockQuery } from "@/lib/hooks/use-mock-db";
 
 export function CustomerListView() {
   const [keyword, setKeyword] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
   const loader = useCallback(() => listCustomers({ keyword }), [keyword]);
   const { data: customers, loading } = useMockQuery(loader, [keyword]);
 
@@ -23,9 +26,17 @@ export function CustomerListView() {
         eyebrow="Customers"
         title="顧客一覧"
         actions={
-          !loading && customers ? (
-            <span className="tnum font-mono text-sm text-muted-foreground">{customers.length}名</span>
-          ) : null
+          <>
+            {!loading && customers && (
+              <span className="tnum font-mono text-sm text-muted-foreground">
+                {customers.length}名
+              </span>
+            )}
+            <Button className="h-11 gap-1.5 sm:h-10" onClick={() => setCreateOpen(true)}>
+              <UserPlus className="size-4" />
+              顧客を登録
+            </Button>
+          </>
         }
       />
 
@@ -113,6 +124,8 @@ export function CustomerListView() {
           </ul>
         </>
       )}
+
+      <CustomerCreateDialog open={createOpen} onOpenChange={setCreateOpen} />
     </div>
   );
 }

@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback } from "react";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, MessageSquarePlus } from "lucide-react";
 
 import { EmptyState } from "@/components/common/field";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { APPROACH_STATUS_LABEL, TRIGGER_LABEL } from "@/lib/constants/labels";
 import { listApproachTasks, listCompanyNews } from "@/lib/data/messages";
 import { useMockQuery } from "@/lib/hooks/use-mock-db";
@@ -19,7 +20,14 @@ const STATUS_STYLE: Record<ApproachStatus, string> = {
   dismissed: "border-border bg-muted text-muted-foreground/70",
 };
 
-export function ApproachesTab({ customerId }: { customerId: string }) {
+export function ApproachesTab({
+  customerId,
+  onComposeMessage,
+}: {
+  customerId: string;
+  /** 根拠を持ったままメッセージ作成へ渡す。ここが切れると下書きの材料が失われる */
+  onComposeMessage: (approachTaskId: string) => void;
+}) {
   const tasksLoader = useCallback(() => listApproachTasks(customerId), [customerId]);
   const { data: tasks, loading } = useMockQuery(tasksLoader, [customerId]);
 
@@ -59,11 +67,23 @@ export function ApproachesTab({ customerId }: { customerId: string }) {
               {task.reason}
             </p>
 
-            {task.relatedMessages.length > 0 && (
-              <p className="mt-2 text-xs text-muted-foreground">
-                このアプローチから {task.relatedMessages.length} 件の連絡が発生しています
-              </p>
-            )}
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              {task.status === "open" && (
+                <Button
+                  size="sm"
+                  className="h-10 gap-1.5"
+                  onClick={() => onComposeMessage(task.id)}
+                >
+                  <MessageSquarePlus className="size-4" />
+                  メッセージを作成
+                </Button>
+              )}
+              {task.relatedMessages.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  このアプローチから {task.relatedMessages.length} 件の連絡が発生しています
+                </p>
+              )}
+            </div>
           </li>
         ))}
       </ul>

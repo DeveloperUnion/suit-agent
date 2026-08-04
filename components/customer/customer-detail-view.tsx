@@ -31,6 +31,14 @@ const TABS = [
 
 export function CustomerDetailView({ customerId }: { customerId: string }) {
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [tab, setTab] = useState("profile");
+  /** アプローチから「メッセージを作成」で来たときに引き継ぐ根拠 */
+  const [approachTaskId, setApproachTaskId] = useState<string | undefined>();
+
+  const composeMessage = (taskId?: string) => {
+    setApproachTaskId(taskId);
+    setTab("messages");
+  };
 
   const customerLoader = useCallback(() => getCustomer(customerId), [customerId]);
   const { data: customer, loading } = useMockQuery(customerLoader, [customerId]);
@@ -126,7 +134,11 @@ export function CustomerDetailView({ customerId }: { customerId: string }) {
           <ElapsedDays days={customer.elapsedDays} size="lg" />
 
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" className="h-11 gap-1.5 sm:h-10">
+            <Button
+              variant="outline"
+              className="h-11 gap-1.5 sm:h-10"
+              onClick={() => composeMessage()}
+            >
               <MessageSquarePlus className="size-4" />
               <span className="hidden sm:inline">メッセージ作成</span>
             </Button>
@@ -140,7 +152,7 @@ export function CustomerDetailView({ customerId }: { customerId: string }) {
       </header>
 
       {/* ── タブ ── */}
-      <Tabs defaultValue="profile" className="gap-4">
+      <Tabs value={tab} onValueChange={setTab} className="gap-4">
         <ScrollArea className="w-full">
           <TabsList className="w-max">
             {TABS.map((tab) => (
@@ -162,10 +174,15 @@ export function CustomerDetailView({ customerId }: { customerId: string }) {
           <OrdersTab customerId={customerId} />
         </TabsContent>
         <TabsContent value="messages">
-          <MessagesTab customerId={customerId} />
+          <MessagesTab
+            customerId={customerId}
+            elapsedDays={customer.elapsedDays}
+            approachTaskId={approachTaskId}
+            onClearApproach={() => setApproachTaskId(undefined)}
+          />
         </TabsContent>
         <TabsContent value="approaches">
-          <ApproachesTab customerId={customerId} />
+          <ApproachesTab customerId={customerId} onComposeMessage={composeMessage} />
         </TabsContent>
       </Tabs>
 

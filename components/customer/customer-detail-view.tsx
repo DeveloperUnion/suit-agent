@@ -29,11 +29,22 @@ const TABS = [
   { value: "approaches", label: "アプローチ" },
 ];
 
-export function CustomerDetailView({ customerId }: { customerId: string }) {
+export function CustomerDetailView({
+  customerId,
+  initialTab,
+  initialApproachId,
+}: {
+  customerId: string;
+  /** アプローチリストから遷移してきたときに開くタブ */
+  initialTab?: string;
+  initialApproachId?: string;
+}) {
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [tab, setTab] = useState("profile");
+  const [tab, setTab] = useState(
+    initialTab && TABS.some((t) => t.value === initialTab) ? initialTab : "profile",
+  );
   /** アプローチから「メッセージを作成」で来たときに引き継ぐ根拠 */
-  const [approachTaskId, setApproachTaskId] = useState<string | undefined>();
+  const [approachTaskId, setApproachTaskId] = useState<string | undefined>(initialApproachId);
 
   const composeMessage = (taskId?: string) => {
     setApproachTaskId(taskId);

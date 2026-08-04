@@ -1,4 +1,4 @@
-import type { ApproachTask, CompanyNews, Message, MessageChannel, Uuid } from "@/lib/types";
+import type { CompanyNews, Message, MessageChannel, TriggerType, Uuid } from "@/lib/types";
 import { getDb, mutateDb, newId } from "@/lib/store/mock-db";
 import { toIsoDate } from "@/lib/utils/date";
 
@@ -10,24 +10,6 @@ export async function listMessages(customerId: Uuid): Promise<MessageView[]> {
     .filter((m) => m.customerId === customerId)
     .sort((a, b) => a.sentAt.localeCompare(b.sentAt))
     .map((m) => ({ ...m, staffName: db.staff.find((s) => s.id === m.staffId)?.name }));
-}
-
-export type ApproachTaskView = ApproachTask & {
-  news?: CompanyNews;
-  /** このアプローチをきっかけに送られたメッセージ */
-  relatedMessages: Message[];
-};
-
-export async function listApproachTasks(customerId: Uuid): Promise<ApproachTaskView[]> {
-  const db = getDb();
-  return db.approachTasks
-    .filter((t) => t.customerId === customerId)
-    .sort((a, b) => b.dueDate.localeCompare(a.dueDate))
-    .map((task) => ({
-      ...task,
-      news: task.companyNewsId ? db.companyNews.find((n) => n.id === task.companyNewsId) : undefined,
-      relatedMessages: db.messages.filter((m) => m.approachTaskId === task.id),
-    }));
 }
 
 export async function listCompanyNews(customerId: Uuid): Promise<CompanyNews[]> {
@@ -44,6 +26,8 @@ export type SendMessageInput = {
   isAiGenerated: boolean;
   /** アプローチをきっかけに送る場合。効果測定のために必ず紐づける */
   approachTaskId?: Uuid;
+  /** 対応履歴に残す、発火していたトリガーと根拠 */
+  approachContext?: { triggerTypes: TriggerType[]; reason: string };
 };
 
 /**
@@ -78,18 +62,28 @@ export async function sendMessage(input: SendMessageInput): Promise<Uuid> {
     customers: db.customers.map((c) =>
       c.id === input.customerId ? { ...c, lastContactedAt: today } : c,
     ),
+    // アプローチは毎回評価して導出しているため、対応したものは履歴として書き残す。
+    // 未解決のレコード（スヌーズ等）があればそれを対応済みに変える
     approachTasks: input.approachTaskId
-      ? db.approachTasks.map((t) =>
-          t.id === input.approachTaskId
-            ? { ...t, status: "done" as const, resolvedAt: now.toISOString() }
-            : t,
-        )
+      ? (() => {
+          const open = db.approachTasks.find(
+            (t) => t.customerId === input.customerId && t.status !== "done",
+          );
+          const resolved = {
+            id: open?.id ?? `${input.approachTaskId}-${now.getTime()}`,
+            customerId: input.customerId,
+            dueDate: today,
+            triggerTypes: input.approachContext?.triggerTypes ?? open?.triggerTypes ?? [],
+            reason: input.approachContext?.reason ?? open?.reason ?? "",
+            status: "done" as const,
+            resolvedAt: now.toISOString(),
+          };
+          return open
+            ? db.approachTasks.map((t) => (t.id === open.id ? resolved : t))
+            : [...db.approachTasks, resolved];
+        })()
       : db.approachTasks,
   }));
 
   return id;
-}
-
-export async function getApproachTask(id: Uuid): Promise<ApproachTask | undefined> {
-  return getDb().approachTasks.find((t) => t.id === id);
 }

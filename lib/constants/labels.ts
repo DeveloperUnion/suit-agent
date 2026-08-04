@@ -93,5 +93,22 @@ export const INPUT_METHOD_LABEL: Record<MeasurementInputMethod, string> = {
   ocr: "OCR取り込み",
 };
 
-/** 経過日数トリガーの既定閾値（設定で変更可能にする想定） */
+/**
+ * トリガーの既定値。設定画面から変更できるようにする想定なので、
+ * 判定ロジックの中に数値を書かずここに集約する。
+ */
+
+/** 経過日数トリガー: 最終接触から何日で発火するか */
 export const ELAPSED_DAYS_THRESHOLD = 90;
+
+/** 記念日トリガー: 何日前から通知するか */
+export const ANNIVERSARY_LEAD_DAYS = 21;
+
+/**
+ * 季節トリガー: 生地の入荷期。
+ * 要件は「春夏(3月)・秋冬(9月)」だが、実際の入荷と案内は前後にまたがるため幅を持たせる。
+ */
+export const SEASON_WINDOWS = [
+  { months: [2, 3, 4], season: "spring_summer" as const, label: "春夏" },
+  { months: [8, 9, 10], season: "autumn_winter" as const, label: "秋冬" },
+];

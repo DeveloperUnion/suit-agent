@@ -11,7 +11,7 @@ import { getCurrentStaffId } from "@/lib/auth/current-staff";
 import { ELAPSED_DAYS_THRESHOLD, MESSAGE_CHANNEL_LABEL, TRIGGER_LABEL } from "@/lib/constants/labels";
 import { generateDrafts, type MessageDraft } from "@/lib/ai/draft-messages";
 import { listMessages, sendMessage } from "@/lib/data/messages";
-import { listApproachTasks } from "@/lib/data/messages";
+import { getApproachForCustomer } from "@/lib/data/approaches";
 import { useMockQuery } from "@/lib/hooks/use-mock-db";
 import { formatDateTime } from "@/lib/utils/date";
 import { cn } from "@/lib/utils";
@@ -43,9 +43,10 @@ export function MessagesTab({
   const messagesLoader = useCallback(() => listMessages(customerId), [customerId]);
   const { data: messages, loading } = useMockQuery(messagesLoader, [customerId]);
 
-  const tasksLoader = useCallback(() => listApproachTasks(customerId), [customerId]);
-  const { data: tasks } = useMockQuery(tasksLoader, [customerId]);
-  const approach = tasks?.find((t) => t.id === approachTaskId);
+  const approachLoader = useCallback(() => getApproachForCustomer(customerId), [customerId]);
+  const { data: currentApproach } = useMockQuery(approachLoader, [customerId]);
+  // 画面から渡された ID と、いま評価されているアプローチが一致するときだけ根拠を出す
+  const approach = approachTaskId && currentApproach?.id === approachTaskId ? currentApproach : undefined;
 
   const overdue = elapsedDays !== null && elapsedDays > ELAPSED_DAYS_THRESHOLD;
 
@@ -67,6 +68,12 @@ export function MessagesTab({
       channel: "line",
       isAiGenerated: usedDraft,
       approachTaskId,
+      approachContext: approach
+        ? {
+            triggerTypes: approach.triggerTypes,
+            reason: approach.hits.map((h) => h.reason).join(" "),
+          }
+        : undefined,
     });
     setBody("");
     setDrafts(null);
@@ -151,7 +158,11 @@ export function MessagesTab({
                   </span>
                 ))}
               </span>
-              <p className="text-xs leading-relaxed text-muted-foreground">{approach.reason}</p>
+              {approach.hits.map((hit) => (
+                <p key={hit.type} className="text-xs leading-relaxed text-muted-foreground">
+                  {hit.reason}
+                </p>
+              ))}
             </div>
             <button
               type="button"

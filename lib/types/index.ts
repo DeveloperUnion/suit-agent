@@ -294,6 +294,13 @@ export type TriggerType = "elapsed_days" | "anniversary" | "season" | "company_n
 
 export type ApproachStatus = "open" | "done" | "snoozed" | "dismissed";
 
+/**
+ * アプローチの状態レコード。
+ *
+ * 「今日連絡すべき顧客」そのものは lib/data/approaches.ts で毎回評価して導出する
+ * （閾値を変えたら即反映されるべきであり、連絡すれば経過日数トリガーは自然に消えるため）。
+ * ここに保存するのは、導出結果に人が被せた判断と、対応した履歴だけ。
+ */
 export type ApproachTask = {
   id: Uuid;
   customerId: Uuid;
@@ -304,6 +311,8 @@ export type ApproachTask = {
   status: ApproachStatus;
   companyNewsId?: Uuid;
   resolvedAt?: IsoDateTime;
+  /** スヌーズの明け日。この日までリストに出さない */
+  snoozedUntil?: IsoDate;
 };
 
 export type CompanyNews = {

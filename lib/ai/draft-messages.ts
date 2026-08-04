@@ -2,7 +2,7 @@ import type { TriggerType, Uuid } from "@/lib/types";
 import { getCustomer } from "@/lib/data/customers";
 import { listAnniversaries } from "@/lib/data/customers";
 import { getOwnedItemSummary, listOrders } from "@/lib/data/orders";
-import { getApproachTask } from "@/lib/data/messages";
+import { getApproachForCustomer } from "@/lib/data/approaches";
 import { daysUntilNextAnniversary } from "@/lib/utils/date";
 
 /**
@@ -52,17 +52,17 @@ export async function generateDrafts(
   const customer = await getCustomer(customerId);
   if (!customer) return [];
 
-  const [orders, summary, anniversaries, task] = await Promise.all([
+  const [orders, summary, anniversaries, approach] = await Promise.all([
     listOrders(customerId),
     getOwnedItemSummary(customerId),
     listAnniversaries(customerId),
-    options.approachTaskId ? getApproachTask(options.approachTaskId) : Promise.resolve(undefined),
+    options.approachTaskId ? getApproachForCustomer(customerId) : Promise.resolve(null),
   ]);
 
   const month = new Date().getMonth() + 1;
   const surname = customer.name.split(" ")[0];
   const greeting = SEASON_GREETING[month];
-  const triggers = (task?.triggerTypes ?? []) as TriggerType[];
+  const triggers = (approach?.triggerTypes ?? []) as TriggerType[];
 
   // ① 近況伺い — 売り込みを含まない基本形
   const drafts: MessageDraft[] = [
@@ -103,7 +103,7 @@ export async function generateDrafts(
   });
 
   // 企業ニュースが根拠に含まれる場合だけ、触れる案に差し替える
-  if (triggers.includes("company_news") && task?.companyNewsId) {
+  if (triggers.includes("company_news") && approach?.news) {
     drafts[1] = {
       id: "draft-2",
       angle: "会社の動きにふれる",

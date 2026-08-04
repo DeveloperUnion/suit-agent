@@ -13,7 +13,7 @@ import type {
 import { daysAgo, toIsoDate, addDays } from "@/lib/utils/date";
 
 /** 構造を変えたら上げる。localStorage 側が古ければ自動でシードに戻る */
-export const SEED_VERSION = 4;
+export const SEED_VERSION = 5;
 
 /**
  * 決定的な擬似乱数。リセットのたびに同じデータが再現されるようにする
@@ -510,32 +510,20 @@ function buildAll(): Built {
       });
     }
 
-    // アプローチ
-    if (lastContactDays > 90 && !minimal) {
+    // アプローチは lib/data/approaches.ts で毎回評価して導出するため、
+    // ここでは「過去に対応した履歴」だけを置く
+    if (thick && i % 3 === 0) {
       approachTasks.push({
-        id: `apr-${id}-1`,
+        id: `apr-${id}-history`,
         customerId: id,
-        dueDate: daysAgo(int(0, 5)),
-        triggerTypes: lastContactDays > 180 ? ["elapsed_days", "season"] : ["elapsed_days"],
-        reason:
-          lastContactDays > 180
-            ? `最終接触から${lastContactDays}日が経過しています。秋冬の生地入荷期であり、保有アイテムに秋冬向けのコートがありません。`
-            : `最終接触から${lastContactDays}日が経過しています。設定閾値（90日）を超えました。`,
-        status: "open",
+        dueDate: daysAgo(lastContactDays + 30),
+        triggerTypes: ["elapsed_days"],
+        reason: "最終接触から90日を超えたため連絡しました。",
+        status: "done",
+        resolvedAt: `${daysAgo(lastContactDays + 28)}T10:15:00`,
       });
     }
   }
-
-  // 時枝様には記念日トリガーも重ねて、統合表示を確認できるようにする
-  approachTasks.push({
-    id: "apr-cust-001-2",
-    customerId: "cust-001",
-    dueDate: daysAgo(0),
-    triggerTypes: ["anniversary", "company_news"],
-    reason: "初回購入から5年の節目が近づいています。加えて、勤務先の海外事業再編が報じられました。",
-    status: "done",
-    resolvedAt: `${daysAgo(3)}T11:20:00`,
-  });
 
   return { customers, anniversaries, sheets, orders, orderItems, messages, approachTasks };
 }

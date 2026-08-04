@@ -1,0 +1,208 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --font-sans: var(--font-noto-sans-jp), var(--font-plex-sans), sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+  --font-heading: var(--font-plex-sans), var(--font-noto-sans-jp), sans-serif;
+  --font-label: var(--font-plex-condensed), var(--font-noto-sans-jp), sans-serif;
+
+  /* 素材トークン — テーラーの製図台から */
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-navy: var(--navy);
+  --color-rule: var(--rule);
+  --color-measure: var(--measure);
+  --color-chalk: var(--chalk);
+  --color-thread: var(--thread);
+
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  /* ── 素材 ───────────────────────────────────
+     paper   製図紙。青みを含んだ白（クリームではない）
+     ink     ネイビーブラック。本文と数値
+     navy    紺 — スーツそのものの色。プライマリ
+     rule    細罫。紙の帳票の区切り線
+     measure メジャーの目盛りグレー。ラベル・補助情報
+     chalk   青チャコ。減少方向・情報
+     thread  しつけ糸。警告・増加方向・重要顧客 — 唯一の暖色
+  */
+  --paper: #f1f4f6;
+  --ink: #16202b;
+  --navy: #26364f;
+  --rule: #dbe0e4;
+  --measure: #6f7a85;
+  --chalk: #2a6098;
+  --thread: #a83b2a;
+
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: #ffffff;
+  --card-foreground: var(--ink);
+  --popover: #ffffff;
+  --popover-foreground: var(--ink);
+  --primary: var(--navy);
+  --primary-foreground: #f6f8fa;
+  --secondary: #e3e8eb;
+  --secondary-foreground: var(--navy);
+  --muted: #e7ebee;
+  --muted-foreground: var(--measure);
+  --accent: #dfe6ec;
+  --accent-foreground: var(--navy);
+  --destructive: var(--thread);
+  --border: var(--rule);
+  --input: #c9d1d7;
+  --ring: var(--navy);
+  --chart-1: var(--navy);
+  --chart-2: var(--chalk);
+  --chart-3: var(--measure);
+  --chart-4: var(--thread);
+  --chart-5: #8b98a4;
+  --radius: 0.375rem;
+
+  --sidebar: #1c2839;
+  --sidebar-foreground: #c3ccd6;
+  --sidebar-primary: #f6f8fa;
+  --sidebar-primary-foreground: var(--navy);
+  --sidebar-accent: #2a3a4f;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #2b3a4e;
+  --sidebar-ring: #5d7a9c;
+}
+
+.dark {
+  --paper: #131a22;
+  --ink: #e6ebef;
+  --navy: #8fa8c9;
+  --rule: #2a3542;
+  --measure: #8d99a5;
+  --chalk: #6aa3d8;
+  --thread: #d9705c;
+
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: #1a232d;
+  --card-foreground: var(--ink);
+  --popover: #1a232d;
+  --popover-foreground: var(--ink);
+  --primary: #c8d6e8;
+  --primary-foreground: #16202b;
+  --secondary: #232e3a;
+  --secondary-foreground: var(--ink);
+  --muted: #212b36;
+  --muted-foreground: var(--measure);
+  --accent: #26323f;
+  --accent-foreground: var(--ink);
+  --destructive: var(--thread);
+  --border: var(--rule);
+  --input: #34404e;
+  --ring: #7f97b5;
+  --chart-1: #8fa8c9;
+  --chart-2: #6aa3d8;
+  --chart-3: #8d99a5;
+  --chart-4: #d9705c;
+  --chart-5: #5f6b78;
+
+  --sidebar: #101720;
+  --sidebar-foreground: #a8b4c1;
+  --sidebar-primary: #e6ebef;
+  --sidebar-primary-foreground: #101720;
+  --sidebar-accent: #1e2937;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #242f3d;
+  --sidebar-ring: #4a5a6d;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    /* 製図紙のごく淡いグリッド。近づかないと見えない程度に留める */
+    background-image:
+      linear-gradient(to right, color-mix(in srgb, var(--ink) 3%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in srgb, var(--ink) 3%, transparent) 1px, transparent 1px);
+    background-size: 2rem 2rem;
+  }
+  html {
+    @apply font-sans;
+  }
+  /* 採寸値・金額・日数は必ず桁が揃うこと */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+}
+
+@layer components {
+  /* 帳票の区分ラベル。細い縦罫を伴って現れる */
+  .field-label {
+    @apply font-label text-[0.6875rem] font-medium uppercase tracking-[0.14em] text-muted-foreground;
+  }
+}
+
+/* チャコで丸を描く動作。補正マーカーの登場にだけ使う */
+@keyframes chalk-draw {
+  from {
+    stroke-dashoffset: var(--chalk-len, 260);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.chalk-mark {
+  stroke-dasharray: var(--chalk-len, 260);
+  animation: chalk-draw 0.62s cubic-bezier(0.33, 0.9, 0.5, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chalk-mark {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+}

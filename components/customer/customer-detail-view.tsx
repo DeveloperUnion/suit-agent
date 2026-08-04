@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
-import { ArrowLeft, MessageSquarePlus, Plus, Star } from "lucide-react";
+import { ArrowLeft, Plus, Star } from "lucide-react";
 
 import { ElapsedDays } from "@/components/common/elapsed-days";
 import { ApproachesTab } from "@/components/customer/tabs/approaches-tab";
@@ -144,16 +144,12 @@ export function CustomerDetailView({
         <div className="flex flex-wrap items-end justify-between gap-4 border-t border-border pt-4">
           <ElapsedDays days={customer.elapsedDays} size="lg" />
 
+          {/*
+            採寸は右上のシルエット、メッセージはやり取りタブが入口なので、
+            ここに同じ動作のボタンは置かない。注文は来店時に必ず通る動線のため
+            1タップで届くようヘッダーに残している。
+          */}
           <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              className="h-11 gap-1.5 sm:h-10"
-              onClick={() => composeMessage()}
-            >
-              <MessageSquarePlus className="size-4" />
-              <span className="hidden sm:inline">メッセージ作成</span>
-            </Button>
-            {/* 採寸の入口は右上のシルエット一本にする（同じ動作のボタンを並べない） */}
             <Button variant="outline" className="h-11 gap-1.5 sm:h-10">
               <Plus className="size-4" />
               <span className="hidden sm:inline">注文を追加</span>

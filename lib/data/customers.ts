@@ -10,7 +10,6 @@ import { ELAPSED_DAYS_THRESHOLD } from "@/lib/constants/labels";
  */
 
 export type CustomerListItem = Customer & {
-  staffName: string;
   /** 最終接触からの経過日数。未接触なら null */
   elapsedDays: number | null;
   /** 閾値を超えて放置されているか */
@@ -21,11 +20,10 @@ export type CustomerFilter = {
   keyword?: string;
 };
 
-function decorate(customer: Customer, staff: Staff[]): CustomerListItem {
+function decorate(customer: Customer): CustomerListItem {
   const elapsedDays = daysSince(customer.lastContactedAt);
   return {
     ...customer,
-    staffName: staff.find((s) => s.id === customer.staffId)?.name ?? "—",
     elapsedDays,
     isOverdue: elapsedDays !== null && elapsedDays > ELAPSED_DAYS_THRESHOLD,
   };
@@ -40,14 +38,13 @@ export async function listCustomers(filter: CustomerFilter = {}): Promise<Custom
       const haystack = `${c.name}${c.nameKana}${c.companyName ?? ""}`;
       return haystack.includes(keyword);
     })
-    .map((c) => decorate(c, db.staff))
+    .map(decorate)
     .sort((a, b) => (b.elapsedDays ?? -1) - (a.elapsedDays ?? -1));
 }
 
 export async function getCustomer(id: Uuid): Promise<CustomerListItem | null> {
-  const db = getDb();
-  const customer = db.customers.find((c) => c.id === id);
-  return customer ? decorate(customer, db.staff) : null;
+  const customer = getDb().customers.find((c) => c.id === id);
+  return customer ? decorate(customer) : null;
 }
 
 export async function listAnniversaries(customerId: Uuid): Promise<CustomerAnniversary[]> {
@@ -66,7 +63,7 @@ export async function updateCustomer(id: Uuid, patch: Partial<Customer>): Promis
 }
 
 export async function createCustomer(
-  input: Pick<Customer, "name" | "nameKana" | "staffId"> & Partial<Customer>,
+  input: Pick<Customer, "name" | "nameKana"> & Partial<Customer>,
 ): Promise<Uuid> {
   const id = newId("cust");
   mutateDb((db) => ({

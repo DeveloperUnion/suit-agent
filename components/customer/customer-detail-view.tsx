@@ -104,7 +104,6 @@ export function CustomerDetailView({ customerId }: { customerId: string }) {
                   {customer.jobTitle && <span className="text-muted-foreground"> {customer.jobTitle}</span>}
                 </span>
               )}
-              <span className="text-muted-foreground">担当 {customer.staffName}</span>
               <span className="text-muted-foreground">
                 LINE {customer.lineUserId ? "連携済" : "未連携"}
               </span>
@@ -180,7 +179,6 @@ export function CustomerDetailView({ customerId }: { customerId: string }) {
       <MeasurementSheetView
         customerId={customerId}
         customerName={customer.name}
-        staffId={customer.staffId}
         open={sheetOpen}
         onOpenChange={setSheetOpen}
       />

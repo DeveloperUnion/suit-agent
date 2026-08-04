@@ -55,7 +55,6 @@ export function CustomerListView() {
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="field-label">顧客</TableHead>
                   <TableHead className="field-label">勤務先</TableHead>
-                  <TableHead className="field-label">担当</TableHead>
                   <TableHead className="field-label w-32 text-right">最終接触</TableHead>
                 </TableRow>
               </TableHeader>
@@ -76,7 +75,6 @@ export function CustomerListView() {
                     <TableCell className="text-sm text-muted-foreground">
                       {c.companyName ?? "—"}
                     </TableCell>
-                    <TableCell className="text-sm">{c.staffName}</TableCell>
                     <TableCell className="text-right">
                       <ElapsedDays days={c.elapsedDays} />
                     </TableCell>
@@ -101,10 +99,10 @@ export function CustomerListView() {
                         <Star className="size-3.5 shrink-0 fill-thread text-thread" aria-label="重要顧客" />
                       )}
                     </span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {c.companyName ?? c.nameKana}
-                    </span>
-                    <span className="text-xs text-muted-foreground">担当 {c.staffName}</span>
+                    <span className="truncate text-xs text-muted-foreground">{c.nameKana}</span>
+                    {c.companyName && (
+                      <span className="truncate text-xs text-muted-foreground">{c.companyName}</span>
+                    )}
                   </div>
                   <div className="shrink-0">
                     <ElapsedDays days={c.elapsedDays} />

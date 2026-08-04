@@ -98,7 +98,7 @@ export function OrdersTab({ customerId }: { customerId: string }) {
                   {ORDER_STATUS_LABEL[order.status]}
                 </Badge>
                 <span className="ml-auto flex items-center gap-4">
-                  <span className="text-xs text-muted-foreground">担当 {order.staffName}</span>
+                  <span className="text-xs text-muted-foreground">受注者 {order.staffName}</span>
                   <span className="tnum font-mono text-sm font-medium">
                     ¥{formatAmount(order.totalAmount)}
                   </span>

@@ -13,7 +13,7 @@ import type {
 import { daysAgo, toIsoDate, addDays } from "@/lib/utils/date";
 
 /** 構造を変えたら上げる。localStorage 側が古ければ自動でシードに戻る */
-export const SEED_VERSION = 3;
+export const SEED_VERSION = 4;
 
 /**
  * 決定的な擬似乱数。リセットのたびに同じデータが再現されるようにする
@@ -259,7 +259,8 @@ function buildAll(): Built {
     const bucket = i % 3;
     let lastContactDays = bucket === 0 ? int(2, 30) : bucket === 1 ? int(95, 150) : int(185, 320);
 
-    // 経過日数バケットと同じ剰余を使うと担当が偏るため、こちらは乱数で振る
+    // 顧客に担当は持たせない。これは採寸票・注文・メッセージに残る「操作者」で、
+    // 同じ顧客はだいたい同じスタッフが見ている、という程度の意味しかない
     const staffId = pick(STAFF).id;
     const isKeyAccount = thick ? i < 3 : rand() < 0.12;
 
@@ -291,7 +292,6 @@ function buildAll(): Built {
       hobbies: minimal ? undefined : pickSome(HOBBIES, int(1, 2)).join("・"),
       familyInfo: minimal ? undefined : pick(["妻・長男（中学生）", "妻・長女（小学生）・次女", "独身", "妻のみ", "妻・長男・次男"]),
       ngNotes: undefined,
-      staffId,
       isKeyAccount,
       firstVisitDate: minimal ? daysAgo(int(5, 60)) : daysAgo(int(200, 1600)),
       acquisitionChannel: pick(CHANNELS),
@@ -326,7 +326,6 @@ function buildAll(): Built {
       // 経過日数トリガーの判定にも使うため、上書きした値に揃える
       lastContactDays = 118;
       customer.lastContactedAt = daysAgo(lastContactDays);
-      customer.staffId = "staff-1";
       customer.tags = ["紹介元", "出張多い"];
       customer.memo = "紹介経由の来店。ご子息の成人式スーツの相談を受けている（2027年予定）。";
       customer.lineUserId = "Ua3f91c02be77";

@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getCurrentStaffId } from "@/lib/auth/current-staff";
 import { MAX_ADJUSTMENTS } from "@/lib/constants/adjustments";
 import { INPUT_METHOD_LABEL } from "@/lib/constants/labels";
 import {
@@ -35,18 +36,11 @@ import { cn } from "@/lib/utils";
 type Props = {
   customerId: string;
   customerName: string;
-  staffId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
 
-export function MeasurementSheetView({
-  customerId,
-  customerName,
-  staffId,
-  open,
-  onOpenChange,
-}: Props) {
+export function MeasurementSheetView({ customerId, customerName, open, onOpenChange }: Props) {
   const [selectedId, setSelectedId] = useState<string | undefined>();
   const [editing, setEditing] = useState(false);
   const [activeKey, setActiveKey] = useState<string | undefined>();
@@ -99,7 +93,8 @@ export function MeasurementSheetView({
   };
 
   const handleNewSheet = async () => {
-    const id = await createSheetFromPrevious(customerId, staffId);
+    // 採寸票には「誰が採寸したか」を残す。顧客の担当ではなく操作者
+    const id = await createSheetFromPrevious(customerId, getCurrentStaffId());
     setSelectedId(id);
     setEditing(true);
     toast.success("前回値をプリセットした採寸票を作成しました", {
@@ -317,7 +312,7 @@ export function MeasurementSheetView({
           {view && (
             <footer className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border px-4 py-3 text-xs text-muted-foreground sm:px-6">
               <span>
-                担当 <span className="text-foreground">{view.staffName}</span>
+                採寸者 <span className="text-foreground">{view.staffName}</span>
               </span>
               <span>{INPUT_METHOD_LABEL[view.sheet.inputMethod]}</span>
               {view.previousSheet && (

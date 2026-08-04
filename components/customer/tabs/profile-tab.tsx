@@ -138,7 +138,6 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
         <section className="flex flex-col gap-1">
           <SectionTitle>営業管理</SectionTitle>
           <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
-            <Field label="担当スタッフ" value={customer.staffName} />
             <Field label="初回来店日" value={formatDateLong(customer.firstVisitDate)} />
             <Field label="流入経路" value={customer.acquisitionChannel} />
             <Field

@@ -191,6 +191,13 @@ export type SilhouetteRegion =
   | "arm"
   | "leg";
 
+/** シルエット上に描く補正マーク 1 件 */
+export type SilhouetteCorrection = {
+  region: SilhouetteRegion;
+  /** 紙の採寸票と同じ番号。丸のそばに添えて、何の丸なのかを示す */
+  code: number;
+};
+
 // ── 仕様（指示項目） ─────────────────────────────────────
 
 export type SpecOption = {

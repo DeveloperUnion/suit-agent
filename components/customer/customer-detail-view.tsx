@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
-import { ArrowLeft, MessageSquarePlus, Plus, Ruler, Star } from "lucide-react";
+import { ArrowLeft, MessageSquarePlus, Plus, Star } from "lucide-react";
 
 import { ElapsedDays } from "@/components/common/elapsed-days";
 import { ApproachesTab } from "@/components/customer/tabs/approaches-tab";
@@ -113,7 +113,7 @@ export function CustomerDetailView({ customerId }: { customerId: string }) {
           {/* 右上のシルエット — 採寸ビューの入口。適用中の補正がそのまま形に出る */}
           {silhouette && (
             <SilhouetteThumb
-              highlights={silhouette.highlights}
+              corrections={silhouette.corrections}
               measuredAt={silhouette.measuredAt}
               adjustmentCount={silhouette.adjustmentCount}
               onClick={() => setSheetOpen(true)}
@@ -130,14 +130,7 @@ export function CustomerDetailView({ customerId }: { customerId: string }) {
               <MessageSquarePlus className="size-4" />
               <span className="hidden sm:inline">メッセージ作成</span>
             </Button>
-            <Button
-              variant="outline"
-              className="h-11 gap-1.5 sm:h-10"
-              onClick={() => setSheetOpen(true)}
-            >
-              <Ruler className="size-4" />
-              <span className="hidden sm:inline">採寸を追加</span>
-            </Button>
+            {/* 採寸の入口は右上のシルエット一本にする（同じ動作のボタンを並べない） */}
             <Button variant="outline" className="h-11 gap-1.5 sm:h-10">
               <Plus className="size-4" />
               <span className="hidden sm:inline">注文を追加</span>

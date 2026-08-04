@@ -5,7 +5,7 @@ import type {
   MeasurementField,
   MeasurementSheet,
   MeasurementValue,
-  SilhouetteRegion,
+  SilhouetteCorrection,
   Uuid,
 } from "@/lib/types";
 import { getDb, mutateDb, newId } from "@/lib/store/mock-db";
@@ -41,8 +41,8 @@ export type SheetView = {
   upper: SectionView[];
   lower: SectionView[];
   adjustments: Record<BodyPart, AppliedAdjustmentView[]>;
-  /** 補正から導いたシルエットの強調部位 */
-  highlights: SilhouetteRegion[];
+  /** シルエットに描く補正マーク（部位＋番号） */
+  corrections: SilhouetteCorrection[];
 };
 
 function round(n: number): number {
@@ -107,12 +107,14 @@ export async function getSheetView(customerId: Uuid, sheetId?: Uuid): Promise<Sh
   const previousSheet = sheets[index + 1];
 
   const adjustments: Record<BodyPart, AppliedAdjustmentView[]> = { upper: [], lower: [] };
-  const highlights = new Set<SilhouetteRegion>();
+  const corrections: SilhouetteCorrection[] = [];
   for (const applied of sheet.adjustments) {
     const master = ADJUSTMENT_MAP.get(applied.code);
     if (!master) continue;
     adjustments[master.bodyPart].push({ master, value: applied.value });
-    if (master.silhouetteHint) highlights.add(master.silhouetteHint);
+    if (master.silhouetteHint) {
+      corrections.push({ region: master.silhouetteHint, code: master.code });
+    }
   }
 
   return {
@@ -122,26 +124,28 @@ export async function getSheetView(customerId: Uuid, sheetId?: Uuid): Promise<Sh
     upper: buildSections(sheet, previousSheet, "upper"),
     lower: buildSections(sheet, previousSheet, "lower"),
     adjustments,
-    highlights: [...highlights],
+    corrections,
   };
 }
 
-/** 顧客の最新採寸票から、シルエットに出す強調部位だけを取り出す */
+/** 顧客の最新採寸票から、シルエットに出す補正だけを取り出す */
 export async function getSilhouetteState(customerId: Uuid): Promise<{
-  highlights: SilhouetteRegion[];
+  corrections: SilhouetteCorrection[];
   measuredAt?: string;
   adjustmentCount: number;
-} > {
+}> {
   const sheets = await listSheets(customerId);
   const latest = sheets[0];
-  if (!latest) return { highlights: [], adjustmentCount: 0 };
-  const highlights = new Set<SilhouetteRegion>();
+  if (!latest) return { corrections: [], adjustmentCount: 0 };
+  const corrections: SilhouetteCorrection[] = [];
   for (const applied of latest.adjustments) {
-    const hint = ADJUSTMENT_MAP.get(applied.code)?.silhouetteHint;
-    if (hint) highlights.add(hint);
+    const master = ADJUSTMENT_MAP.get(applied.code);
+    if (master?.silhouetteHint) {
+      corrections.push({ region: master.silhouetteHint, code: master.code });
+    }
   }
   return {
-    highlights: [...highlights],
+    corrections,
     measuredAt: latest.measuredAt,
     adjustmentCount: latest.adjustments.length,
   };

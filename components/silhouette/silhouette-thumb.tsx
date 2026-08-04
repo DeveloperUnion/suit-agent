@@ -2,7 +2,7 @@
 
 import { BodySilhouette } from "@/components/silhouette/body-silhouette";
 import { cn } from "@/lib/utils";
-import type { SilhouetteRegion } from "@/lib/types";
+import type { SilhouetteCorrection } from "@/lib/types";
 import { formatDateDot } from "@/lib/utils/date";
 
 /**
@@ -11,13 +11,13 @@ import { formatDateDot } from "@/lib/utils/date";
  * 開かなくても「この人はこういう体型」が伝わるようにしている。
  */
 export function SilhouetteThumb({
-  highlights,
+  corrections,
   measuredAt,
   adjustmentCount,
   onClick,
   className,
 }: {
-  highlights: SilhouetteRegion[];
+  corrections: SilhouetteCorrection[];
   measuredAt?: string;
   adjustmentCount: number;
   onClick: () => void;
@@ -29,17 +29,16 @@ export function SilhouetteThumb({
     <button
       type="button"
       onClick={onClick}
-      disabled={!hasMeasurement}
       className={cn(
         "group flex min-h-11 items-center gap-3 rounded-md border border-border bg-card px-3 py-2 text-left transition-colors",
-        hasMeasurement ? "hover:border-navy/40 hover:bg-accent/40" : "cursor-not-allowed opacity-70",
+        "hover:border-navy/40 hover:bg-accent/40",
         "focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
         className,
       )}
-      aria-label={hasMeasurement ? "採寸ビューを開く" : "採寸データがありません"}
+      aria-label={hasMeasurement ? "採寸ビューを開く" : "採寸を始める"}
     >
       <span className="h-[4.5rem] w-9 shrink-0 sm:h-24 sm:w-12">
-        <BodySilhouette highlights={highlights} animate={false} variant="thumb" />
+        <BodySilhouette corrections={corrections} animate={false} variant="thumb" />
       </span>
       <span className="flex flex-col gap-0.5">
         <span className="field-label">採寸</span>
@@ -53,7 +52,7 @@ export function SilhouetteThumb({
             </span>
           </>
         ) : (
-          <span className="text-xs text-muted-foreground">未採寸</span>
+          <span className="text-sm text-navy">採寸する</span>
         )}
       </span>
     </button>

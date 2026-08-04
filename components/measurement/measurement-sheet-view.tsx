@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { AdjustmentPanel } from "@/components/measurement/adjustment-panel";
 import { MeasurementSection } from "@/components/measurement/measurement-section";
-import { BodySilhouette, type SilhouettePoint } from "@/components/silhouette/body-silhouette";
+import { BodySilhouette } from "@/components/silhouette/body-silhouette";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -56,20 +56,6 @@ export function MeasurementSheetView({ customerId, customerName, open, onOpenCha
   );
   const { data: view, loading } = useMockQuery(viewLoader, [customerId, selectedId, open]);
 
-  const points = useMemo<SilhouettePoint[]>(() => {
-    if (!view) return [];
-    return [...view.upper, ...view.lower].flatMap((section) =>
-      section.rows
-        .filter((row) => row.field.silhouettePoint)
-        .map((row) => ({
-          key: `${section.itemType.id}:${row.field.key}`,
-          x: row.field.silhouettePoint!.x,
-          y: row.field.silhouettePoint!.y,
-          active: activeKey === `${section.itemType.id}:${row.field.key}`,
-        })),
-    );
-  }, [view, activeKey]);
-
   const handleValueChange = (
     itemTypeId: ItemTypeId,
     fieldKey: string,
@@ -93,13 +79,15 @@ export function MeasurementSheetView({ customerId, customerName, open, onOpenCha
   };
 
   const handleNewSheet = async () => {
+    const isFirst = !view;
     // 採寸票には「誰が採寸したか」を残す。顧客の担当ではなく操作者
     const id = await createSheetFromPrevious(customerId, getCurrentStaffId());
     setSelectedId(id);
     setEditing(true);
-    toast.success("前回値をプリセットした採寸票を作成しました", {
-      description: "変わったところだけ書き換えてください。",
-    });
+    toast.success(
+      isFirst ? "採寸票を作成しました" : "前回値をプリセットした採寸票を作成しました",
+      { description: isFirst ? undefined : "変わったところだけ書き換えてください。" },
+    );
   };
 
   const upperSections = view?.upper ?? [];
@@ -115,8 +103,7 @@ export function MeasurementSheetView({ customerId, customerName, open, onOpenCha
         )}
       >
         <BodySilhouette
-          highlights={view?.highlights ?? []}
-          points={isPhone ? [] : points}
+          corrections={view?.corrections ?? []}
           variant={isPhone ? "thumb" : "full"}
         />
       </div>
@@ -144,34 +131,39 @@ export function MeasurementSheetView({ customerId, customerName, open, onOpenCha
               </DialogTitle>
             </div>
 
-            <Select value={view?.sheet.id ?? ""} onValueChange={(v) => setSelectedId(v)}>
-              <SelectTrigger className="h-10 w-[10.5rem] bg-card font-mono">
-                <SelectValue placeholder="測定日" />
-              </SelectTrigger>
-              <SelectContent>
-                {(sheets ?? []).map((sheet, i) => (
-                  <SelectItem key={sheet.id} value={sheet.id} className="font-mono">
-                    {formatDateDot(sheet.measuredAt)}
-                    {i === 0 && <span className="ml-2 text-xs text-muted-foreground">最新</span>}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* 採寸票が 1 枚もないときは、本文の「採寸を始める」に導線を一本化する */}
+            {view && (
+              <>
+                <Select value={view.sheet.id} onValueChange={(v) => setSelectedId(v)}>
+                  <SelectTrigger className="h-10 w-[10.5rem] bg-card font-mono">
+                    <SelectValue placeholder="測定日" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(sheets ?? []).map((sheet, i) => (
+                      <SelectItem key={sheet.id} value={sheet.id} className="font-mono">
+                        {formatDateDot(sheet.measuredAt)}
+                        {i === 0 && <span className="ml-2 text-xs text-muted-foreground">最新</span>}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
 
-            <div className="ml-auto flex items-center gap-2">
-              <Button
-                variant={editing ? "default" : "outline"}
-                size="sm"
-                className="h-10"
-                onClick={() => setEditing((e) => !e)}
-              >
-                {editing ? "入力を終える" : "この票を編集"}
-              </Button>
-              <Button size="sm" className="h-10 gap-1.5" onClick={handleNewSheet}>
-                <Plus className="size-3.5" />
-                新規採寸
-              </Button>
-            </div>
+                <div className="ml-auto flex items-center gap-2">
+                  <Button
+                    variant={editing ? "default" : "outline"}
+                    size="sm"
+                    className="h-10"
+                    onClick={() => setEditing((e) => !e)}
+                  >
+                    {editing ? "入力を終える" : "この票を編集"}
+                  </Button>
+                  <Button size="sm" className="h-10 gap-1.5" onClick={handleNewSheet}>
+                    <Plus className="size-3.5" />
+                    新規採寸
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
           <DialogDescription className="sr-only">
             実寸と上がり寸、および体型補正を表示します。測定日を切り替えると過去の採寸票を確認できます。
@@ -179,10 +171,27 @@ export function MeasurementSheetView({ customerId, customerName, open, onOpenCha
         </DialogHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {loading || !view ? (
+          {loading ? (
             <div className="flex flex-col gap-3 p-6">
               <Skeleton className="h-64 w-full" />
               <Skeleton className="h-32 w-full" />
+            </div>
+          ) : !view ? (
+            /* 一度も採寸していない顧客。ここが最初の採寸の入口になる */
+            <div className="flex flex-col items-center gap-5 px-6 py-12 text-center">
+              <div className="h-52 w-26 text-navy">
+                <BodySilhouette animate={false} />
+              </div>
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-medium">まだ採寸データがありません</p>
+                <p className="max-w-xs text-sm text-muted-foreground">
+                  最初の採寸票を作ります。前回値がないため、すべて空の状態から入力します。
+                </p>
+              </div>
+              <Button className="h-11 gap-1.5" onClick={handleNewSheet}>
+                <Plus className="size-4" />
+                採寸を始める
+              </Button>
             </div>
           ) : isPhone ? (
             /* ── スマートフォン: シルエットを縮めて sticky、上半身/下半身/補正をタブで切替 ── */
@@ -315,6 +324,13 @@ export function MeasurementSheetView({ customerId, customerName, open, onOpenCha
                 採寸者 <span className="text-foreground">{view.staffName}</span>
               </span>
               <span>{INPUT_METHOD_LABEL[view.sheet.inputMethod]}</span>
+              {/* 補正マークの意味を明示しておく。丸だけでは何の印か伝わらない */}
+              {view.corrections.length > 0 && (
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block size-2 rounded-full bg-thread/70" />
+                  図の丸印と番号は補正箇所
+                </span>
+              )}
               {view.previousSheet && (
                 <span>
                   前回比の基準 <span className="font-mono">{formatDateDot(view.previousSheet.measuredAt)}</span>

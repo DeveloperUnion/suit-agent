@@ -50,7 +50,7 @@ export const MEASUREMENT_FIELDS: MeasurementField[] = [
   f("jacket", "bust", "バスト", 2, { point: { x: 50, y: 25 } }),
   // TODO: 実寸「17.5」は項目名の読み違いの可能性あり。上がり寸 68 は妥当
   f("jacket", "jacket_length", "上衣丈", 3, { point: { x: 76, y: 33 } }),
-  f("jacket", "shoulder_width", "肩巾", 4, { point: { x: 50, y: 17 } }),
+  f("jacket", "shoulder_width", "肩巾", 4, { point: { x: 50, y: 19 } }),
   f("jacket", "ef_half_chest", "EF(半胸)", 5, { point: { x: 50, y: 29 } }),
   f("jacket", "sleeve_right", "袖丈右", 6, { point: { x: 25, y: 40 } }),
   f("jacket", "sleeve_left", "袖丈左", 7, { point: { x: 75, y: 40 } }),
@@ -59,11 +59,11 @@ export const MEASUREMENT_FIELDS: MeasurementField[] = [
 
   // ── PANTS ──
   f("pants", "waist", "ウエスト", 1, { point: { x: 50, y: 37 } }),
-  f("pants", "hip", "ヒップ", 2, { point: { x: 50, y: 44 } }),
+  f("pants", "hip", "ヒップ", 2, { point: { x: 50, y: 46 } }),
   f("pants", "thigh_width", "渡り巾", 3, { point: { x: 40, y: 53 } }),
   f("pants", "knee_width", "ヒザ巾", 4, { point: { x: 40, y: 67 } }),
   f("pants", "hem_width", "裾巾", 5, { actual: false, point: { x: 40, y: 90 } }),
-  f("pants", "rise", "股上", 6, { point: { x: 60, y: 45 } }),
+  f("pants", "rise", "股上", 6, { point: { x: 59, y: 48 } }),
   f("pants", "inseam", "股下", 7, { point: { x: 61, y: 70 } }),
 
   // ── VEST ──

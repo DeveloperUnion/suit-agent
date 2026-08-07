@@ -42,3 +42,7 @@ next-env.d.ts
 
 # 開発用の一時ファイル
 /public/responsive-check.html
+
+# クライアント提供資料・機密。リポジトリには入れない
+# （実物の採寸票には顧客の氏名と身体寸法が写っているため）
+/private/

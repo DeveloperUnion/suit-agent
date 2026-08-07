@@ -3,7 +3,7 @@ import type { ItemType, ItemTypeId, MeasurementField } from "@/lib/types";
 /**
  * 採寸項目定義
  *
- * docs/採寸データ.jpg の左列をそのまま項目定義に落としたもの。
+ * private/採寸データ.jpg の左列をそのまま項目定義に落としたもの。
  * 画面はこのマスタを引いて描画し、項目をハードコードしない
  * （アイテム種別を追加してもスキーマ変更が不要になる）。
  *

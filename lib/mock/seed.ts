@@ -135,7 +135,7 @@ type Built = {
   approachTasks: ApproachTask[];
 };
 
-/** 採寸票の実物（docs/採寸データ.jpg）をそのまま投入する */
+/** 採寸票の実物（private/採寸データ.jpg）をそのまま投入する */
 function tokiedaSheets(customerId: string): MeasurementSheet[] {
   // 体型変化が読めるよう、同一顧客で 3 回分の測定を持たせる
   const make = (

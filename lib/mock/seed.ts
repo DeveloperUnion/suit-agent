@@ -11,9 +11,10 @@ import type {
   Staff,
 } from "@/lib/types";
 import { daysAgo, toIsoDate, addDays } from "@/lib/utils/date";
+import { DEFAULT_SETTINGS } from "@/lib/constants/settings-defaults";
 
 /** 構造を変えたら上げる。localStorage 側が古ければ自動でシードに戻る */
-export const SEED_VERSION = 8;
+export const SEED_VERSION = 9;
 
 /**
  * 決定的な擬似乱数。リセットのたびに同じデータが再現されるようにする
@@ -544,6 +545,7 @@ export function createSeedDatabase(): MockDatabase {
   const built = buildAll();
   return {
     version: SEED_VERSION,
+    settings: DEFAULT_SETTINGS,
     session: { staffId: STAFF[0].id },
     staff: STAFF,
     customers: built.customers,

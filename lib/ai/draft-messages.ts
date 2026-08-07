@@ -1,8 +1,9 @@
-import type { TriggerType, Uuid } from "@/lib/types";
+import type { MessagePoliteness, TriggerType, Uuid } from "@/lib/types";
 import { getCustomer } from "@/lib/data/customers";
 import { listAnniversaries } from "@/lib/data/customers";
 import { getOwnedItemSummary, listOrders } from "@/lib/data/orders";
 import { getApproachForCustomer } from "@/lib/data/approaches";
+import { getSettings } from "@/lib/data/settings";
 import { daysUntilNextAnniversary } from "@/lib/utils/date";
 
 /**
@@ -43,6 +44,46 @@ function seasonalFabricPhrase(month: number): string {
   if (month >= 3 && month <= 5) return "春夏の生地が入荷しております";
   if (month >= 9 && month <= 11) return "秋冬の生地が入荷しております";
   return "新しい生地がいくつか入荷しております";
+}
+
+/**
+ * 敬語レベルを文面に反映する。
+ * 設定を置くからには効かせる。効かない設定を画面に並べないため。
+ */
+function applyPoliteness(body: string, level: MessagePoliteness): string {
+  if (level === "formal") return body;
+  const casual: [RegExp, string][] = [
+    [/ございませんでしょうか。/g, "ですか？"],
+    [/ございますでしょうか。/g, "ですか？"],
+    [/でしょうか。/g, "ですか？"],
+    [/ご無沙汰しております。/g, "ごぶさたしています。"],
+    [/いたしました。/g, "しました。"],
+    [/おります。/g, "います。"],
+    [/ください。/g, "くださいね。"],
+    // 長い言い回しから先に当てる。部分置換で不自然な文になるのを避ける
+    [/ご覧いただければ幸いです。/g, "見てもらえたらうれしいです。"],
+    [/いただければ幸いです。/g, "もらえたらうれしいです。"],
+    [/幸いです。/g, "うれしいです。"],
+    [/お作りいただいたことがない/g, "まだ作っていない"],
+    [/お選びいただきました/g, "選んでもらいました"],
+  ];
+  const standard: [RegExp, string][] = [
+    [/ございませんでしょうか。/g, "ありませんか。"],
+    [/ございますでしょうか。/g, "ありますか。"],
+    [/ご無沙汰しております。/g, "ご無沙汰しています。"],
+    [/おります。/g, "います。"],
+    [/幸いです。/g, "うれしいです。"],
+  ];
+  const rules = level === "casual" ? casual : standard;
+  return rules.reduce((text, [from, to]) => text.replace(from, to), body);
+}
+
+/** 季節に合う絵文字。設定で「使う」にしたときだけ末尾に添える */
+function seasonalEmoji(month: number): string {
+  if (month >= 3 && month <= 5) return "🌸";
+  if (month >= 6 && month <= 8) return "🌿";
+  if (month >= 9 && month <= 11) return "🍂";
+  return "❄️";
 }
 
 export async function generateDrafts(
@@ -111,5 +152,11 @@ export async function generateDrafts(
     };
   }
 
-  return drafts;
+  // 設定の敬語レベルと絵文字を最後にまとめて反映する
+  const { politeness, allowEmoji } = getSettings().message;
+  const emoji = allowEmoji ? seasonalEmoji(month) : "";
+  return drafts.map((draft) => ({
+    ...draft,
+    body: applyPoliteness(draft.body, politeness) + emoji,
+  }));
 }

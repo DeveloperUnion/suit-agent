@@ -29,9 +29,9 @@ import {
   checkFabricOverlap,
   createOrder,
   getPreviousSpecs,
-  ITEM_BASE_PRICE,
   listFabrics,
 } from "@/lib/data/orders";
+import { getItemPrice } from "@/lib/data/settings";
 import { useMockQuery } from "@/lib/hooks/use-mock-db";
 import type { ItemTypeId, OrderPurpose, SpecSelection } from "@/lib/types";
 import { addDays, formatAmount, formatDateDot, toIsoDate } from "@/lib/utils/date";
@@ -92,7 +92,7 @@ export function OrderCreateDialog({
             {
               selected: type !== "vest",
               specs: specsList[i] ?? {},
-              amount: ITEM_BASE_PRICE[type],
+              amount: getItemPrice(type),
             },
           ]),
         ),

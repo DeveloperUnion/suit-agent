@@ -1,4 +1,3 @@
-import { ELAPSED_DAYS_THRESHOLD } from "@/lib/constants/labels";
 import type { RecencyBucket } from "@/lib/data/dashboard";
 import { cn } from "@/lib/utils";
 
@@ -12,12 +11,14 @@ import { cn } from "@/lib/utils";
 const RAMP = ["var(--recency-1)", "var(--recency-2)", "var(--recency-3)", "var(--recency-4)"];
 
 export function RecencyChart({
+  threshold,
   distribution,
   total,
   neverContacted,
   overdueCount,
   overdueRatio,
 }: {
+  threshold: number;
   distribution: RecencyBucket[];
   total: number;
   neverContacted: number;
@@ -44,7 +45,7 @@ export function RecencyChart({
               <div className="flex items-center gap-2 py-2">
                 <span className="h-px flex-1 border-t border-dashed border-thread/50" />
                 <span className="shrink-0 text-[0.6875rem] text-thread">
-                  閾値 {ELAPSED_DAYS_THRESHOLD}日 — ここから下が放置
+                  閾値 {threshold}日 — ここから下が放置
                 </span>
                 <span className="h-px w-4 border-t border-dashed border-thread/50" />
               </div>
@@ -81,8 +82,7 @@ export function RecencyChart({
         <p className="text-sm">
           <span className="tnum font-mono font-medium text-thread">{overdueCount}名</span>
           <span className="text-muted-foreground">
-            （{Math.round(overdueRatio * 100)}%）が{ELAPSED_DAYS_THRESHOLD}
-            日を超えて連絡できていません。
+            （{Math.round(overdueRatio * 100)}%）が{threshold}日を超えて連絡できていません。
           </span>
         </p>
         {neverContacted > 0 && (

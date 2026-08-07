@@ -7,12 +7,8 @@ import type {
   Uuid,
 } from "@/lib/types";
 import { getDb, mutateDb } from "@/lib/store/mock-db";
-import {
-  ANNIVERSARY_LEAD_DAYS,
-  ANNIVERSARY_LABEL,
-  ELAPSED_DAYS_THRESHOLD,
-  SEASON_WINDOWS,
-} from "@/lib/constants/labels";
+import { ANNIVERSARY_LABEL } from "@/lib/constants/labels";
+import { getSettings } from "@/lib/data/settings";
 import { ITEM_TYPE_MAP } from "@/lib/constants/measurement-fields";
 import { listCustomers, type CustomerListItem } from "@/lib/data/customers";
 import { daysSince, daysUntilNextAnniversary, toIsoDate, addDays } from "@/lib/utils/date";
@@ -67,12 +63,13 @@ export function customerIdFromApproachId(approachId: Uuid): Uuid {
 // ── 各トリガーの評価 ────────────────────────────────
 
 function evaluateElapsedDays(customer: CustomerListItem): TriggerHit | null {
+  const threshold = getSettings().elapsedDaysThreshold;
   const days = customer.elapsedDays;
-  if (days === null || days <= ELAPSED_DAYS_THRESHOLD) return null;
-  const over = days - ELAPSED_DAYS_THRESHOLD;
+  if (days === null || days <= threshold) return null;
+  const over = days - threshold;
   return {
     type: "elapsed_days",
-    reason: `最終接触から${days}日が経過しています。設定閾値（${ELAPSED_DAYS_THRESHOLD}日）を${over}日超えました。`,
+    reason: `最終接触から${days}日が経過しています。設定閾値（${threshold}日）を${over}日超えました。`,
     // 放置が長いほど前に出す
     weight: 10 + Math.min(20, Math.floor(over / 30) * 3),
     standalone: true,
@@ -83,7 +80,7 @@ function evaluateAnniversary(customerId: Uuid, now: Date): TriggerHit | null {
   const anniversaries = getDb().anniversaries.filter((a) => a.customerId === customerId);
   const upcoming = anniversaries
     .map((a) => ({ ...a, until: daysUntilNextAnniversary(a.date, now) }))
-    .filter((a) => a.until <= ANNIVERSARY_LEAD_DAYS)
+    .filter((a) => a.until <= getSettings().anniversaryLeadDays)
     .sort((a, b) => a.until - b.until)[0];
   if (!upcoming) return null;
 
@@ -102,7 +99,7 @@ function evaluateAnniversary(customerId: Uuid, now: Date): TriggerHit | null {
 
 function evaluateSeason(customerId: Uuid, now: Date): TriggerHit | null {
   const month = now.getMonth() + 1;
-  const window = SEASON_WINDOWS.find((w) => w.months.includes(month));
+  const window = getSettings().seasonWindows.find((w) => w.months.includes(month));
   if (!window) return null;
 
   const db = getDb();
@@ -180,12 +177,7 @@ export type ApproachListResult = {
   hidden: number;
 };
 
-/**
- * 1 日に出す上限。
- * スタッフ3名で回す前提（要件1.3）なので、これを超えて出しても消化されず、
- * リスト全体が「見なくてよいもの」になってしまう。
- */
-export const DAILY_APPROACH_LIMIT = 24;
+
 
 async function evaluateAll(filter: ApproachFilter = {}): Promise<ApproachItem[]> {
   const now = new Date();
@@ -254,7 +246,7 @@ async function evaluateAll(filter: ApproachFilter = {}): Promise<ApproachItem[]>
 
 export async function listApproaches(filter: ApproachFilter = {}): Promise<ApproachListResult> {
   const all = await evaluateAll(filter);
-  const items = filter.showAll ? all : all.slice(0, DAILY_APPROACH_LIMIT);
+  const items = filter.showAll ? all : all.slice(0, getSettings().dailyApproachLimit);
   return { items, total: all.length, hidden: all.length - items.length };
 }
 

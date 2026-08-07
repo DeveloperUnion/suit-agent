@@ -1,5 +1,7 @@
+"use client";
+
 import { cn } from "@/lib/utils";
-import { ELAPSED_DAYS_THRESHOLD } from "@/lib/constants/labels";
+import { useSettings } from "@/lib/hooks/use-settings";
 
 /**
  * 最終接触からの経過日数。
@@ -14,7 +16,8 @@ export function ElapsedDays({
   size?: "sm" | "lg";
   className?: string;
 }) {
-  const overdue = days !== null && days > ELAPSED_DAYS_THRESHOLD;
+  const threshold = useSettings().elapsedDaysThreshold;
+  const overdue = days !== null && days > threshold;
 
   if (days === null) {
     return <span className={cn("text-muted-foreground", className)}>未接触</span>;
@@ -36,7 +39,7 @@ export function ElapsedDays({
           <span className={cn("text-sm", overdue ? "text-thread" : "text-muted-foreground")}>日</span>
         </span>
         {overdue && (
-          <span className="text-xs text-thread">閾値 {ELAPSED_DAYS_THRESHOLD}日を超過</span>
+          <span className="text-xs text-thread">閾値 {threshold}日を超過</span>
         )}
       </div>
     );

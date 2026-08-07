@@ -8,7 +8,7 @@ import { ElapsedDays } from "@/components/common/elapsed-days";
 import { PageHeader } from "@/components/common/page-header";
 import { RecencyChart } from "@/components/dashboard/recency-chart";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ELAPSED_DAYS_THRESHOLD, TRIGGER_LABEL } from "@/lib/constants/labels";
+import { TRIGGER_LABEL } from "@/lib/constants/labels";
 import { getDashboardSummary } from "@/lib/data/dashboard";
 import { useMockQuery } from "@/lib/hooks/use-mock-db";
 import { formatAmount } from "@/lib/utils/date";
@@ -49,7 +49,7 @@ export function DashboardView() {
           href="/approaches"
         />
         <Stat
-          label={`${ELAPSED_DAYS_THRESHOLD}日超の顧客`}
+          label={`${data.elapsedDaysThreshold}日超の顧客`}
           value={data.overdueCount}
           unit="名"
           note={`担当${data.customerCount}名中`}
@@ -70,6 +70,7 @@ export function DashboardView() {
       </div>
 
       <RecencyChart
+        threshold={data.elapsedDaysThreshold}
         distribution={data.distribution}
         total={data.customerCount}
         neverContacted={data.neverContacted}

@@ -209,11 +209,4 @@ export async function createOrder(input: CreateOrderInput): Promise<Uuid> {
   return orderId;
 }
 
-/** アイテム種別ごとの標準価格。本来は生地・仕様から決まるが、モックでは固定 */
-export const ITEM_BASE_PRICE: Record<ItemTypeId, number> = {
-  jacket: 95000,
-  pants: 45000,
-  vest: 30000,
-  shirt: 18000,
-  coat: 120000,
-};
+

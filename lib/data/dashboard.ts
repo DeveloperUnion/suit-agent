@@ -1,6 +1,6 @@
 import { getDb } from "@/lib/store/mock-db";
 import { getCurrentStaff } from "@/lib/auth/current-staff";
-import { ELAPSED_DAYS_THRESHOLD } from "@/lib/constants/labels";
+import { getSettings } from "@/lib/data/settings";
 import { listCustomers } from "@/lib/data/customers";
 import { listApproaches, type ApproachItem } from "@/lib/data/approaches";
 import { daysAgo } from "@/lib/utils/date";
@@ -25,6 +25,8 @@ export type RecencyBucket = {
 
 export type DashboardSummary = {
   staffName: string;
+  /** 放置とみなす日数。画面側はこれを使い、定数を直接参照しない */
+  elapsedDaysThreshold: number;
   customerCount: number;
   /** 未接触（連絡した記録がない）顧客。分布には入れず注記で出す */
   neverContacted: number;
@@ -51,12 +53,16 @@ export type DashboardSummary = {
   distribution: RecencyBucket[];
 };
 
-const BUCKETS: { key: string; label: string; max: number | null }[] = [
-  { key: "b1", label: "30日以内", max: 30 },
-  { key: "b2", label: "31–90日", max: ELAPSED_DAYS_THRESHOLD },
-  { key: "b3", label: "91–180日", max: 180 },
-  { key: "b4", label: "181日〜", max: null },
-];
+/** 閾値が変わるとバケットの境界とラベルも動くため、その場で組み立てる */
+function buildBuckets(threshold: number) {
+  const mid = Math.max(threshold + 1, Math.round(threshold * 2));
+  return [
+    { key: "b1", label: "30日以内", max: 30 },
+    { key: "b2", label: `31–${threshold}日`, max: threshold },
+    { key: "b3", label: `${threshold + 1}–${mid}日`, max: mid },
+    { key: "b4", label: `${mid + 1}日〜`, max: null as number | null },
+  ];
+}
 
 export async function getDashboardSummary(): Promise<DashboardSummary> {
   const db = getDb();
@@ -66,24 +72,26 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
   const customerIds = new Set(customers.map((c) => c.id));
   const now = new Date();
   const since = daysAgo(30, now);
+  const threshold = getSettings().elapsedDaysThreshold;
+  const buckets = buildBuckets(threshold);
 
   // ── 経過日数の分布 ──
-  const counts = new Map(BUCKETS.map((b) => [b.key, 0]));
+  const counts = new Map(buckets.map((b) => [b.key, 0]));
   let neverContacted = 0;
   for (const customer of customers) {
     if (customer.elapsedDays === null) {
       neverContacted += 1;
       continue;
     }
-    const bucket = BUCKETS.find((b) => b.max === null || customer.elapsedDays! <= b.max);
+    const bucket = buckets.find((b) => b.max === null || customer.elapsedDays! <= b.max);
     if (bucket) counts.set(bucket.key, (counts.get(bucket.key) ?? 0) + 1);
   }
 
-  const distribution: RecencyBucket[] = BUCKETS.map((b) => ({
+  const distribution: RecencyBucket[] = buckets.map((b) => ({
     key: b.key,
     label: b.label,
     count: counts.get(b.key) ?? 0,
-    overdue: b.max === null || b.max > ELAPSED_DAYS_THRESHOLD,
+    overdue: b.max === null || b.max > threshold,
   }));
 
   const overdueCount = distribution
@@ -109,6 +117,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
 
   return {
     staffName: getCurrentStaff()?.name ?? "—",
+    elapsedDaysThreshold: threshold,
     customerCount: customers.length,
     neverContacted,
 

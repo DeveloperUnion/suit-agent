@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { getCurrentStaffId } from "@/lib/auth/current-staff";
-import { ELAPSED_DAYS_THRESHOLD, MESSAGE_CHANNEL_LABEL, TRIGGER_LABEL } from "@/lib/constants/labels";
+import { MESSAGE_CHANNEL_LABEL, TRIGGER_LABEL } from "@/lib/constants/labels";
+import { useSettings } from "@/lib/hooks/use-settings";
 import { generateDrafts, type MessageDraft } from "@/lib/ai/draft-messages";
 import { listMessages, sendMessage } from "@/lib/data/messages";
 import { getApproachForCustomer } from "@/lib/data/approaches";
@@ -48,7 +49,8 @@ export function MessagesTab({
   // 画面から渡された ID と、いま評価されているアプローチが一致するときだけ根拠を出す
   const approach = approachTaskId && currentApproach?.id === approachTaskId ? currentApproach : undefined;
 
-  const overdue = elapsedDays !== null && elapsedDays > ELAPSED_DAYS_THRESHOLD;
+  const settings = useSettings();
+  const overdue = elapsedDays !== null && elapsedDays > settings.elapsedDaysThreshold;
 
   const handleGenerate = async () => {
     setGenerating(true);
@@ -241,7 +243,20 @@ export function MessagesTab({
             {generating ? "作成中…" : "AI下書きを出す"}
           </Button>
           <div className="flex items-center gap-3">
-            <span className="tnum font-mono text-xs text-muted-foreground">{body.length}字</span>
+            {/* 目安字数は設定から。LINE で読みやすい長さに収める（要件4.5） */}
+            <span
+              className={cn(
+                "tnum font-mono text-xs",
+                body.length > 0 &&
+                  (body.length < settings.message.lengthMin ||
+                    body.length > settings.message.lengthMax)
+                  ? "text-thread"
+                  : "text-muted-foreground",
+              )}
+              title={`目安 ${settings.message.lengthMin}〜${settings.message.lengthMax}字`}
+            >
+              {body.length}字
+            </span>
             <Button
               className="h-11 gap-1.5 sm:h-10"
               onClick={handleSend}

@@ -2,7 +2,7 @@ import type { Customer, CustomerAnniversary, Staff, Uuid } from "@/lib/types";
 import { getDb, mutateDb, newId } from "@/lib/store/mock-db";
 import { getCurrentStaffId } from "@/lib/auth/current-staff";
 import { daysSince } from "@/lib/utils/date";
-import { ELAPSED_DAYS_THRESHOLD } from "@/lib/constants/labels";
+import { getSettings } from "@/lib/data/settings";
 
 /**
  * 顧客のデータアクセス。
@@ -26,7 +26,7 @@ function decorate(customer: Customer): CustomerListItem {
   return {
     ...customer,
     elapsedDays,
-    isOverdue: elapsedDays !== null && elapsedDays > ELAPSED_DAYS_THRESHOLD,
+    isOverdue: elapsedDays !== null && elapsedDays > getSettings().elapsedDaysThreshold,
   };
 }
 

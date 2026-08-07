@@ -335,10 +335,44 @@ export type CompanyNews = {
   usabilityScore: number;
 };
 
+// ── 設定 ────────────────────────────────────────────────
+
+export type MessagePoliteness = "formal" | "standard" | "casual";
+
+/**
+ * 店舗が変えられる業務ルール。
+ *
+ * トリガーの閾値をコードの定数に埋めておくと「90日は長いか短いか」を試せない。
+ * アプローチは毎回評価する作りなので、ここを変えれば即座に結果へ反映される。
+ *
+ * 一方、採寸項目・補正コード・仕様の各マスタはここに入れない。
+ * 紙の帳票と製造側の都合で決まっており、店舗が変えるものではないため。
+ */
+export type AppSettings = {
+  /** 経過日数トリガー: 最終接触から何日で発火するか */
+  elapsedDaysThreshold: number;
+  /** 記念日トリガー: 何日前から出すか */
+  anniversaryLeadDays: number;
+  /** 1日に出すアプローチの上限。さばける量を超えるとリスト全体が見られなくなる */
+  dailyApproachLimit: number;
+  /** 季節トリガーの入荷期 */
+  seasonWindows: { season: FabricSeason; label: string; months: number[] }[];
+  /** アイテム別の標準価格。注文登録の初期値に使う */
+  itemPrices: Record<ItemTypeId, number>;
+  message: {
+    politeness: MessagePoliteness;
+    allowEmoji: boolean;
+    /** AI に渡す目安字数。入力欄の文字数カウンタの判定にも使う */
+    lengthMin: number;
+    lengthMax: number;
+  };
+};
+
 // ── 永続化するデータベース全体 ───────────────────────────
 
 export type MockDatabase = {
   version: number;
+  settings: AppSettings;
   /**
    * ログイン中のスタッフ。本来は認証セッションが持つものだが、
    * モックでは切り替えて挙動を確認できるようここに置いている。

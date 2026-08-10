@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useCallback, useState } from "react";
 import { Search, UserPlus } from "lucide-react";
 
-import { DaysSinceDelivery } from "@/components/common/days-since-delivery";
 import { PageHeader } from "@/components/common/page-header";
 import { CustomerCreateDialog } from "@/components/customer/customer-create-dialog";
 import { Button } from "@/components/ui/button";
@@ -18,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { listCustomers, listResidencePrefectures } from "@/lib/data/customers";
+import { listCustomers, listIndustries, listResidencePrefectures } from "@/lib/data/customers";
 import { useMockQuery } from "@/lib/hooks/use-mock-db";
 
 /** 「すべて」を空文字で持つと Select の value と噛み合わないため番兵を置く */
@@ -27,6 +26,7 @@ const ALL = "__all__";
 export function CustomerListView() {
   const [keyword, setKeyword] = useState("");
   const [prefecture, setPrefecture] = useState(ALL);
+  const [industry, setIndustry] = useState(ALL);
   const [createOpen, setCreateOpen] = useState(false);
 
   const loader = useCallback(
@@ -34,13 +34,17 @@ export function CustomerListView() {
       listCustomers({
         keyword,
         residencePrefecture: prefecture === ALL ? undefined : prefecture,
+        industry: industry === ALL ? undefined : industry,
       }),
-    [keyword, prefecture],
+    [keyword, prefecture, industry],
   );
-  const { data: customers, loading } = useMockQuery(loader, [keyword, prefecture]);
+  const { data: customers, loading } = useMockQuery(loader, [keyword, prefecture, industry]);
 
   const prefectureLoader = useCallback(() => listResidencePrefectures(), []);
   const { data: prefectures } = useMockQuery(prefectureLoader, []);
+
+  const industryLoader = useCallback(() => listIndustries(), []);
+  const { data: industries } = useMockQuery(industryLoader, []);
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 p-4 sm:p-6 lg:p-8">
@@ -76,7 +80,7 @@ export function CustomerListView() {
 
         {/* 災害が起きたとき、その地域の顧客をまとめて拾うための絞り込み */}
         <Select value={prefecture} onValueChange={setPrefecture}>
-          <SelectTrigger className="h-11 w-48 bg-card" aria-label="居住地で絞り込む">
+          <SelectTrigger className="h-11 w-44 bg-card" aria-label="居住地で絞り込む">
             <SelectValue placeholder="居住地" />
           </SelectTrigger>
           <SelectContent>
@@ -84,6 +88,22 @@ export function CustomerListView() {
             {prefectures?.map((p) => (
               <SelectItem key={p.prefecture} value={p.prefecture}>
                 {p.prefecture}（{p.count}）
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* 業界単位で連絡する理由ができたときの絞り込み。
+            候補は担当顧客に実在する業種だけ — 自由記述で入れたものもここに出る */}
+        <Select value={industry} onValueChange={setIndustry}>
+          <SelectTrigger className="h-11 w-52 bg-card" aria-label="業種で絞り込む">
+            <SelectValue placeholder="業種" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>業種 すべて</SelectItem>
+            {industries?.map((i) => (
+              <SelectItem key={i.industry} value={i.industry}>
+                {i.industry}（{i.count}）
               </SelectItem>
             ))}
           </SelectContent>
@@ -105,8 +125,8 @@ export function CustomerListView() {
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="field-label">顧客</TableHead>
                   <TableHead className="field-label">勤務先</TableHead>
+                  <TableHead className="field-label w-40">業種</TableHead>
                   <TableHead className="field-label w-28">居住地</TableHead>
-                  <TableHead className="field-label w-32 text-right">納品から</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -122,10 +142,10 @@ export function CustomerListView() {
                       {c.companyName ?? "—"}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {c.residencePrefecture ?? "—"}
+                      {c.industry ?? "—"}
                     </TableCell>
-                    <TableCell className="text-right">
-                      <DaysSinceDelivery days={c.daysSinceDelivery} />
+                    <TableCell className="text-sm text-muted-foreground">
+                      {c.residencePrefecture ?? "—"}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -144,15 +164,15 @@ export function CustomerListView() {
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="truncate font-medium">{c.name}</span>
                     <span className="truncate text-xs text-muted-foreground">{c.nameKana}</span>
-                    {/* 狭い画面では行を増やさず、勤務先と居住地を1行に畳む */}
-                    {(c.companyName || c.residencePrefecture) && (
+                    {/* 狭い画面では行を増やさず、勤務先・業種・居住地を1行に畳む。
+                        会社名に「・」を含むものがあるため、区切りはスラッシュにする */}
+                    {(c.companyName || c.industry || c.residencePrefecture) && (
                       <span className="truncate text-xs text-muted-foreground">
-                        {[c.companyName, c.residencePrefecture].filter(Boolean).join("・")}
+                        {[c.companyName, c.industry, c.residencePrefecture]
+                          .filter(Boolean)
+                          .join(" / ")}
                       </span>
                     )}
-                  </div>
-                  <div className="shrink-0">
-                    <DaysSinceDelivery days={c.daysSinceDelivery} />
                   </div>
                 </Link>
               </li>

@@ -9,8 +9,11 @@ import { cn } from "@/lib/utils";
  * 今月の目標達成状況。
  *
  * 週次で見る画面なので、達成率だけでは「順調か」が判断できない。
- * 月がどこまで進んだかを同じバー上に破線で置き、その手前か奥かで読ませる。
- * 判断は破線と文章が担い、色は「達成率が月の進みに負けている」ときだけ警告に振る。
+ * 月がどこまで進んだかを同じバー上に破線で置き、バーがその手前か奥かで読ませる。
+ *
+ * 「上回っています」のような判断の文は置かない。数字とバーを見れば分かることを
+ * 言い直しているだけで、毎週見る画面では読み飛ばす行が増えるだけのため。
+ * 遅れているときだけ、達成率とバーを警告色に振る。
  */
 export function GoalPanel({
   status,
@@ -80,7 +83,7 @@ export function GoalPanel({
         <div
           className={cn(
             "h-full rounded-sm transition-[width]",
-            behind ? "bg-thread/70" : "bg-brand",
+            behind ? "bg-thread/70" : "bg-brand-fill",
           )}
           style={{ width: `${Math.min(100, rate * 100)}%` }}
         />
@@ -90,13 +93,6 @@ export function GoalPanel({
           aria-hidden
         />
       </div>
-
-      <p className="text-sm text-muted-foreground">
-        {year}年{Number(month)}月は {progressPct}% 経過しています。
-        {behind
-          ? "月の進みに対して実績が遅れています。"
-          : "月の進みを上回っています。"}
-      </p>
     </section>
   );
 }

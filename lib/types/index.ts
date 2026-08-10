@@ -341,6 +341,50 @@ export type CompanyNews = {
   usabilityScore: number;
 };
 
+// ── AI アシスタントとの会話 ──────────────────────────────
+
+/** 顧客カードに出す最小限。会話の記録に埋め込むので、顧客本体を丸ごとは持たない */
+export type AgentCustomerRef = {
+  id: Uuid;
+  name: string;
+  nameKana: string;
+  hobbies?: string;
+};
+
+/**
+ * アシスタントが「やろうとしていること」。
+ *
+ * 実行結果ではなく提案として記録し、人が「適用」を押してから書き込む。
+ * 名刺・発注書の読み取りと同じで、AI が出したものを黙って保存はしない。
+ * 会話ログの再描画に必要なので、表示に使う値はここに畳んで持たせる。
+ */
+export type AgentAction =
+  | {
+      kind: "add_hobby";
+      customer: AgentCustomerRef;
+      /** 追記前の趣味。空だった場合は undefined */
+      before?: string;
+      /** 追記後の「・」区切り文字列 */
+      after: string;
+      /** 実際に増える分だけ。既にあったものは含めない */
+      added: string[];
+    }
+  | { kind: "search_result"; keyword: string; customers: AgentCustomerRef[] }
+  /** 誰の話か決められなかった。候補を出して選ばせる */
+  | { kind: "ask_customer"; keyword: string; candidates: AgentCustomerRef[]; pendingHobbies: string[] };
+
+export type AgentMessage = {
+  id: Uuid;
+  /** 会話もスタッフごとに分ける。顧客と同じ境界を引く */
+  staffId: Uuid;
+  role: "user" | "assistant";
+  body: string;
+  sentAt: IsoDateTime;
+  action?: AgentAction;
+  /** 適用済みなら日時が入る。カードの適用ボタンはこれで消す */
+  appliedAt?: IsoDateTime;
+};
+
 // ── 設定 ────────────────────────────────────────────────
 
 export type MessagePoliteness = "formal" | "standard" | "casual";
@@ -415,4 +459,5 @@ export type MockDatabase = {
   approachTasks: ApproachTask[];
   companyNews: CompanyNews[];
   revenueTargets: RevenueTarget[];
+  agentMessages: AgentMessage[];
 };

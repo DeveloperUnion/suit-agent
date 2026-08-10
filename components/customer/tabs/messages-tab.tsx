@@ -164,7 +164,8 @@ export function MessagesTab({
       )}
 
       {/* ── 作成 ── */}
-      <div className="sticky bottom-0 -mx-4 flex flex-col gap-2 border-t border-border bg-background/95 px-4 pb-4 pt-3 backdrop-blur sm:-mx-6 sm:px-6">
+      {/* lg 未満は右下の AI アシスタント FAB が送信ボタンに被るので、その分だけ空ける */}
+      <div className="sticky bottom-0 -mx-4 flex flex-col gap-2 border-t border-border bg-background/95 px-4 pb-4 pt-3 backdrop-blur max-lg:pb-20 sm:-mx-6 sm:px-6">
         {approach && (
           <div className="flex items-start gap-2 rounded-md border border-brand/25 bg-accent/50 px-3 py-2">
             <div className="flex min-w-0 flex-1 flex-col gap-1">

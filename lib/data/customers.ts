@@ -67,7 +67,16 @@ export async function listCustomers(filter: CustomerFilter = {}): Promise<Custom
     .filter((c) => !filter.residencePrefecture || c.residencePrefecture === filter.residencePrefecture)
     .filter((c) => {
       if (!keyword) return true;
-      const haystack = `${c.name}${c.nameKana}${c.companyName ?? ""}`;
+      // 「ゴルフが趣味なのは誰だったか」を引けるようにする。
+      // 名前と会社名しか見ていないと、聞き取ってカルテに残した内容へ二度と辿り着けない
+      const haystack = [
+        c.name,
+        c.nameKana,
+        c.companyName ?? "",
+        c.hobbies ?? "",
+        (c.tags ?? []).join(""),
+        c.memo ?? "",
+      ].join("");
       return haystack.includes(keyword);
     })
     .map((c) => decorate(c, delivered))

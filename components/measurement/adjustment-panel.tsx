@@ -70,7 +70,11 @@ export function AdjustmentPanel({
               <span className="flex-1 truncate font-label text-[0.8125rem]">
                 {adjustmentLabel(master)}
               </span>
-              <span className="tnum font-mono text-xs font-medium">{value.toFixed(1)}</span>
+              {/* 脇尾錠のように「付ける／付けない」だけの指示は数値を持たない。
+                  0.0 と出すと寸法を 0cm 動かす指示に読めてしまう */}
+              <span className="tnum font-mono text-xs font-medium">
+                {value === 0 ? "—" : value.toFixed(1)}
+              </span>
               {editable && (
                 <button
                   type="button"
@@ -110,7 +114,7 @@ export function AdjustmentPanel({
                 </span>
                 <span className="flex-1 truncate">{adjustmentLabel(master)}</span>
                 <span className="tnum font-mono text-xs text-muted-foreground">
-                  {master.defaultValue.toFixed(1)}
+                  {master.defaultValue === 0 ? "—" : master.defaultValue.toFixed(1)}
                 </span>
                 {appliedCodes.has(master.code) && <span className="text-xs">適用中</span>}
               </button>

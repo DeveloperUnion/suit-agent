@@ -75,7 +75,7 @@ export const MESSAGE_CHANNEL_LABEL: Record<MessageChannel, string> = {
 };
 
 export const TRIGGER_LABEL: Record<TriggerType, string> = {
-  elapsed_days: "経過日数",
+  post_delivery: "納品後フォロー",
   anniversary: "記念日",
   season: "季節",
   company_news: "企業ニュース",

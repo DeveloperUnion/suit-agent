@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useState } from "react";
 import { Search, Star, UserPlus } from "lucide-react";
 
-import { ElapsedDays } from "@/components/common/elapsed-days";
+import { DaysSinceDelivery } from "@/components/common/days-since-delivery";
 import { PageHeader } from "@/components/common/page-header";
 import { CustomerCreateDialog } from "@/components/customer/customer-create-dialog";
 import { Button } from "@/components/ui/button";
@@ -66,7 +66,7 @@ export function CustomerListView() {
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="field-label">顧客</TableHead>
                   <TableHead className="field-label">勤務先</TableHead>
-                  <TableHead className="field-label w-32 text-right">最終接触</TableHead>
+                  <TableHead className="field-label w-32 text-right">納品から</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -87,7 +87,7 @@ export function CustomerListView() {
                       {c.companyName ?? "—"}
                     </TableCell>
                     <TableCell className="text-right">
-                      <ElapsedDays days={c.elapsedDays} />
+                      <DaysSinceDelivery days={c.daysSinceDelivery} />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -116,7 +116,7 @@ export function CustomerListView() {
                     )}
                   </div>
                   <div className="shrink-0">
-                    <ElapsedDays days={c.elapsedDays} />
+                    <DaysSinceDelivery days={c.daysSinceDelivery} />
                   </div>
                 </Link>
               </li>

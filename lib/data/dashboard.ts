@@ -1,68 +1,58 @@
+import type { IsoMonth } from "@/lib/types";
 import { getDb } from "@/lib/store/mock-db";
-import { getCurrentStaff } from "@/lib/auth/current-staff";
-import { getSettings } from "@/lib/data/settings";
+import { getCurrentStaff, getCurrentStaffId } from "@/lib/auth/current-staff";
+import { getRevenueTarget } from "@/lib/data/settings";
 import { listCustomers } from "@/lib/data/customers";
 import { listApproaches, type ApproachItem } from "@/lib/data/approaches";
-import { daysAgo } from "@/lib/utils/date";
+import { formatMonthLabel, monthProgress, recentMonths, toIsoMonth } from "@/lib/utils/date";
 
 /**
  * ダッシュボードの集計。
  *
+ * この画面は週次の打ち合わせで開き、状況と目標の達成度を確認するためのもの。
  * 顧客はスタッフごとに分割されているため、これはすべて「自分の顧客」の話。
- * 要件4.6にある「担当別の対応状況」は、他人の顧客が見えない以上ここでは出せない。
  *
- * この画面の主目的は放置の可視化（要件4.4）。経過日数の分布が中心で、
- * 他の数値はその文脈を与えるために置いている。
+ * 売上は受注日（orderedAt）で数える。納品月で数えると受注の勢いが 1〜2ヶ月遅れて
+ * 見えることになり、週次で手を打つ材料にならない。従来の集計もこの基準だった。
  */
 
-export type RecencyBucket = {
-  key: string;
+export type MonthlyRevenuePoint = {
+  month: IsoMonth;
   label: string;
-  count: number;
-  /** 閾値を超えているバケットか */
-  overdue: boolean;
+  revenue: number;
+  orderCount: number;
+  /** 目標未設定は null。0 と区別して、線そのものを引かない */
+  target: number | null;
+  /** まだ締まっていない月。閉じた月と同列に比べられない */
+  isCurrent: boolean;
+};
+
+export type GoalStatus = {
+  month: IsoMonth;
+  target: number | null;
+  actual: number;
+  /** 達成率（0–）。目標未設定なら null */
+  rate: number | null;
+  /** 残り。達成済みは 0 */
+  remaining: number | null;
+  /** 月がどこまで進んだか（0–1）。達成率と並べて初めて「順調か」が読める */
+  progress: number;
 };
 
 export type DashboardSummary = {
   staffName: string;
-  /** 放置とみなす日数。画面側はこれを使い、定数を直接参照しない */
-  elapsedDaysThreshold: number;
   customerCount: number;
-  /** 未接触（連絡した記録がない）顧客。分布には入れず注記で出す */
-  neverContacted: number;
 
+  /** 上限で切る前の未対応総数 */
   openApproaches: number;
   topApproaches: ApproachItem[];
 
-  overdueCount: number;
-  overdueRatio: number;
-
-  /**
-   * 直近30日の受注。
-   * 要件4.6は「今月の受注・売上」だが、月初は必ず 0 近辺になり指標として働かない。
-   * 移動30日にすると、いつ見ても同じ意味で読める。
-   */
-  recentOrderCount: number;
-  recentRevenue: number;
-
-  /** 2回以上注文した顧客 ÷ 注文が1件以上ある顧客 */
-  repeatRate: number | null;
-  repeatCustomers: number;
-  orderedCustomers: number;
-
-  distribution: RecencyBucket[];
+  thisMonth: GoalStatus;
+  /** 今月の受注件数。金額だけでは、単価の大きい1本か数を積んだのかが読めない */
+  thisMonthOrderCount: number;
+  /** 直近12ヶ月。古い順 */
+  monthly: MonthlyRevenuePoint[];
 };
-
-/** 閾値が変わるとバケットの境界とラベルも動くため、その場で組み立てる */
-function buildBuckets(threshold: number) {
-  const mid = Math.max(threshold + 1, Math.round(threshold * 2));
-  return [
-    { key: "b1", label: "30日以内", max: 30 },
-    { key: "b2", label: `31–${threshold}日`, max: threshold },
-    { key: "b3", label: `${threshold + 1}–${mid}日`, max: mid },
-    { key: "b4", label: `${mid + 1}日〜`, max: null as number | null },
-  ];
-}
 
 export async function getDashboardSummary(): Promise<DashboardSummary> {
   const db = getDb();
@@ -70,70 +60,53 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
   const approaches = await listApproaches();
 
   const customerIds = new Set(customers.map((c) => c.id));
+  const staffId = getCurrentStaffId();
   const now = new Date();
-  const since = daysAgo(30, now);
-  const threshold = getSettings().elapsedDaysThreshold;
-  const buckets = buildBuckets(threshold);
 
-  // ── 経過日数の分布 ──
-  const counts = new Map(buckets.map((b) => [b.key, 0]));
-  let neverContacted = 0;
-  for (const customer of customers) {
-    if (customer.elapsedDays === null) {
-      neverContacted += 1;
-      continue;
-    }
-    const bucket = buckets.find((b) => b.max === null || customer.elapsedDays! <= b.max);
-    if (bucket) counts.set(bucket.key, (counts.get(bucket.key) ?? 0) + 1);
-  }
-
-  const distribution: RecencyBucket[] = buckets.map((b) => ({
-    key: b.key,
-    label: b.label,
-    count: counts.get(b.key) ?? 0,
-    overdue: b.max === null || b.max > threshold,
-  }));
-
-  const overdueCount = distribution
-    .filter((b) => b.overdue)
-    .reduce((sum, b) => sum + b.count, 0);
-
-  // ── 直近30日の受注 ──
-  const recentOrders = db.orders.filter(
-    (o) => customerIds.has(o.customerId) && o.orderedAt >= since,
-  );
-
-  // ── リピート率 ──
-  const orderCountByCustomer = new Map<string, number>();
+  // ── 月次の売上 ──
+  const months = recentMonths(12, now);
+  const currentMonth = toIsoMonth(now);
+  const revenueByMonth = new Map<IsoMonth, { revenue: number; count: number }>();
   for (const order of db.orders) {
     if (!customerIds.has(order.customerId)) continue;
-    orderCountByCustomer.set(
-      order.customerId,
-      (orderCountByCustomer.get(order.customerId) ?? 0) + 1,
-    );
+    const month = order.orderedAt.slice(0, 7);
+    const entry = revenueByMonth.get(month) ?? { revenue: 0, count: 0 };
+    entry.revenue += order.totalAmount;
+    entry.count += 1;
+    revenueByMonth.set(month, entry);
   }
-  const orderedCustomers = orderCountByCustomer.size;
-  const repeatCustomers = [...orderCountByCustomer.values()].filter((n) => n >= 2).length;
+
+  const monthly: MonthlyRevenuePoint[] = months.map((month, i) => {
+    const entry = revenueByMonth.get(month) ?? { revenue: 0, count: 0 };
+    return {
+      month,
+      label: formatMonthLabel(month, months[i - 1]),
+      revenue: entry.revenue,
+      orderCount: entry.count,
+      target: getRevenueTarget(staffId, month),
+      isCurrent: month === currentMonth,
+    };
+  });
+
+  const current = monthly[monthly.length - 1];
+  const thisMonth: GoalStatus = {
+    month: currentMonth,
+    target: current.target,
+    actual: current.revenue,
+    rate: current.target ? current.revenue / current.target : null,
+    remaining: current.target ? Math.max(0, current.target - current.revenue) : null,
+    progress: monthProgress(now),
+  };
 
   return {
     staffName: getCurrentStaff()?.name ?? "—",
-    elapsedDaysThreshold: threshold,
     customerCount: customers.length,
-    neverContacted,
 
     openApproaches: approaches.total,
     topApproaches: approaches.items.slice(0, 5),
 
-    overdueCount,
-    overdueRatio: customers.length > 0 ? overdueCount / customers.length : 0,
-
-    recentOrderCount: recentOrders.length,
-    recentRevenue: recentOrders.reduce((sum, o) => sum + o.totalAmount, 0),
-
-    repeatRate: orderedCustomers > 0 ? repeatCustomers / orderedCustomers : null,
-    repeatCustomers,
-    orderedCustomers,
-
-    distribution,
+    thisMonth,
+    thisMonthOrderCount: current.orderCount,
+    monthly,
   };
 }

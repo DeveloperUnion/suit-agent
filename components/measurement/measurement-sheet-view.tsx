@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { Plus } from "lucide-react";
+import { FileUp, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { AdjustmentPanel } from "@/components/measurement/adjustment-panel";
@@ -38,10 +38,28 @@ type Props = {
   customerName: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * 発注書の取り込みを開く。
+   * ダイアログを入れ子にすると閉じる操作が噛み合わなくなるため、
+   * ここでは閉じるだけにして、開くのは親に任せる（注文ダイアログと同じ流儀）。
+   */
+  onOpenImport: () => void;
+  /**
+   * 取り込み直後など、開いたときに特定の票を表示したい場合。
+   * 途中で差し替わることはない前提で、親が key を変えて作り直す。
+   */
+  initialSheetId?: string;
 };
 
-export function MeasurementSheetView({ customerId, customerName, open, onOpenChange }: Props) {
-  const [selectedId, setSelectedId] = useState<string | undefined>();
+export function MeasurementSheetView({
+  customerId,
+  customerName,
+  open,
+  onOpenChange,
+  onOpenImport,
+  initialSheetId,
+}: Props) {
+  const [selectedId, setSelectedId] = useState<string | undefined>(initialSheetId);
   const [editing, setEditing] = useState(false);
   const [activeKey, setActiveKey] = useState<string | undefined>();
   const isPhone = useIsPhone();
@@ -157,6 +175,18 @@ export function MeasurementSheetView({ customerId, customerName, open, onOpenCha
                   >
                     {editing ? "入力を終える" : "この票を編集"}
                   </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-10 gap-1.5"
+                    onClick={() => {
+                      onOpenChange(false);
+                      onOpenImport();
+                    }}
+                  >
+                    <FileUp className="size-3.5" />
+                    発注書を取り込む
+                  </Button>
                   <Button size="sm" className="h-10 gap-1.5" onClick={handleNewSheet}>
                     <Plus className="size-3.5" />
                     新規採寸
@@ -188,10 +218,24 @@ export function MeasurementSheetView({ customerId, customerName, open, onOpenCha
                   最初の採寸票を作ります。前回値がないため、すべて空の状態から入力します。
                 </p>
               </div>
-              <Button className="h-11 gap-1.5" onClick={handleNewSheet}>
-                <Plus className="size-4" />
-                採寸を始める
-              </Button>
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button className="h-11 gap-1.5" onClick={handleNewSheet}>
+                  <Plus className="size-4" />
+                  採寸を始める
+                </Button>
+                {/* 紙の取り込みは 1 枚目の票として十分に成り立つ */}
+                <Button
+                  variant="outline"
+                  className="h-11 gap-1.5"
+                  onClick={() => {
+                    onOpenChange(false);
+                    onOpenImport();
+                  }}
+                >
+                  <FileUp className="size-4" />
+                  発注書を取り込む
+                </Button>
+              </div>
             </div>
           ) : isPhone ? (
             /* ── スマートフォン: シルエットを縮めて sticky、上半身/下半身/補正をタブで切替 ── */

@@ -7,7 +7,8 @@ import type { AppSettings } from "@/lib/types";
  * ここに置いている（seed → settings → store → seed の循環を避ける）。
  */
 export const DEFAULT_SETTINGS: AppSettings = {
-  elapsedDaysThreshold: 90,
+  // 納品して1ヶ月ほどで着心地の当たり外れが出る。そこを逃さないための既定値
+  deliveryFollowUpDays: 30,
   anniversaryLeadDays: 21,
   dailyApproachLimit: 24,
   // 要件は「春夏(3月)・秋冬(9月)」だが、実際の入荷と案内は前後にまたがるため幅を持たせる

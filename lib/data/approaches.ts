@@ -11,7 +11,13 @@ import { ANNIVERSARY_LABEL } from "@/lib/constants/labels";
 import { getSettings } from "@/lib/data/settings";
 import { ITEM_TYPE_MAP } from "@/lib/constants/measurement-fields";
 import { listCustomers, type CustomerListItem } from "@/lib/data/customers";
-import { daysSince, daysUntilNextAnniversary, toIsoDate, addDays } from "@/lib/utils/date";
+import {
+  addDays,
+  daysSince,
+  daysUntilNextAnniversary,
+  formatDateDot,
+  toIsoDate,
+} from "@/lib/utils/date";
 
 /**
  * アプローチの評価。
@@ -19,7 +25,7 @@ import { daysSince, daysUntilNextAnniversary, toIsoDate, addDays } from "@/lib/u
  * 要件4.4の日次バッチにあたる処理を、その場で回している。
  * 事前に固定レコードを作らないのは、
  *   - 閾値を変えたら即座に結果へ反映されるべき
- *   - 連絡すれば最終接触日が動き、経過日数トリガーは自然に消えるべき
+ *   - 連絡すれば最終接触日が動き、納品後フォローは自然に消えるべき
  * ため。人が被せた判断（スヌーズ・対象外）と対応履歴だけを保存する。
  */
 
@@ -62,16 +68,30 @@ export function customerIdFromApproachId(approachId: Uuid): Uuid {
 
 // ── 各トリガーの評価 ────────────────────────────────
 
-function evaluateElapsedDays(customer: CustomerListItem): TriggerHit | null {
-  const threshold = getSettings().elapsedDaysThreshold;
-  const days = customer.elapsedDays;
-  if (days === null || days <= threshold) return null;
-  const over = days - threshold;
+/**
+ * 納品後フォロー（着心地確認）。
+ *
+ * 納品日は動かないため、期限を過ぎたら永久に発火し続けてしまう。
+ * 期限より後に連絡していれば済んだものとみなして出さない
+ * （連絡すれば lastContactedAt が動き、このトリガーは自然に消える）。
+ * 長く離れている顧客は季節トリガーが拾うので、ここでは面倒を見ない。
+ */
+function evaluatePostDelivery(customer: CustomerListItem): TriggerHit | null {
+  const threshold = getSettings().deliveryFollowUpDays;
+  const days = customer.daysSinceDelivery;
+  if (days === null || !customer.lastDeliveredAt || days < threshold) return null;
+
+  const dueDate = toIsoDate(
+    addDays(new Date(`${customer.lastDeliveredAt}T00:00:00`), threshold),
+  );
+  if (customer.lastContactedAt && customer.lastContactedAt >= dueDate) return null;
+
   return {
-    type: "elapsed_days",
-    reason: `最終接触から${days}日が経過しています。設定閾値（${threshold}日）を${over}日超えました。`,
-    // 放置が長いほど前に出す
-    weight: 10 + Math.min(20, Math.floor(over / 30) * 3),
+    type: "post_delivery",
+    reason: `${formatDateDot(customer.lastDeliveredAt)}の納品から${days}日が経過しています。着心地を伺う頃合いです。`,
+    // 経過日数トリガーと逆で、着心地確認は納品直後ほど価値が高い。
+    // 時間が経つほど「今さら聞かれた」になるため、古いものは後ろへ下げる
+    weight: 20 - Math.min(10, Math.floor((days - threshold) / 30)),
     standalone: true,
   };
 }
@@ -191,8 +211,8 @@ async function evaluateAll(filter: ApproachFilter = {}): Promise<ApproachItem[]>
     const hits: TriggerHit[] = [];
     let news: CompanyNews | undefined;
 
-    const elapsed = evaluateElapsedDays(customer);
-    if (elapsed) hits.push(elapsed);
+    const postDelivery = evaluatePostDelivery(customer);
+    if (postDelivery) hits.push(postDelivery);
 
     const anniversary = evaluateAnniversary(customer.id, now);
     if (anniversary) hits.push(anniversary);
@@ -240,7 +260,9 @@ async function evaluateAll(filter: ApproachFilter = {}): Promise<ApproachItem[]>
   }
 
   return items.sort(
-    (a, b) => b.score - a.score || (b.customer.elapsedDays ?? 0) - (a.customer.elapsedDays ?? 0),
+    (a, b) =>
+      b.score - a.score ||
+      (b.customer.daysSinceDelivery ?? 0) - (a.customer.daysSinceDelivery ?? 0),
   );
 }
 

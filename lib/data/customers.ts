@@ -1,4 +1,4 @@
-import type { Customer, CustomerAnniversary, Staff, Uuid } from "@/lib/types";
+import type { Customer, CustomerAnniversary, IsoDate, MockDatabase, Staff, Uuid } from "@/lib/types";
 import { getDb, mutateDb, newId } from "@/lib/store/mock-db";
 import { getCurrentStaffId } from "@/lib/auth/current-staff";
 import { daysSince } from "@/lib/utils/date";
@@ -11,22 +11,42 @@ import { getSettings } from "@/lib/data/settings";
  */
 
 export type CustomerListItem = Customer & {
-  /** 最終接触からの経過日数。未接触なら null */
-  elapsedDays: number | null;
-  /** 閾値を超えて放置されているか */
-  isOverdue: boolean;
+  /** 最終納品日。納品済みの注文が1件も無ければ undefined */
+  lastDeliveredAt?: IsoDate;
+  /**
+   * 納品からの経過日数。納品済みの注文が1件も無ければ null。
+   * 「最終接触から」ではない。着心地を伺うのに意味があるのは納品からの日数で、
+   * 長く離れている顧客は季節トリガーが拾う。
+   */
+  daysSinceDelivery: number | null;
+  /** 納品後フォローの期限を過ぎているか */
+  isFollowUpDue: boolean;
 };
 
 export type CustomerFilter = {
   keyword?: string;
 };
 
-function decorate(customer: Customer): CustomerListItem {
-  const elapsedDays = daysSince(customer.lastContactedAt);
+/** 顧客ごとの最終納品日。一覧のたびに 1 度だけ組み立て、顧客数×注文数の走査を避ける */
+function lastDeliveredMap(db: MockDatabase): Map<Uuid, IsoDate> {
+  const map = new Map<Uuid, IsoDate>();
+  for (const order of db.orders) {
+    if (!order.deliveredAt) continue;
+    const current = map.get(order.customerId);
+    if (!current || order.deliveredAt > current) map.set(order.customerId, order.deliveredAt);
+  }
+  return map;
+}
+
+function decorate(customer: Customer, delivered: Map<Uuid, IsoDate>): CustomerListItem {
+  const lastDeliveredAt = delivered.get(customer.id);
+  const daysSinceDelivery = daysSince(lastDeliveredAt);
   return {
     ...customer,
-    elapsedDays,
-    isOverdue: elapsedDays !== null && elapsedDays > getSettings().elapsedDaysThreshold,
+    lastDeliveredAt,
+    daysSinceDelivery,
+    isFollowUpDue:
+      daysSinceDelivery !== null && daysSinceDelivery >= getSettings().deliveryFollowUpDays,
   };
 }
 
@@ -38,6 +58,7 @@ export async function listCustomers(filter: CustomerFilter = {}): Promise<Custom
   const db = getDb();
   const staffId = getCurrentStaffId();
   const keyword = filter.keyword?.trim();
+  const delivered = lastDeliveredMap(db);
   return db.customers
     .filter((c) => c.staffId === staffId)
     .filter((c) => {
@@ -45,15 +66,25 @@ export async function listCustomers(filter: CustomerFilter = {}): Promise<Custom
       const haystack = `${c.name}${c.nameKana}${c.companyName ?? ""}`;
       return haystack.includes(keyword);
     })
-    .map(decorate)
-    .sort((a, b) => (b.elapsedDays ?? -1) - (a.elapsedDays ?? -1));
+    .map((c) => decorate(c, delivered))
+    .sort((a, b) => {
+      // 納品済みの注文が無い顧客は起点が無いので末尾に置く。
+      // 0 日目として扱うと「今日納品した人」と同じ位置に紛れてしまう
+      if (a.daysSinceDelivery === null && b.daysSinceDelivery === null) {
+        return a.nameKana.localeCompare(b.nameKana, "ja");
+      }
+      if (a.daysSinceDelivery === null) return 1;
+      if (b.daysSinceDelivery === null) return -1;
+      return b.daysSinceDelivery - a.daysSinceDelivery;
+    });
 }
 
 /** 担当外の顧客は null を返す。URL を直接叩かれても開けない */
 export async function getCustomer(id: Uuid): Promise<CustomerListItem | null> {
-  const customer = getDb().customers.find((c) => c.id === id);
+  const db = getDb();
+  const customer = db.customers.find((c) => c.id === id);
   if (!customer || customer.staffId !== getCurrentStaffId()) return null;
-  return decorate(customer);
+  return decorate(customer, lastDeliveredMap(db));
 }
 
 export async function listAnniversaries(customerId: Uuid): Promise<CustomerAnniversary[]> {
@@ -98,6 +129,7 @@ export async function findSimilarCustomers(input: {
   phone?: string;
 }): Promise<SimilarCustomer[]> {
   const staffId = getCurrentStaffId();
+  const delivered = lastDeliveredMap(getDb());
   const name = input.name?.replace(/[\s　]/g, "") ?? "";
   const kana = input.nameKana?.replace(/[\s　]/g, "") ?? "";
   const phone = input.phone?.replace(/[^0-9]/g, "") ?? "";
@@ -116,11 +148,14 @@ export async function findSimilarCustomers(input: {
     .slice(0, 5)
     .map((c) => {
       const isOtherStaff = c.staffId !== staffId;
-      // 他人の顧客は存在と氏名だけ。会社名や接触状況は出さない
+      // 他人の顧客は存在と氏名だけ。会社名・接触状況・納品状況は出さない
       const safe = isOtherStaff
         ? ({ ...c, companyName: undefined, phone: undefined, lastContactedAt: undefined } as Customer)
         : c;
-      return { ...decorate(safe), isOtherStaff };
+      return {
+        ...decorate(safe, isOtherStaff ? new Map() : delivered),
+        isOtherStaff,
+      };
     });
 }
 

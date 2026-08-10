@@ -66,7 +66,13 @@ export type Customer = {
    */
   residencePrefecture?: string;
 
-  /** LINE 公式アカウント連携 */
+  /**
+   * LINE の連携情報。
+   *
+   * 公式アカウントの配信そのものは Lstep が担うため、このシステムは LINE へ送らない。
+   * それでも ID を持つのは、将来 Lstep 側の友だちと突き合わせるときの鍵になるため。
+   * 表示名は、個人 LINE のトーク一覧でどれがこの顧客かを見分けるのに使う。
+   */
   lineUserId?: string;
   lineDisplayName?: string;
 
@@ -76,15 +82,15 @@ export type Customer = {
    */
   embroideryName?: string;
 
+  /*
+   * 法人番号・上場区分・会社 URL は勤務先ニュースの巡回のために置いていたもので、
+   * 巡回をやめた以上、打つ手間だけが残るため削除した。
+   * 業種はニュースではなく顧客一覧の絞り込みに使うため残す。
+   */
   companyName?: string;
-  /** 法人番号。会社名の表記ゆれを避けるニュース名寄せキー */
-  corporateNumber?: string;
   department?: string;
   jobTitle?: string;
   industry?: string;
-  /** 上場区分 */
-  listingStatus?: "listed" | "unlisted";
-  companyUrl?: string;
 
   preferences?: CustomerPreferences;
   hobbies?: string;
@@ -102,20 +108,18 @@ export type Customer = {
    */
   staffId: Uuid;
 
-  /**
-   * 重要顧客フラグ。企業ニュース巡回の対象になる。
-   *
-   * 顧客ランク（A/B/C）は意図的に持たない。手で付ける序列は形骸化するうえ、
-   * 接客中に見せる画面に顧客の格付けを出すことになるため。
+  /*
+   * 顧客ランク（A/B/C）も重要顧客フラグも持たない。
+   * 手で付ける序列は形骸化するうえ、接客中に見せる画面に顧客の格付けを
+   * 出すことになるため。
    */
-  isKeyAccount: boolean;
   firstVisitDate?: IsoDate;
   acquisitionChannel?: string;
   referrerId?: Uuid;
   /**
-   * 最終接触日。トリガーを軽量に評価するため非正規化して保持。
+   * 最終接触日。「連絡した」を押したときに更新する。
    * 納品からの経過日数（daysSinceDelivery）とは別物で、
-   * 「もう連絡したか」の判定にだけ使う。
+   * 前回いつ声をかけたかを思い出すためだけに使う（トリガーの判定には使わない）。
    */
   lastContactedAt?: IsoDate;
 
@@ -287,58 +291,43 @@ export type Alteration = {
   valueDiff?: Record<string, { before: number; after: number }>;
 };
 
-// ── やり取り・アプローチ ─────────────────────────────────
-
-export type MessageChannel = "line" | "phone" | "visit" | "email";
-export type MessageDirection = "outbound" | "inbound";
-
-export type Message = {
-  id: Uuid;
-  customerId: Uuid;
-  staffId?: Uuid;
-  sentAt: IsoDateTime;
-  channel: MessageChannel;
-  direction: MessageDirection;
-  body: string;
-  isAiGenerated: boolean;
-  approachTaskId?: Uuid;
-};
-
-export type TriggerType = "post_delivery" | "anniversary" | "season" | "company_news";
-
-export type ApproachStatus = "open" | "done" | "snoozed" | "dismissed";
+// ── アプローチ ──────────────────────────────────────────
 
 /**
- * アプローチの状態レコード。
+ * 連絡のきっかけ。
  *
- * 「今日連絡すべき顧客」そのものは lib/data/approaches.ts で毎回評価して導出する
- * （閾値を変えたら即反映されるべきであり、連絡すれば納品後フォローは自然に消えるため）。
- * ここに保存するのは、導出結果に人が被せた判断と、対応した履歴だけ。
+ * 季節（春夏・秋冬の新作案内）は持たない。あれは公式 LINE から全員へ一斉に送るもので、
+ * 配信は Lstep が担う。1 対 1 で誰に声をかけるかという、この仕組みの問いとは別の話。
+ * 勤務先ニュースの巡回も行わない。
+ */
+export type TriggerType = "post_delivery" | "anniversary";
+
+/** 人が下した判断。発火中のものは記録を持たない（レコードが無い＝未対応） */
+export type ApproachStatus = "done" | "skipped";
+
+/**
+ * アプローチに人が下した判断の記録。
+ *
+ * 「今日連絡すべき顧客」そのものは lib/data/approaches.ts で毎回評価して導出する。
+ * ここに保存するのは、その結果に人が被せた判断だけ。
+ *
+ * 顧客単位ではなく triggerKey 単位で持つ。納品半年後をスキップしても 1 年後は出したいし、
+ * 今年の誕生日を見送っても来年は出したいため。
  */
 export type ApproachTask = {
   id: Uuid;
   customerId: Uuid;
-  dueDate: IsoDate;
-  triggerTypes: TriggerType[];
-  /** なぜ今この顧客なのかの根拠。スタッフが納得して連絡できるようにする */
+  /**
+   * どのトリガー実体に対する判断か。
+   *   post_delivery:{orderId}:6m ／ post_delivery:{orderId}:12m
+   *   anniversary:{anniversaryId}:{発火する年}
+   */
+  triggerKey: string;
+  triggerType: TriggerType;
+  /** 判断した時点の根拠。履歴だけを見ても何の件か分かるように残す */
   reason: string;
   status: ApproachStatus;
-  companyNewsId?: Uuid;
-  resolvedAt?: IsoDateTime;
-  /** スヌーズの明け日。この日までリストに出さない */
-  snoozedUntil?: IsoDate;
-};
-
-export type CompanyNews = {
-  id: Uuid;
-  customerId: Uuid;
-  corporateNumber?: string;
-  title: string;
-  sourceUrl: string;
-  publishedAt: IsoDate;
-  aiSummary: string;
-  /** 連絡のきっかけに使えるか（0–100） */
-  usabilityScore: number;
+  resolvedAt: IsoDateTime;
 };
 
 // ── AI アシスタントとの会話 ──────────────────────────────
@@ -387,35 +376,22 @@ export type AgentMessage = {
 
 // ── 設定 ────────────────────────────────────────────────
 
-export type MessagePoliteness = "formal" | "standard" | "casual";
-
 /**
  * 店舗が変えられる業務ルール。
  *
- * トリガーの閾値をコードの定数に埋めておくと「90日は長いか短いか」を試せない。
+ * 閾値をコードの定数に埋めておくと「21日前は早いか遅いか」を試せない。
  * アプローチは毎回評価する作りなので、ここを変えれば即座に結果へ反映される。
  *
  * 一方、採寸項目・補正コードの各マスタはここに入れない。
  * 紙の帳票と製造側の都合で決まっており、店舗が変えるものではないため。
+ * 納品後フォローの節目（半年・1年）も店舗の決めごととして確定しているため、
+ * ここではなく lib/constants/approach.ts に固定値で置いている。
  */
 export type AppSettings = {
-  /** 納品後フォロートリガー: 納品から何日で「着心地確認」を出すか */
-  deliveryFollowUpDays: number;
   /** 記念日トリガー: 何日前から出すか */
   anniversaryLeadDays: number;
-  /** 1日に出すアプローチの上限。さばける量を超えるとリスト全体が見られなくなる */
-  dailyApproachLimit: number;
-  /** 季節トリガーの入荷期 */
-  seasonWindows: { season: FabricSeason; label: string; months: number[] }[];
   /** アイテム別の標準価格。注文登録の初期値に使う */
   itemPrices: Record<ItemTypeId, number>;
-  message: {
-    politeness: MessagePoliteness;
-    allowEmoji: boolean;
-    /** AI に渡す目安字数。入力欄の文字数カウンタの判定にも使う */
-    lengthMin: number;
-    lengthMax: number;
-  };
 };
 
 // ── 売上目標 ────────────────────────────────────────────
@@ -455,9 +431,7 @@ export type MockDatabase = {
   orders: Order[];
   orderItems: OrderItem[];
   alterations: Alteration[];
-  messages: Message[];
   approachTasks: ApproachTask[];
-  companyNews: CompanyNews[];
   revenueTargets: RevenueTarget[];
   agentMessages: AgentMessage[];
 };

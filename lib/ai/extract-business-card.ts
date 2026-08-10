@@ -24,8 +24,7 @@ export type BusinessCardFieldKey =
   | "jobTitle"
   | "phone"
   | "email"
-  | "address"
-  | "companyUrl";
+  | "address";
 
 /** 顧客登録フォームに直接流し込む3項目。ここだけは既存の入力欄と共有する */
 export const PRIMARY_CARD_FIELDS: BusinessCardFieldKey[] = ["name", "nameKana", "phone"];
@@ -37,7 +36,6 @@ export const EXTRA_CARD_FIELDS: BusinessCardFieldKey[] = [
   "jobTitle",
   "email",
   "address",
-  "companyUrl",
 ];
 
 export const CARD_FIELD_LABEL: Record<BusinessCardFieldKey, string> = {
@@ -49,7 +47,6 @@ export const CARD_FIELD_LABEL: Record<BusinessCardFieldKey, string> = {
   phone: "電話",
   email: "メール",
   address: "住所",
-  companyUrl: "会社URL",
 };
 
 export type BusinessCardExtraction = ExtractionMeta & {
@@ -74,7 +71,6 @@ const FIXTURES: BusinessCardExtraction["fields"][] = [
     phone: field("03-3210-2121"),
     email: field("t.tokieda@example.co.jp", 0.93),
     address: field("東京都千代田区丸の内2-3-1", 0.88),
-    companyUrl: field("https://www.example.co.jp"),
   },
   {
     name: field("大久保 慎一"),
@@ -92,7 +88,6 @@ const FIXTURES: BusinessCardExtraction["fields"][] = [
     jobTitle: field("執行役員", 0.62),
     phone: field("045-620-3300", 0.87),
     email: field("fujii@example.com"),
-    companyUrl: field("https://ks-hd.example.com", 0.79),
   },
   {
     name: field("城 知広"),

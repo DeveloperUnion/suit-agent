@@ -4,7 +4,6 @@ import type {
   CustomerAnniversary,
   Fabric,
   MeasurementSheet,
-  Message,
   MockDatabase,
   Order,
   OrderItem,
@@ -15,7 +14,7 @@ import { addDays, daysAgo, toIsoDate, toIsoMonth } from "@/lib/utils/date";
 import { DEFAULT_SETTINGS } from "@/lib/constants/settings-defaults";
 
 /** 構造を変えたら上げる。localStorage 側が古ければ自動でシードに戻る */
-export const SEED_VERSION = 14;
+export const SEED_VERSION = 17;
 
 /**
  * 決定的な擬似乱数。リセットのたびに同じデータが再現されるようにする
@@ -82,22 +81,22 @@ const GIVEN_NAMES = [
   ["隆之介", "りゅうのすけ"], ["直樹", "なおき"], ["京平", "きょうへい"], ["奏", "かなで"],
 ];
 
-const COMPANIES: [string, string, string][] = [
-  ["三菱商事株式会社", "総合商社", "1010001008771"],
-  ["株式会社電通", "広告・マーケティング", "5010401058550"],
-  ["日本生命保険相互会社", "保険", "3120005018794"],
-  ["野村證券株式会社", "証券", "7010001045214"],
-  ["株式会社リクルート", "人材", "3010401128737"],
-  ["アンダーソン・毛利・友常法律事務所", "法律", ""],
-  ["株式会社ジェイ・エス・アーキ", "建築設計", ""],
-  ["医療法人社団 青葉会", "医療", ""],
-  ["株式会社サイバーエージェント", "IT・ソフトウェア", "6010401045521"],
-  ["三井不動産株式会社", "不動産", "8010001066468"],
-  ["株式会社みずほ銀行", "銀行", "6010001008845"],
-  ["株式会社小田原製作所", "製造", ""],
-  ["有限会社ハヤカワ工務店", "建設", ""],
-  ["株式会社ロジコム物流", "運輸・物流", ""],
-  ["税理士法人 谷口会計", "会計・税務", ""],
+const COMPANIES: [string, string][] = [
+  ["三菱商事株式会社", "総合商社"],
+  ["株式会社電通", "広告・マーケティング"],
+  ["日本生命保険相互会社", "保険"],
+  ["野村證券株式会社", "証券"],
+  ["株式会社リクルート", "人材"],
+  ["アンダーソン・毛利・友常法律事務所", "法律"],
+  ["株式会社ジェイ・エス・アーキ", "建築設計"],
+  ["医療法人社団 青葉会", "医療"],
+  ["株式会社サイバーエージェント", "IT・ソフトウェア"],
+  ["三井不動産株式会社", "不動産"],
+  ["株式会社みずほ銀行", "銀行"],
+  ["株式会社小田原製作所", "製造"],
+  ["有限会社ハヤカワ工務店", "建設"],
+  ["株式会社ロジコム物流", "運輸・物流"],
+  ["税理士法人 谷口会計", "会計・税務"],
 ];
 
 const JOB_TITLES = ["代表取締役", "取締役", "執行役員", "本部長", "部長", "次長", "課長", "マネージャー", "主任", ""];
@@ -142,25 +141,6 @@ const CITIES: Record<string, string[]> = {
   熊本県: ["熊本市中央区"],
 };
 
-// 同じ顧客のタイムラインに同じ文面が並ばないよう、インデックスで順に回す
-const INBOUND_BODIES = [
-  "ありがとうございます。来週でしたら水曜の夕方が空いています。",
-  "先日のジャケット、袖丈がちょうど良かったです。助かりました。",
-  "承知しました。生地を見てから決めます。",
-  "すみません、しばらく出張が続いていて。落ち着いたら伺います。",
-  "妻からも好評でした。次は少し明るめのものも見てみたいです。",
-  "受け取りました。今週末に着ていきます。",
-];
-
-const OUTBOUND_BODIES = [
-  "ご無沙汰しております。朝晩が涼しくなってきましたが、その後お変わりありませんか。",
-  "秋冬の生地が入荷しました。前回お作りいただいたものと系統の違うものも入っています。",
-  "先日はご来店ありがとうございました。仕上がりは今月末を予定しております。",
-  "お直しの件、承りました。お預かりから10日ほどで仕上がります。",
-  "仕上がりました。ご都合のよいときにお立ち寄りください。",
-  "そろそろ衣替えの時期ですね。お持ちのものでお直しが必要なものがあればお預かりします。",
-  "ご結婚記念日が近いと伺っておりました。何かお手伝いできることがあればお申し付けください。",
-];
 const HOBBIES = ["ゴルフ", "クラシック音楽鑑賞", "登山", "ワイン", "サーフィン", "写真", "読書", "サウナ", "釣り", "ロードバイク"];
 const SCENES = ["商談", "式典", "会食", "日常業務", "登壇", "冠婚葬祭"];
 
@@ -172,7 +152,6 @@ type Built = {
   sheets: MeasurementSheet[];
   orders: Order[];
   orderItems: OrderItem[];
-  messages: Message[];
   approachTasks: ApproachTask[];
 };
 
@@ -279,7 +258,6 @@ function buildAll(): Built {
   const sheets: MeasurementSheet[] = [];
   const orders: Order[] = [];
   const orderItems: OrderItem[] = [];
-  const messages: Message[] = [];
   const approachTasks: ApproachTask[] = [];
 
   const TOTAL = 50;
@@ -298,15 +276,14 @@ function buildAll(): Built {
 
     const [sn, snKana] = isTokieda ? SURNAMES[0] : pick(SURNAMES.slice(1));
     const [gn, gnKana] = isTokieda ? GIVEN_NAMES[0] : pick(GIVEN_NAMES);
-    const [companyName, industry, corporateNumber] = pick(COMPANIES);
+    const [companyName, industry] = pick(COMPANIES);
 
     // 薄い顧客は居住地も未設定。一覧で「—」が出る状態を残しておく
     const residencePrefecture = minimal
       ? undefined
       : RESIDENCES[residenceCursor++ % RESIDENCES.length];
 
-    // 最終接触日は意図的に散らす。企業ニュースの「連絡済みなら出さない」判定や、
-    // メッセージタブの「前回の連絡から」の見え方を、いろいろな状態で確かめられるように
+    // 最終接触日は意図的に散らす。カルテの「最終連絡」がいろいろな状態で見えるように
     const bucket = i % 4;
     let lastContactDays =
       bucket === 0
@@ -319,7 +296,6 @@ function buildAll(): Built {
 
     // 顧客の担当。同じ顧客の採寸・受注・送信もこの人が行った想定にする
     const staffId = pick(STAFF).id;
-    const isKeyAccount = thick ? i < 3 : rand() < 0.12;
 
     const customer: Customer = {
       id,
@@ -336,11 +312,9 @@ function buildAll(): Built {
       lineUserId: minimal || rand() < 0.25 ? undefined : `U${Math.floor(rand() * 1e15).toString(16)}`,
       lineDisplayName: minimal ? undefined : gn,
       companyName: minimal ? undefined : companyName,
-      corporateNumber: minimal ? undefined : corporateNumber || undefined,
       department: minimal ? undefined : pick(DEPARTMENTS) || undefined,
       jobTitle: minimal ? undefined : pick(JOB_TITLES) || undefined,
       industry: minimal ? undefined : industry,
-      listingStatus: minimal ? undefined : corporateNumber ? "listed" : "unlisted",
       preferences: minimal
         ? undefined
         : {
@@ -353,7 +327,6 @@ function buildAll(): Built {
       familyInfo: minimal ? undefined : pick(["妻・長男（中学生）", "妻・長女（小学生）・次女", "独身", "妻のみ", "妻・長男・次男"]),
       ngNotes: undefined,
       staffId,
-      isKeyAccount,
       firstVisitDate: minimal ? daysAgo(int(5, 60)) : daysAgo(int(200, 1600)),
       acquisitionChannel: pick(CHANNELS),
       lastContactedAt: daysAgo(lastContactDays),
@@ -367,12 +340,9 @@ function buildAll(): Built {
       customer.nameKana = "ときえだ ただし";
       customer.birthDate = "1978-03-19";
       customer.companyName = "三菱商事株式会社";
-      customer.corporateNumber = "1010001008771";
       customer.department = "エネルギーソリューション本部";
       customer.jobTitle = "部長";
       customer.industry = "総合商社";
-      customer.listingStatus = "listed";
-      customer.isKeyAccount = true;
       customer.embroideryName = "T.TOKIEDA";
       customer.hobbies = "ゴルフ・ワイン";
       customer.familyInfo = "妻・長男（高校生）・長女（中学生）";
@@ -492,14 +462,37 @@ function buildAll(): Built {
     const orderCount = isTokieda ? 4 : thick ? int(3, 6) : minimal ? 0 : int(1, 3);
     /** この顧客の最終納品が何日前か。納品後フォローの起点になる */
     let lastDeliveryDays: number | null = null;
+    let lastDeliveredOrderId: string | null = null;
+
+    /*
+     * 納品後フォローが立つ顧客を確実に混ぜる。
+     *
+     * 放っておくと最新の納品が直近に寄り、半年・1年の節目を過ぎた顧客が
+     * ほとんど生まれない。トリガーが立つかどうかが偶然になると、
+     * 機能が壊れているのかデータがそうなのか見分けられなくなる。
+     * 3人に1人は、注文そのものを節目の先で作る（後から日付をずらすと、
+     * その顧客の受注が直近12ヶ月から丸ごと抜けて月次推移が虫食いになる）。
+     */
+    const followUpDue = i % 3 === 0;
+    // 半分は1年の節目、半分は半年の節目
+    const dueAge = i % 6 === 0 ? int(370, 430) : int(190, 250);
 
     for (let o = 0; o < orderCount; o++) {
       const orderId = `ord-${id}-${o + 1}`;
-      // 一部は直近の受注にして、今月の実績が空にならないようにする。
-      // それ以外も直近2年に収める。もっと散らすと月次推移が虫食いになり、
-      // 目標線との比較というグラフの目的が果たせない
-      const recent = o === 0 && rand() < 0.3;
-      const orderedDays = recent ? int(1, 26) : int(55, 620);
+      /*
+       * 一部は直近の受注にして、今月の実績が空にならないようにする。
+       * それ以外も直近2年に収める。もっと散らすと月次推移が虫食いになり、
+       * 目標線との比較というグラフの目的が果たせない。
+       *
+       * フォロー対象の顧客は最新の注文を節目の先に置き、それより前の注文を
+       * さらに古い側へ並べる（新しい納品が残っていると、そちらが最終納品になる）。
+       */
+      const recent = !followUpDue && o === 0 && rand() < 0.35;
+      const orderedDays = followUpDue
+        ? dueAge + int(40, 52) + o * int(60, 150)
+        : recent
+          ? int(1, 26)
+          : int(15, 430);
       const orderedAt = daysAgo(orderedDays);
       const orderedDate = new Date(`${orderedAt}T00:00:00`);
       // 受注から納品までのリードタイム。引いて未来になるものは納品前として扱う
@@ -507,6 +500,7 @@ function buildAll(): Built {
       const delivered = deliveryDays > 0;
       if (delivered && (lastDeliveryDays === null || deliveryDays < lastDeliveryDays)) {
         lastDeliveryDays = deliveryDays;
+        lastDeliveredOrderId = orderId;
       }
       const purpose = pick<Order["purpose"]>(["business", "business", "business", "formal", "wedding", "casual"]);
       const itemCount = purpose === "business" ? int(2, 3) : int(1, 2);
@@ -542,57 +536,29 @@ function buildAll(): Built {
     }
 
     /*
-     * 納品後フォローが立つ顧客を確実に混ぜる。
+     * 人が下した判断の履歴。
      *
-     * 最終接触日と納品日は本来ばらばらに決まるため、放っておくと
-     * トリガーが立つかどうかが偶然になり、機能が壊れているのか
-     * データがそうなのか見分けられない。3人に1人は「最後の納品より前にしか
-     * 連絡していない」状態にして、期限を未連絡で過ぎたことにする。
+     * アプローチ自体は lib/data/approaches.ts で毎回評価して導出するので、
+     * ここに置くのは「押した記録」だけ。
+     *
+     * 1年の節目に来ている顧客には、半年をスキップした記録を入れておく。
+     * 半年を見送っても1年で改めて出る、という triggerKey 単位で持つ狙いが
+     * リセット直後の画面でそのまま確かめられるようにするため。
      */
-    if (
-      lastDeliveryDays !== null &&
-      lastDeliveryDays > DEFAULT_SETTINGS.deliveryFollowUpDays &&
-      i % 3 === 0
-    ) {
-      lastContactDays = lastDeliveryDays + int(3, 20);
-      customer.lastContactedAt = daysAgo(lastContactDays);
-    }
-
-    // やり取り
-    const messageCount = isTokieda ? 8 : thick ? int(5, 10) : minimal ? 0 : int(0, 3);
-    for (let m = 0; m < messageCount; m++) {
-      const inbound = m % 3 === 1;
-      const sentDays = lastContactDays + (messageCount - m) * int(6, 40);
-      messages.push({
-        id: `msg-${id}-${m + 1}`,
-        customerId: id,
-        staffId: inbound ? undefined : staffId,
-        sentAt: `${daysAgo(sentDays)}T${String(int(9, 20)).padStart(2, "0")}:${String(int(0, 59)).padStart(2, "0")}:00`,
-        channel: pick<Message["channel"]>(["line", "line", "line", "phone", "visit"]),
-        direction: inbound ? "inbound" : "outbound",
-        body: inbound
-          ? INBOUND_BODIES[(i + m) % INBOUND_BODIES.length]
-          : OUTBOUND_BODIES[(i + m) % OUTBOUND_BODIES.length],
-        isAiGenerated: !inbound && rand() < 0.4,
-      });
-    }
-
-    // アプローチは lib/data/approaches.ts で毎回評価して導出するため、
-    // ここでは「過去に対応した履歴」だけを置く
-    if (thick && i % 3 === 0) {
+    if (lastDeliveredOrderId && lastDeliveryDays !== null && lastDeliveryDays > 365) {
       approachTasks.push({
-        id: `apr-${id}-history`,
+        id: `apt-post_delivery:${lastDeliveredOrderId}:6m`,
         customerId: id,
-        dueDate: daysAgo(lastContactDays + 30),
-        triggerTypes: ["post_delivery"],
-        reason: "納品から30日が経過したため、着心地を伺いました。",
-        status: "done",
-        resolvedAt: `${daysAgo(lastContactDays + 28)}T10:15:00`,
+        triggerKey: `post_delivery:${lastDeliveredOrderId}:6m`,
+        triggerType: "post_delivery",
+        reason: "納品から半年が経ちました。着心地を伺う頃合いです。",
+        status: "skipped",
+        resolvedAt: `${daysAgo(lastDeliveryDays - 180)}T10:15:00`,
       });
     }
   }
 
-  return { customers, anniversaries, sheets, orders, orderItems, messages, approachTasks };
+  return { customers, anniversaries, sheets, orders, orderItems, approachTasks };
 }
 
 /**
@@ -657,21 +623,8 @@ export function createSeedDatabase(): MockDatabase {
     orders: built.orders,
     orderItems: built.orderItems,
     alterations: [],
-    messages: built.messages,
     approachTasks: built.approachTasks,
     revenueTargets: buildRevenueTargets(built.customers, built.orders),
-    companyNews: [
-      {
-        id: "news-1",
-        customerId: "cust-001",
-        corporateNumber: "1010001008771",
-        title: "三菱商事、欧州エネルギー事業の再編を発表",
-        sourceUrl: "https://example.com/news/1",
-        publishedAt: daysAgo(9),
-        aiSummary: "欧州のエネルギー関連子会社を統合し、新会社を設立すると発表。担当部門の体制変更が見込まれる。",
-        usabilityScore: 72,
-      },
-    ],
     // 会話は空から始める。作り物の履歴を最初に見せても読む意味がない
     agentMessages: [],
   };

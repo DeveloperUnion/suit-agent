@@ -2,13 +2,12 @@
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
-import { ArrowLeft, Plus, Star } from "lucide-react";
+import { ArrowLeft, Plus } from "lucide-react";
 
 import { useAgentContext } from "@/components/agent/agent-provider";
 import { DaysSinceDelivery } from "@/components/common/days-since-delivery";
 import { ApproachesTab } from "@/components/customer/tabs/approaches-tab";
 import { MeasurementTab } from "@/components/customer/tabs/measurement-tab";
-import { MessagesTab } from "@/components/customer/tabs/messages-tab";
 import { OrdersTab } from "@/components/customer/tabs/orders-tab";
 import { ProfileTab } from "@/components/customer/tabs/profile-tab";
 import { MeasurementSheetView } from "@/components/measurement/measurement-sheet-view";
@@ -19,7 +18,6 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { getCustomer } from "@/lib/data/customers";
 import { getSilhouetteState } from "@/lib/data/measurements";
 import { useMockQuery } from "@/lib/hooks/use-mock-db";
@@ -29,19 +27,16 @@ const TABS = [
   { value: "profile", label: "基本情報" },
   { value: "measurement", label: "採寸" },
   { value: "orders", label: "注文履歴" },
-  { value: "messages", label: "メッセージ" },
   { value: "approaches", label: "アプローチ" },
 ];
 
 export function CustomerDetailView({
   customerId,
   initialTab,
-  initialApproachId,
 }: {
   customerId: string;
   /** アプローチリストから遷移してきたときに開くタブ */
   initialTab?: string;
-  initialApproachId?: string;
 }) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
@@ -51,13 +46,6 @@ export function CustomerDetailView({
   const [tab, setTab] = useState(
     initialTab && TABS.some((t) => t.value === initialTab) ? initialTab : "profile",
   );
-  /** アプローチから「メッセージを作成」で来たときに引き継ぐ根拠 */
-  const [approachTaskId, setApproachTaskId] = useState<string | undefined>(initialApproachId);
-
-  const composeMessage = (taskId?: string) => {
-    setApproachTaskId(taskId);
-    setTab("messages");
-  };
 
   const customerLoader = useCallback(() => getCustomer(customerId), [customerId]);
   const { data: customer, loading } = useMockQuery(customerLoader, [customerId]);
@@ -109,23 +97,10 @@ export function CustomerDetailView({
       <header className="flex flex-col gap-4 rounded-md border border-border bg-card p-4 sm:p-5">
         <div className="flex items-start gap-4">
           <div className="flex min-w-0 flex-1 flex-col gap-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="font-heading text-xl font-medium tracking-tight sm:text-2xl">
-                {customer.name}
-                <span className="ml-1 text-base font-normal text-muted-foreground">様</span>
-              </h1>
-              {customer.isKeyAccount && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="flex items-center gap-1 rounded-sm bg-thread/10 px-1.5 py-0.5 text-xs text-thread">
-                      <Star className="size-3 fill-current" />
-                      重要顧客
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>企業ニュースの定期巡回対象です</TooltipContent>
-                </Tooltip>
-              )}
-            </div>
+            <h1 className="font-heading text-xl font-medium tracking-tight sm:text-2xl">
+              {customer.name}
+              <span className="ml-1 text-base font-normal text-muted-foreground">様</span>
+            </h1>
 
             <p className="text-sm text-muted-foreground">{customer.nameKana}</p>
 
@@ -174,9 +149,8 @@ export function CustomerDetailView({
           </div>
 
           {/*
-            採寸は右上のシルエット、メッセージはメッセージタブが入口なので、
-            ここに同じ動作のボタンは置かない。注文は来店時に必ず通る動線のため
-            1タップで届くようヘッダーに残している。
+            採寸は右上のシルエットが入口なので、ここに同じ動作のボタンは置かない。
+            注文は来店時に必ず通る動線のため 1タップで届くようヘッダーに残している。
           */}
           <div className="flex flex-wrap gap-2">
             <Button
@@ -213,16 +187,8 @@ export function CustomerDetailView({
         <TabsContent value="orders">
           <OrdersTab customerId={customerId} />
         </TabsContent>
-        <TabsContent value="messages">
-          <MessagesTab
-            customerId={customerId}
-            lastContactedAt={customer.lastContactedAt}
-            approachTaskId={approachTaskId}
-            onClearApproach={() => setApproachTaskId(undefined)}
-          />
-        </TabsContent>
         <TabsContent value="approaches">
-          <ApproachesTab customerId={customerId} onComposeMessage={composeMessage} />
+          <ApproachesTab customerId={customerId} customerName={customer.name} />
         </TabsContent>
       </Tabs>
 

@@ -43,7 +43,7 @@ export type DashboardSummary = {
   staffName: string;
   customerCount: number;
 
-  /** 上限で切る前の未対応総数 */
+  /** いま立っているアプローチの総数 */
   openApproaches: number;
   topApproaches: ApproachItem[];
 
@@ -102,8 +102,8 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     staffName: getCurrentStaff()?.name ?? "—",
     customerCount: customers.length,
 
-    openApproaches: approaches.total,
-    topApproaches: approaches.items.slice(0, 5),
+    openApproaches: approaches.length,
+    topApproaches: approaches.slice(0, 5),
 
     thisMonth,
     thisMonthOrderCount: current.orderCount,

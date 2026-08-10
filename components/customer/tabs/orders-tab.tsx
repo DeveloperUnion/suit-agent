@@ -23,7 +23,7 @@ import {
   markOrderDelivered,
 } from "@/lib/data/orders";
 import { useMockQuery } from "@/lib/hooks/use-mock-db";
-import { useSettings } from "@/lib/hooks/use-settings";
+import { POST_DELIVERY_MILESTONES } from "@/lib/constants/approach";
 import { formatAmount, formatDateDot, toIsoDate } from "@/lib/utils/date";
 
 export function OrdersTab({ customerId }: { customerId: string }) {
@@ -32,8 +32,6 @@ export function OrdersTab({ customerId }: { customerId: string }) {
 
   const summaryLoader = useCallback(() => getOwnedItemSummary(customerId), [customerId]);
   const { data: summary } = useMockQuery(summaryLoader, [customerId]);
-
-  const followUpDays = useSettings().deliveryFollowUpDays;
 
   if (!loading && (!orders || orders.length === 0)) {
     return <EmptyState>注文履歴がまだありません。</EmptyState>;
@@ -97,7 +95,7 @@ export function OrdersTab({ customerId }: { customerId: string }) {
         <SectionTitle>注文履歴</SectionTitle>
         {/* 納品ボタンの意味を先に言う。言わないと誰も押さず、トリガーが壊れて見える */}
         <p className="text-xs text-muted-foreground">
-          納品日を記録すると、{followUpDays}日後に「着心地確認」のアプローチが立ちます。
+          納品日を記録すると、その{POST_DELIVERY_MILESTONES.map((m) => m.label).join("後・")}後に「着心地確認」のアプローチが立ちます。
         </p>
         <ul className="flex flex-col gap-3">
           {(orders ?? []).map((order) => (

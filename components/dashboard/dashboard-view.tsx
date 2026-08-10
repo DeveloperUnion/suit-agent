@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback } from "react";
-import { ChevronRight, Star } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 
 import { DaysSinceDelivery } from "@/components/common/days-since-delivery";
 import { PageHeader } from "@/components/common/page-header";
@@ -76,15 +76,12 @@ export function DashboardView() {
             {data.topApproaches.map((item) => (
               <li key={item.id}>
                 <Link
-                  href={`/customers/${item.customer.id}?tab=messages&approach=${item.id}`}
+                  href={`/customers/${item.customer.id}?tab=approaches`}
                   className="flex min-h-14 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/60 py-2.5 transition-colors last:border-b-0 hover:bg-accent/30"
                 >
                   <span className="flex min-w-0 items-center gap-1.5">
                     <span className="truncate font-medium">{item.customer.name}</span>
                     <span className="text-xs text-muted-foreground">様</span>
-                    {item.customer.isKeyAccount && (
-                      <Star className="size-3 shrink-0 fill-thread text-thread" />
-                    )}
                   </span>
                   <span className="flex flex-wrap gap-1">
                     {item.triggerTypes.map((t) => (

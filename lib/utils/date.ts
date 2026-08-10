@@ -1,4 +1,4 @@
-import type { IsoDate } from "@/lib/types";
+import type { IsoDate, IsoMonth } from "@/lib/types";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -64,4 +64,44 @@ export function daysUntilNextAnniversary(date: IsoDate, now: Date = new Date()):
 
 export function formatAmount(amount: number): string {
   return amount.toLocaleString("ja-JP");
+}
+
+/**
+ * 「¥3,200,000」「3200000」のどちらでも受ける。
+ * 目標額や価格は桁が大きく、カンマ付きで打つ人と打たない人がどうしても混ざるため。
+ */
+export function parseAmount(value: string): number {
+  const n = Number(value.replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+}
+
+// ── 月次 ────────────────────────────────────────────────
+
+export function toIsoMonth(date: Date): IsoMonth {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** 当月を末尾に、直近 n ヶ月分を古い順で返す */
+export function recentMonths(n: number, from: Date = new Date()): IsoMonth[] {
+  const months: IsoMonth[] = [];
+  for (let i = n - 1; i >= 0; i--) {
+    months.push(toIsoMonth(new Date(from.getFullYear(), from.getMonth() - i, 1)));
+  }
+  return months;
+}
+
+/**
+ * 2026-08 → 8月。
+ * 年が変わる月だけ 26/1 と出す。12ヶ月すべてに年を付けると軸が読めなくなるため。
+ */
+export function formatMonthLabel(month: IsoMonth, previous?: IsoMonth): string {
+  const [y, m] = month.split("-");
+  const isYearStart = !previous || previous.slice(0, 4) !== y;
+  return isYearStart ? `${y.slice(2)}/${Number(m)}` : `${Number(m)}月`;
+}
+
+/** 月がどこまで進んだか（0–1）。達成率と並べて初めて「順調か」が読める */
+export function monthProgress(now: Date = new Date()): number {
+  const days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  return now.getDate() / days;
 }

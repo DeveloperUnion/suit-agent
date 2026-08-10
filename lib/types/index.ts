@@ -12,6 +12,8 @@ export type Uuid = string;
 export type IsoDate = string;
 /** ISO 8601 の日時文字列 */
 export type IsoDateTime = string;
+/** ISO 8601 の年月（YYYY-MM）。月次集計のキー */
+export type IsoMonth = string;
 
 // ── スタッフ ──────────────────────────────────────────────
 
@@ -68,6 +70,12 @@ export type Customer = {
   lineUserId?: string;
   lineDisplayName?: string;
 
+  /**
+   * ネーム刺繍。工場発注書の「ネーム」欄に入る文字。
+   * 注文ごとに変わるものではなく毎回同じものを入れるため、票や注文ではなく人に持たせる。
+   */
+  embroideryName?: string;
+
   companyName?: string;
   /** 法人番号。会社名の表記ゆれを避けるニュース名寄せキー */
   corporateNumber?: string;
@@ -104,7 +112,11 @@ export type Customer = {
   firstVisitDate?: IsoDate;
   acquisitionChannel?: string;
   referrerId?: Uuid;
-  /** 最終接触日。経過日数トリガーを軽量に評価するため非正規化して保持 */
+  /**
+   * 最終接触日。トリガーを軽量に評価するため非正規化して保持。
+   * 納品からの経過日数（daysSinceDelivery）とは別物で、
+   * 「もう連絡したか」の判定にだけ使う。
+   */
   lastContactedAt?: IsoDate;
 
   tags?: string[];
@@ -212,24 +224,6 @@ export type SilhouetteCorrection = {
   code: number;
 };
 
-// ── 仕様（指示項目） ─────────────────────────────────────
-
-export type SpecOption = {
-  /** 採寸票の選択肢番号（01 / 04 / 14 など） */
-  code: string;
-  label: string;
-};
-
-export type SpecGroup = {
-  key: string;
-  label: string;
-  itemTypeId: ItemTypeId;
-  options: SpecOption[];
-};
-
-/** key は SpecGroup.key、値は SpecOption.code */
-export type SpecSelection = Record<string, string>;
-
 // ── 生地・注文 ──────────────────────────────────────────
 
 export type FabricSeason = "spring_summer" | "autumn_winter" | "all_season";
@@ -268,12 +262,18 @@ export type Order = {
   staffId: Uuid;
 };
 
+/**
+ * 注文明細。
+ *
+ * 胸ポケット・ベント・袖釦といった仕様（紙の「指示項目」）は持たない。
+ * あれは工場に伝えるためのもので、店側が後から見返す場面がなく、
+ * 入力の手間だけが残るため。ここで扱うのは「何が売れていくらだったか」まで。
+ */
 export type OrderItem = {
   id: Uuid;
   orderId: Uuid;
   itemTypeId: ItemTypeId;
   fabricId: Uuid;
-  specs: SpecSelection;
   amount: number;
   photoUrls?: string[];
 };
@@ -304,7 +304,7 @@ export type Message = {
   approachTaskId?: Uuid;
 };
 
-export type TriggerType = "elapsed_days" | "anniversary" | "season" | "company_news";
+export type TriggerType = "post_delivery" | "anniversary" | "season" | "company_news";
 
 export type ApproachStatus = "open" | "done" | "snoozed" | "dismissed";
 
@@ -312,7 +312,7 @@ export type ApproachStatus = "open" | "done" | "snoozed" | "dismissed";
  * アプローチの状態レコード。
  *
  * 「今日連絡すべき顧客」そのものは lib/data/approaches.ts で毎回評価して導出する
- * （閾値を変えたら即反映されるべきであり、連絡すれば経過日数トリガーは自然に消えるため）。
+ * （閾値を変えたら即反映されるべきであり、連絡すれば納品後フォローは自然に消えるため）。
  * ここに保存するのは、導出結果に人が被せた判断と、対応した履歴だけ。
  */
 export type ApproachTask = {
@@ -351,12 +351,12 @@ export type MessagePoliteness = "formal" | "standard" | "casual";
  * トリガーの閾値をコードの定数に埋めておくと「90日は長いか短いか」を試せない。
  * アプローチは毎回評価する作りなので、ここを変えれば即座に結果へ反映される。
  *
- * 一方、採寸項目・補正コード・仕様の各マスタはここに入れない。
+ * 一方、採寸項目・補正コードの各マスタはここに入れない。
  * 紙の帳票と製造側の都合で決まっており、店舗が変えるものではないため。
  */
 export type AppSettings = {
-  /** 経過日数トリガー: 最終接触から何日で発火するか */
-  elapsedDaysThreshold: number;
+  /** 納品後フォロートリガー: 納品から何日で「着心地確認」を出すか */
+  deliveryFollowUpDays: number;
   /** 記念日トリガー: 何日前から出すか */
   anniversaryLeadDays: number;
   /** 1日に出すアプローチの上限。さばける量を超えるとリスト全体が見られなくなる */
@@ -372,6 +372,25 @@ export type AppSettings = {
     lengthMin: number;
     lengthMax: number;
   };
+};
+
+// ── 売上目標 ────────────────────────────────────────────
+
+/**
+ * 月次の売上目標。スタッフ × 月で 1 件。
+ *
+ * Staff にマップとして持たせていないのは、
+ *   - 目標は毎月書き換わるが Staff 自体は変わらない。目標を更新するたびに
+ *     スタッフのレコードを触ると、無効化・引き継ぎ（deactivateStaff）と
+ *     同じレコードを奪い合うことになる
+ *   - 退職者の過去の目標も実績と並べて残す必要がある。Staff から消えると履歴が壊れる
+ * ため。
+ */
+export type RevenueTarget = {
+  id: Uuid;
+  staffId: Uuid;
+  month: IsoMonth;
+  amount: number;
 };
 
 // ── 永続化するデータベース全体 ───────────────────────────
@@ -395,4 +414,5 @@ export type MockDatabase = {
   messages: Message[];
   approachTasks: ApproachTask[];
   companyNews: CompanyNews[];
+  revenueTargets: RevenueTarget[];
 };

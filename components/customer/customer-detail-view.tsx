@@ -4,13 +4,14 @@ import Link from "next/link";
 import { useCallback, useState } from "react";
 import { ArrowLeft, Plus, Star } from "lucide-react";
 
-import { ElapsedDays } from "@/components/common/elapsed-days";
+import { DaysSinceDelivery } from "@/components/common/days-since-delivery";
 import { ApproachesTab } from "@/components/customer/tabs/approaches-tab";
 import { MeasurementTab } from "@/components/customer/tabs/measurement-tab";
 import { MessagesTab } from "@/components/customer/tabs/messages-tab";
 import { OrdersTab } from "@/components/customer/tabs/orders-tab";
 import { ProfileTab } from "@/components/customer/tabs/profile-tab";
 import { MeasurementSheetView } from "@/components/measurement/measurement-sheet-view";
+import { OrderSheetImportDialog } from "@/components/measurement/order-sheet-import-dialog";
 import { OrderCreateDialog } from "@/components/order/order-create-dialog";
 import { SilhouetteThumb } from "@/components/silhouette/silhouette-thumb";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { getCustomer } from "@/lib/data/customers";
 import { getSilhouetteState } from "@/lib/data/measurements";
 import { useMockQuery } from "@/lib/hooks/use-mock-db";
+import { formatDateDot } from "@/lib/utils/date";
 
 const TABS = [
   { value: "profile", label: "基本情報" },
@@ -42,6 +44,9 @@ export function CustomerDetailView({
 }) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  /** 取り込んだ直後に、その票を開いた状態で採寸ビューへ戻すため */
+  const [sheetId, setSheetId] = useState<string | undefined>();
   const [tab, setTab] = useState(
     initialTab && TABS.some((t) => t.value === initialTab) ? initialTab : "profile",
   );
@@ -147,7 +152,19 @@ export function CustomerDetailView({
         </div>
 
         <div className="flex flex-wrap items-end justify-between gap-4 border-t border-border pt-4">
-          <ElapsedDays days={customer.elapsedDays} size="lg" />
+          {/*
+            納品からの日数と最終連絡日は別物。並べて置き、
+            大きい数字のほうが「連絡していない日数」だと読み違えられないようにする。
+          */}
+          <div className="flex flex-wrap items-end gap-5">
+            <DaysSinceDelivery days={customer.daysSinceDelivery} size="lg" />
+            <span className="flex flex-col gap-0.5 pb-1">
+              <span className="field-label">最終連絡</span>
+              <span className="tnum font-mono text-sm text-muted-foreground">
+                {formatDateDot(customer.lastContactedAt)}
+              </span>
+            </span>
+          </div>
 
           {/*
             採寸は右上のシルエット、メッセージはメッセージタブが入口なので、
@@ -192,7 +209,7 @@ export function CustomerDetailView({
         <TabsContent value="messages">
           <MessagesTab
             customerId={customerId}
-            elapsedDays={customer.elapsedDays}
+            lastContactedAt={customer.lastContactedAt}
             approachTaskId={approachTaskId}
             onClearApproach={() => setApproachTaskId(undefined)}
           />
@@ -203,10 +220,26 @@ export function CustomerDetailView({
       </Tabs>
 
       <MeasurementSheetView
+        // 取り込んだ票を開いた状態で見せるため、その票に切り替わったら作り直す
+        key={sheetId ?? "latest"}
         customerId={customerId}
         customerName={customer.name}
         open={sheetOpen}
         onOpenChange={setSheetOpen}
+        onOpenImport={() => setImportOpen(true)}
+        initialSheetId={sheetId}
+      />
+
+      {/* 採寸ビューの中に入れ子にせず、兄弟として置く（閉じる操作が噛み合わなくなるため） */}
+      <OrderSheetImportDialog
+        customerId={customerId}
+        customerName={customer.name}
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onImported={(id) => {
+          setSheetId(id);
+          setSheetOpen(true);
+        }}
       />
 
       <OrderCreateDialog

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Send, Sparkles, X } from "lucide-react";
+import { Send, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import { generateDrafts, type MessageDraft } from "@/lib/ai/draft-messages";
 import { listMessages, sendMessage } from "@/lib/data/messages";
 import { getApproachForCustomer } from "@/lib/data/approaches";
 import { useMockQuery } from "@/lib/hooks/use-mock-db";
-import { formatDateTime } from "@/lib/utils/date";
+import { daysSince, formatDateTime } from "@/lib/utils/date";
 import { cn } from "@/lib/utils";
 
 /**
@@ -25,12 +25,12 @@ import { cn } from "@/lib/utils";
  */
 export function MessagesTab({
   customerId,
-  elapsedDays,
+  lastContactedAt,
   approachTaskId,
   onClearApproach,
 }: {
   customerId: string;
-  elapsedDays: number | null;
+  lastContactedAt?: string;
   /** アプローチから遷移してきた場合。送信時に紐づけて効果測定に使う */
   approachTaskId?: string;
   onClearApproach?: () => void;
@@ -50,7 +50,9 @@ export function MessagesTab({
   const approach = approachTaskId && currentApproach?.id === approachTaskId ? currentApproach : undefined;
 
   const settings = useSettings();
-  const overdue = elapsedDays !== null && elapsedDays > settings.elapsedDaysThreshold;
+  // 「連絡していない日数」に閾値は持たない（放置の判定は納品後フォローが担う）。
+  // ここでは前回いつ書いたかを思い出すためだけに出す
+  const sinceLastContact = daysSince(lastContactedAt);
 
   const handleGenerate = useCallback(async () => {
     setGenerating(true);
@@ -191,10 +193,9 @@ export function MessagesTab({
           </div>
         )}
 
-        {!approach && overdue && (
-          <p className="flex items-center gap-1.5 text-xs text-thread">
-            <AlertTriangle className="size-3.5" />
-            {elapsedDays}日連絡がありません
+        {!approach && sinceLastContact !== null && (
+          <p className="text-xs text-muted-foreground">
+            前回の連絡から{sinceLastContact}日
           </p>
         )}
 

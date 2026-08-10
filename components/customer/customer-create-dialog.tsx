@@ -2,10 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, ChevronDown, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { ElapsedDays } from "@/components/common/elapsed-days";
+import { DaysSinceDelivery } from "@/components/common/days-since-delivery";
+import { FileDrop } from "@/components/common/file-drop";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,15 +18,27 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  CARD_FIELD_LABEL,
+  EXTRA_CARD_FIELDS,
+  extractBusinessCard,
+  type BusinessCardExtraction,
+  type BusinessCardFieldKey,
+} from "@/lib/ai/extract-business-card";
+import { isLowConfidence } from "@/lib/ai/extraction";
 import { createCustomer, findSimilarCustomers } from "@/lib/data/customers";
 import { useMockQuery } from "@/lib/hooks/use-mock-db";
+import { cn } from "@/lib/utils";
 
 /**
  * 顧客の新規登録。
  *
- * 聞くのは氏名・カナ・連絡手段だけ（要件4.1「最小項目のみで完了できること」）。
+ * 打ち込んでもらうのは氏名・カナ・連絡手段だけ（要件4.1「最小項目のみで完了できること」）。
  * ここで会社名や来店日まで聞くと入力が重くなり、結局登録されなくなる。
- * 詳細はカルテのセクション編集で後から足していく。
+ *
+ * 一方、名刺から読めた項目は誰も打っていないので、増えても入力の負担にならない。
+ * 「打つ項目は最小、もらえる項目は最大」で、最小項目の方針とは矛盾しない。
  */
 export function CustomerCreateDialog({
   open,
@@ -41,6 +54,12 @@ export function CustomerCreateDialog({
   const [lineDisplayName, setLineDisplayName] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // 名刺の読み取り
+  const [reading, setReading] = useState(false);
+  const [card, setCard] = useState<BusinessCardExtraction | null>(null);
+  const [extra, setExtra] = useState<Partial<Record<BusinessCardFieldKey, string>>>({});
+  const [extraOpen, setExtraOpen] = useState(true);
+
   const similarLoader = useCallback(
     () => findSimilarCustomers({ name, nameKana, phone }),
     [name, nameKana, phone],
@@ -55,7 +74,39 @@ export function CustomerCreateDialog({
     setNameKana("");
     setPhone("");
     setLineDisplayName("");
+    setCard(null);
+    setExtra({});
+    setReading(false);
   };
+
+  /**
+   * 氏名・カナ・電話は既存の入力欄にそのまま流し込む。
+   * 別の state に持つと similarLoader の依存から外れ、
+   * 読み取った氏名に対して重複チェックが効かなくなる。
+   */
+  const handleCard = async (file: File) => {
+    setReading(true);
+    const result = await extractBusinessCard(file);
+    setCard(result);
+    if (result.fields.name) setName(result.fields.name.value);
+    if (result.fields.nameKana) setNameKana(result.fields.nameKana.value);
+    if (result.fields.phone) setPhone(result.fields.phone.value);
+    setExtra(
+      Object.fromEntries(
+        EXTRA_CARD_FIELDS.filter((key) => result.fields[key]).map((key) => [
+          key,
+          result.fields[key]!.value,
+        ]),
+      ),
+    );
+    setExtraOpen(true);
+    setReading(false);
+  };
+
+  const readCount = card ? Object.keys(card.fields).length : 0;
+  const warnCount = card
+    ? Object.values(card.fields).filter((f) => isLowConfidence(f)).length
+    : 0;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -65,6 +116,10 @@ export function CustomerCreateDialog({
       nameKana: nameKana.trim(),
       phone: phone.trim() || undefined,
       lineDisplayName: lineDisplayName.trim() || undefined,
+      // 名刺から読めた項目。createCustomer は Partial<Customer> を受けるのでそのまま渡せる
+      ...Object.fromEntries(
+        Object.entries(extra).filter(([, v]) => v !== undefined && v.trim() !== ""),
+      ),
       firstVisitDate: new Date().toISOString().slice(0, 10),
     });
     setSaving(false);
@@ -90,7 +145,33 @@ export function CustomerCreateDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-4">
+        <div className="flex max-h-[70dvh] flex-col gap-4 overflow-y-auto">
+          {/* 名刺からの読み取り。埋まった内容は必ず人が見てから登録する */}
+          {reading ? (
+            <div className="flex flex-col gap-2 rounded-md border border-border p-4">
+              <span className="text-sm text-muted-foreground">名刺を読み取っています…</span>
+              <Skeleton className="h-4 w-2/3" />
+              <Skeleton className="h-4 w-1/2" />
+              <Skeleton className="h-4 w-3/5" />
+            </div>
+          ) : card ? (
+            <p className="text-sm">
+              名刺から
+              <span className="tnum mx-1 font-mono font-medium">{readCount}項目</span>
+              を読み取りました。内容を確認してください。
+              {warnCount > 0 && (
+                <span className="ml-1 text-thread">要確認が{warnCount}項目あります。</span>
+              )}
+            </p>
+          ) : (
+            <FileDrop
+              accept="image/*"
+              onFile={handleCard}
+              label="名刺の画像をここにドロップ、または撮影して読み取る"
+              hint="氏名・会社名・部署・役職・連絡先を読み取って、下の欄に入れます。"
+            />
+          )}
+
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="new-name">
@@ -101,9 +182,13 @@ export function CustomerCreateDialog({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="時枝 正"
-                className="h-11 bg-card"
+                className={cn(
+                  "h-11 bg-card",
+                  isLowConfidence(card?.fields.name) && "border-thread/40",
+                )}
                 autoFocus
               />
+              {isLowConfidence(card?.fields.name) && <WarnHint />}
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="new-kana">カナ</Label>
@@ -112,8 +197,12 @@ export function CustomerCreateDialog({
                 value={nameKana}
                 onChange={(e) => setNameKana(e.target.value)}
                 placeholder="ときえだ ただし"
-                className="h-11 bg-card"
+                className={cn(
+                  "h-11 bg-card",
+                  isLowConfidence(card?.fields.nameKana) && "border-thread/40",
+                )}
               />
+              {isLowConfidence(card?.fields.nameKana) && <WarnHint />}
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="new-phone">電話</Label>
@@ -123,8 +212,12 @@ export function CustomerCreateDialog({
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="090-1234-5678"
                 inputMode="tel"
-                className="h-11 bg-card font-mono"
+                className={cn(
+                  "h-11 bg-card font-mono",
+                  isLowConfidence(card?.fields.phone) && "border-thread/40",
+                )}
               />
+              {isLowConfidence(card?.fields.phone) && <WarnHint />}
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="new-line">LINE表示名</Label>
@@ -137,6 +230,63 @@ export function CustomerCreateDialog({
               />
             </div>
           </div>
+
+          {/* 名刺から読めた分。打つ手間がゼロなのでカルテに入れておく */}
+          {Object.keys(extra).length > 0 && (
+            <div className="flex flex-col gap-2 rounded-md border border-border p-3">
+              <button
+                type="button"
+                onClick={() => setExtraOpen((v) => !v)}
+                className="flex min-h-9 items-center gap-1.5 text-left"
+              >
+                <span className="field-label">名刺から読み取った項目</span>
+                <span className="tnum font-mono text-xs text-muted-foreground">
+                  {Object.keys(extra).length}
+                </span>
+                <ChevronDown
+                  className={cn(
+                    "ml-auto size-4 text-muted-foreground transition-transform",
+                    extraOpen && "rotate-180",
+                  )}
+                />
+              </button>
+
+              {extraOpen && (
+                <div className="flex flex-col gap-2">
+                  {EXTRA_CARD_FIELDS.filter((key) => extra[key] !== undefined).map((key) => {
+                    const warn = isLowConfidence(card?.fields[key]);
+                    return (
+                      <div key={key} className="flex items-center gap-2">
+                        <span className="w-16 shrink-0 field-label">{CARD_FIELD_LABEL[key]}</span>
+                        <Input
+                          value={extra[key] ?? ""}
+                          onChange={(e) => setExtra((s) => ({ ...s, [key]: e.target.value }))}
+                          className={cn("h-10 bg-card", warn && "border-thread/40")}
+                        />
+                        {warn && (
+                          <span className="shrink-0 text-xs text-thread">要確認</span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExtra((s) => {
+                              const next = { ...s };
+                              delete next[key];
+                              return next;
+                            })
+                          }
+                          className="shrink-0 rounded-sm p-1 text-muted-foreground hover:text-foreground"
+                          aria-label={`${CARD_FIELD_LABEL[key]}を消す`}
+                        >
+                          <X className="size-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           {!hasContact && name.trim() !== "" && (
             <p className="text-xs text-muted-foreground">
@@ -179,7 +329,7 @@ export function CustomerCreateDialog({
                           {c.companyName ?? c.nameKana}
                         </span>
                         <span className="ml-auto shrink-0">
-                          <ElapsedDays days={c.elapsedDays} />
+                          <DaysSinceDelivery days={c.daysSinceDelivery} />
                         </span>
                       </button>
                     </li>
@@ -204,4 +354,9 @@ export function CustomerCreateDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+/** 読み取りの確信度が低い欄に添える。読み直すべき場所を絞るためのもの */
+function WarnHint() {
+  return <span className="text-xs text-thread">読み取りが不確かです。確認してください。</span>;
 }

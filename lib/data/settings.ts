@@ -1,4 +1,4 @@
-import type { AppSettings, Fabric, ItemTypeId, Staff, Uuid } from "@/lib/types";
+import type { AppSettings, Fabric, IsoMonth, ItemTypeId, Staff, Uuid } from "@/lib/types";
 import { getDb, mutateDb, newId } from "@/lib/store/mock-db";
 import { getCurrentStaffId } from "@/lib/auth/current-staff";
 import { DEFAULT_SETTINGS } from "@/lib/constants/settings-defaults";
@@ -114,4 +114,87 @@ export async function deleteFabric(id: Uuid): Promise<{ ok: boolean; usageCount:
 /** 注文登録の初期金額に使う */
 export function getItemPrice(itemTypeId: ItemTypeId): number {
   return getSettings().itemPrices[itemTypeId] ?? 0;
+}
+
+// ── 売上目標 ────────────────────────────────────────────
+
+export type RevenueTargetRow = { month: IsoMonth; amount: number };
+
+/** 目標の ID は staffId と月から決まる。upsert を素直に書けるようにするため */
+function targetId(staffId: Uuid, month: IsoMonth): Uuid {
+  return `tgt-${staffId}-${month}`;
+}
+
+export async function listRevenueTargets(
+  staffId: Uuid,
+  year: number,
+): Promise<RevenueTargetRow[]> {
+  const prefix = `${year}-`;
+  return getDb()
+    .revenueTargets.filter((t) => t.staffId === staffId && t.month.startsWith(prefix))
+    .map((t) => ({ month: t.month, amount: t.amount }))
+    .sort((a, b) => a.month.localeCompare(b.month));
+}
+
+/** ダッシュボードの集計から同期で引く。未設定は null（0 とは区別する） */
+export function getRevenueTarget(staffId: Uuid, month: IsoMonth): number | null {
+  const found = getDb().revenueTargets.find(
+    (t) => t.staffId === staffId && t.month === month,
+  );
+  return found?.amount ?? null;
+}
+
+/**
+ * その年の月別実績。目標の入力欄の隣に置き、額を決める材料にする。
+ *
+ * 集計の単位は「担当している顧客の注文」で、ダッシュボードと揃える。
+ * 受注者（Order.staffId）で数えると、同僚が代わりに受けた注文が
+ * 自分の実績から抜け落ちてしまうため。
+ */
+export async function listMonthlyRevenue(
+  staffId: Uuid,
+  year: number,
+): Promise<Record<IsoMonth, number>> {
+  const db = getDb();
+  const customerIds = new Set(
+    db.customers.filter((c) => c.staffId === staffId).map((c) => c.id),
+  );
+  const result: Record<IsoMonth, number> = {};
+  for (const order of db.orders) {
+    if (!customerIds.has(order.customerId)) continue;
+    if (!order.orderedAt.startsWith(`${year}-`)) continue;
+    const month = order.orderedAt.slice(0, 7);
+    result[month] = (result[month] ?? 0) + order.totalAmount;
+  }
+  return result;
+}
+
+/**
+ * 月単位の upsert。
+ * 0 以下は行ごと削除して「未設定」に戻す。0 を保存すると
+ * 「目標0円を達成した」というグラフになってしまうため。
+ */
+export async function saveRevenueTargets(
+  staffId: Uuid,
+  rows: RevenueTargetRow[],
+): Promise<void> {
+  mutateDb((db) => {
+    const touched = new Set(rows.map((r) => r.month));
+    return {
+      ...db,
+      revenueTargets: [
+        ...db.revenueTargets.filter(
+          (t) => t.staffId !== staffId || !touched.has(t.month),
+        ),
+        ...rows
+          .filter((r) => r.amount > 0)
+          .map((r) => ({
+            id: targetId(staffId, r.month),
+            staffId,
+            month: r.month,
+            amount: r.amount,
+          })),
+      ],
+    };
+  });
 }

@@ -23,24 +23,18 @@ import {
   ORDER_PURPOSE_LABEL,
 } from "@/lib/constants/labels";
 import { ITEM_TYPE_MAP } from "@/lib/constants/measurement-fields";
-import { specGroupsFor } from "@/lib/constants/specs";
 import { listSheets } from "@/lib/data/measurements";
-import {
-  checkFabricOverlap,
-  createOrder,
-  getPreviousSpecs,
-  listFabrics,
-} from "@/lib/data/orders";
+import { checkFabricOverlap, createOrder, listFabrics } from "@/lib/data/orders";
 import { getItemPrice } from "@/lib/data/settings";
 import { useMockQuery } from "@/lib/hooks/use-mock-db";
-import type { ItemTypeId, OrderPurpose, SpecSelection } from "@/lib/types";
+import type { ItemTypeId, OrderPurpose } from "@/lib/types";
 import { addDays, formatAmount, formatDateDot, toIsoDate } from "@/lib/utils/date";
 import { cn } from "@/lib/utils";
 
 /** 注文で扱うアイテム。紙の採寸票と同じ 3 種を既定にする */
 const ITEM_TYPES: ItemTypeId[] = ["jacket", "pants", "vest"];
 
-type ItemState = { selected: boolean; specs: SpecSelection; amount: number };
+type ItemState = { selected: boolean; amount: number };
 
 export function OrderCreateDialog({
   customerId,
@@ -73,31 +67,23 @@ export function OrderCreateDialog({
   const fabricsLoader = useCallback(() => listFabrics(keyword), [keyword]);
   const { data: fabrics } = useMockQuery(fabricsLoader, [keyword]);
 
-  // 開いたときに、前回の仕様と最新の採寸票をプリセットする。
-  // リピートは前回と同じ寸法・同じ仕様で作ることが多いため
+  // 開いたときに最新の採寸票をプリセットする。
+  // リピートは前回と同じ寸法で作ることが多いため
   useEffect(() => {
     if (!open) return;
     let alive = true;
-    (async () => {
-      const [sheetList, ...specsList] = await Promise.all([
-        listSheets(customerId),
-        ...ITEM_TYPES.map((t) => getPreviousSpecs(customerId, t)),
-      ]);
+    void listSheets(customerId).then((sheetList) => {
       if (!alive) return;
       setSheetId(sheetList[0]?.id ?? "");
       setItems(
         Object.fromEntries(
-          ITEM_TYPES.map((type, i) => [
+          ITEM_TYPES.map((type) => [
             type,
-            {
-              selected: type !== "vest",
-              specs: specsList[i] ?? {},
-              amount: getItemPrice(type),
-            },
+            { selected: type !== "vest", amount: getItemPrice(type) },
           ]),
         ),
       );
-    })();
+    });
     return () => {
       alive = false;
     };
@@ -126,7 +112,6 @@ export function OrderCreateDialog({
       items: selectedItems.map((type) => ({
         itemTypeId: type,
         fabricId,
-        specs: items[type].specs,
         amount: items[type].amount,
       })),
     });
@@ -134,8 +119,6 @@ export function OrderCreateDialog({
     onOpenChange(false);
     toast.success("注文を登録しました", { description: "最終接触日も更新しました。" });
   };
-
-  const selectedFabric = fabrics?.find((f) => f.id === fabricId);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -146,7 +129,7 @@ export function OrderCreateDialog({
             注文を追加 — {customerName} 様
           </DialogTitle>
           <DialogDescription className="sr-only">
-            使う寸法・生地・アイテムと仕様・受注情報を入力して注文を登録します。
+            使う寸法・生地・アイテム・受注情報を入力して注文を登録します。
           </DialogDescription>
         </DialogHeader>
 
@@ -254,12 +237,8 @@ export function OrderCreateDialog({
             )}
           </Step>
 
-          {/* ③ アイテムと仕様 */}
-          <Step
-            number={3}
-            title="アイテムと仕様"
-            note={selectedFabric ? "前回の注文と同じ仕様をあらかじめ入れています" : undefined}
-          >
+          {/* ③ アイテム */}
+          <Step number={3} title="アイテム">
             <div className="flex flex-col gap-3">
               {ITEM_TYPES.map((type) => {
                 const state = items[type];
@@ -294,47 +273,6 @@ export function OrderCreateDialog({
                         ¥{formatAmount(state.amount)}
                       </span>
                     </label>
-
-                    {state.selected && (
-                      <div className="mt-2 grid gap-x-4 gap-y-2 border-t border-border/60 pt-2 sm:grid-cols-2 lg:grid-cols-3">
-                        {specGroupsFor(type).map((group) => (
-                          <label key={group.key} className="flex flex-col gap-1">
-                            <span className="field-label">{group.label}</span>
-                            <Select
-                              value={state.specs[group.key] ?? "none"}
-                              onValueChange={(next) =>
-                                setItems((s) => ({
-                                  ...s,
-                                  [type]: {
-                                    ...s[type],
-                                    specs:
-                                      next === "none"
-                                        ? Object.fromEntries(
-                                            Object.entries(s[type].specs).filter(
-                                              ([k]) => k !== group.key,
-                                            ),
-                                          )
-                                        : { ...s[type].specs, [group.key]: next },
-                                  },
-                                }))
-                              }
-                            >
-                              <SelectTrigger className="h-10 bg-card">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="none">未指定</SelectItem>
-                                {group.options.map((option) => (
-                                  <SelectItem key={option.code} value={option.code}>
-                                    {option.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </label>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 );
               })}

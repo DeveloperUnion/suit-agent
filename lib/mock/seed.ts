@@ -8,13 +8,14 @@ import type {
   MockDatabase,
   Order,
   OrderItem,
+  RevenueTarget,
   Staff,
 } from "@/lib/types";
-import { daysAgo, toIsoDate, addDays } from "@/lib/utils/date";
+import { addDays, daysAgo, toIsoDate, toIsoMonth } from "@/lib/utils/date";
 import { DEFAULT_SETTINGS } from "@/lib/constants/settings-defaults";
 
 /** 構造を変えたら上げる。localStorage 側が古ければ自動でシードに戻る */
-export const SEED_VERSION = 10;
+export const SEED_VERSION = 12;
 
 /**
  * 決定的な擬似乱数。リセットのたびに同じデータが再現されるようにする
@@ -57,6 +58,8 @@ const FABRICS: Fabric[] = [
   { id: "fab-13", brand: "御幸毛織", productNumber: "MY-1105", color: "ネイビー", colorFamily: "navy", pattern: "solid", composition: "Wool 100%", yarnCount: "Super100's", season: "all_season" },
   { id: "fab-14", brand: "御幸毛織", productNumber: "MY-2208", color: "ブラック", colorFamily: "black", pattern: "solid", composition: "Wool 100%", season: "all_season" },
   { id: "fab-15", brand: "HARRISONS", productNumber: "HR-6650", color: "ダークブラウン", colorFamily: "brown", pattern: "herringbone", composition: "Wool 100%", yarnCount: "Super120's", season: "autumn_winter" },
+  // 発注書の取り込みで読む原反NO。一致する生地が無いと取り込みが必ず止まる
+  { id: "fab-16", brand: "国内縫製", productNumber: "AC5601", color: "カーキ無地", colorFamily: "other", pattern: "solid", composition: "Nylon 92% Polyurethane 8%", season: "all_season" },
 ];
 
 // ── 顧客生成用のプール ───────────────────────────────────
@@ -302,8 +305,8 @@ function buildAll(): Built {
       ? undefined
       : RESIDENCES[residenceCursor++ % RESIDENCES.length];
 
-    // 最終接触日は意図的に散らす（30日以内 / 90日超 / 180日超）
-    // 経過日数は4つの帯に均等に散らす。ダッシュボードの分布に穴が空かないように
+    // 最終接触日は意図的に散らす。企業ニュースの「連絡済みなら出さない」判定や、
+    // メッセージタブの「前回の連絡から」の見え方を、いろいろな状態で確かめられるように
     const bucket = i % 4;
     let lastContactDays =
       bucket === 0
@@ -370,6 +373,7 @@ function buildAll(): Built {
       customer.industry = "総合商社";
       customer.listingStatus = "listed";
       customer.isKeyAccount = true;
+      customer.embroideryName = "T.TOKIEDA";
       customer.hobbies = "ゴルフ・ワイン";
       customer.familyInfo = "妻・長男（高校生）・長女（中学生）";
       customer.ngNotes = "光沢の強い生地は好まない。前回ピークドラペルを提案して断られている。";
@@ -382,7 +386,7 @@ function buildAll(): Built {
       customer.acquisitionChannel = "紹介";
       customer.firstVisitDate = "2021-04-17";
       customer.staffId = "staff-1";
-      // 経過日数トリガーの判定にも使うため、上書きした値に揃える
+      // トリガーの判定にも使うため、上書きした値に揃える
       lastContactDays = 118;
       customer.lastContactedAt = daysAgo(lastContactDays);
       customer.tags = ["紹介元", "出張多い"];
@@ -485,13 +489,25 @@ function buildAll(): Built {
     }
 
     // 注文
-    const orderCount = isTokieda ? 4 : thick ? int(2, 4) : minimal ? 0 : int(0, 2);
+    const orderCount = isTokieda ? 4 : thick ? int(3, 6) : minimal ? 0 : int(1, 3);
+    /** この顧客の最終納品が何日前か。納品後フォローの起点になる */
+    let lastDeliveryDays: number | null = null;
+
     for (let o = 0; o < orderCount; o++) {
       const orderId = `ord-${id}-${o + 1}`;
-      // 一部は直近の受注にして、今月の実績が空にならないようにする
+      // 一部は直近の受注にして、今月の実績が空にならないようにする。
+      // それ以外も直近2年に収める。もっと散らすと月次推移が虫食いになり、
+      // 目標線との比較というグラフの目的が果たせない
       const recent = o === 0 && rand() < 0.3;
-      const orderedAt = recent ? daysAgo(int(1, 26)) : daysAgo(int(60, 1500));
+      const orderedDays = recent ? int(1, 26) : int(55, 620);
+      const orderedAt = daysAgo(orderedDays);
       const orderedDate = new Date(`${orderedAt}T00:00:00`);
+      // 受注から納品までのリードタイム。引いて未来になるものは納品前として扱う
+      const deliveryDays = orderedDays - int(40, 52);
+      const delivered = deliveryDays > 0;
+      if (delivered && (lastDeliveryDays === null || deliveryDays < lastDeliveryDays)) {
+        lastDeliveryDays = deliveryDays;
+      }
       const purpose = pick<Order["purpose"]>(["business", "business", "business", "formal", "wedding", "casual"]);
       const itemCount = purpose === "business" ? int(2, 3) : int(1, 2);
       const fabric = isTokieda ? FABRICS[[0, 12, 1, 2][o]] : pick(FABRICS);
@@ -506,9 +522,8 @@ function buildAll(): Built {
         orderNumber: `J1-${String(int(100, 999))}-${String(int(100, 999))}`,
         orderedAt,
         dueDate: toIsoDate(addDays(orderedDate, 43)),
-        // 納期前のものを納品済みにしない
-        deliveredAt: recent ? undefined : toIsoDate(addDays(orderedDate, int(40, 52))),
-        status: recent ? "in_production" : "delivered",
+        deliveredAt: delivered ? daysAgo(deliveryDays) : undefined,
+        status: delivered ? "delivered" : "in_production",
         purpose,
         // 注文合計はアイテム金額の合計と必ず一致させる
         totalAmount: itemTypes.reduce((sum, t) => sum + priceOf(t), 0),
@@ -522,35 +537,25 @@ function buildAll(): Built {
           itemTypeId,
           fabricId: fabric.id,
           amount: priceOf(itemTypeId),
-          specs:
-            itemTypeId === "jacket"
-              ? {
-                  front_button: "01",
-                  lapel: "01",
-                  chest_pocket: "01",
-                  hip_pocket: "01",
-                  vent: "04",
-                  inner_pocket: "03",
-                  sleeve_button: "14",
-                  lining: "A1",
-                  stitch_type: "05",
-                  stitch_place: "02",
-                  pad_right: "9",
-                  pad_left: "9",
-                }
-              : itemTypeId === "pants"
-                ? {
-                    front_tuck: "02",
-                    belt: "02",
-                    loop: "47",
-                    side_pocket: "01",
-                    back_pocket: "15",
-                    hem_finish: "01",
-                    fly: "01",
-                  }
-                : { front_button: "01", chest_pocket: "03", hip_pocket: "01", back_lining: "01" },
         });
       });
+    }
+
+    /*
+     * 納品後フォローが立つ顧客を確実に混ぜる。
+     *
+     * 最終接触日と納品日は本来ばらばらに決まるため、放っておくと
+     * トリガーが立つかどうかが偶然になり、機能が壊れているのか
+     * データがそうなのか見分けられない。3人に1人は「最後の納品より前にしか
+     * 連絡していない」状態にして、期限を未連絡で過ぎたことにする。
+     */
+    if (
+      lastDeliveryDays !== null &&
+      lastDeliveryDays > DEFAULT_SETTINGS.deliveryFollowUpDays &&
+      i % 3 === 0
+    ) {
+      lastContactDays = lastDeliveryDays + int(3, 20);
+      customer.lastContactedAt = daysAgo(lastContactDays);
     }
 
     // やり取り
@@ -579,8 +584,8 @@ function buildAll(): Built {
         id: `apr-${id}-history`,
         customerId: id,
         dueDate: daysAgo(lastContactDays + 30),
-        triggerTypes: ["elapsed_days"],
-        reason: "最終接触から90日を超えたため連絡しました。",
+        triggerTypes: ["post_delivery"],
+        reason: "納品から30日が経過したため、着心地を伺いました。",
         status: "done",
         resolvedAt: `${daysAgo(lastContactDays + 28)}T10:15:00`,
       });
@@ -588,6 +593,54 @@ function buildAll(): Built {
   }
 
   return { customers, anniversaries, sheets, orders, orderItems, messages, approachTasks };
+}
+
+/**
+ * 売上目標。
+ *
+ * グラフに目標線が1本も引かれていないと、破線が何を表しているのか伝わらない。
+ * 過去12ヶ月と先6ヶ月を必ず埋めておく。
+ *
+ * 額は決め打ちにせず、生成した受注の実績から逆算する。手で置いた数字だと
+ * シードの受注量と桁がずれ、棒が床に張り付いて達成率が常に一桁になる
+ * ——グラフの読み方そのものが確かめられなくなる。
+ */
+function buildRevenueTargets(
+  customers: Customer[],
+  orders: Order[],
+): RevenueTarget[] {
+  const now = new Date();
+  const since = daysAgo(365);
+  const staffOf = new Map(customers.map((c) => [c.id, c.staffId]));
+
+  const yearlyByStaff = new Map<string, number>();
+  for (const order of orders) {
+    if (order.orderedAt < since) continue;
+    const staffId = staffOf.get(order.customerId);
+    if (!staffId) continue;
+    yearlyByStaff.set(staffId, (yearlyByStaff.get(staffId) ?? 0) + order.totalAmount);
+  }
+
+  const targets: RevenueTarget[] = [];
+  for (const staff of STAFF) {
+    // 実績の月平均より少し上に置く。達成した月と届かなかった月が両方出る高さ
+    const monthly = (yearlyByStaff.get(staff.id) ?? 0) / 12;
+    const base = Math.max(200_000, Math.round((monthly * 1.1) / 50_000) * 50_000);
+
+    for (let offset = -11; offset <= 6; offset++) {
+      const date = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+      const month = toIsoMonth(date);
+      // 3月・9月は入荷期で受注が伸びるため高めに置く
+      const seasonal = [3, 9].includes(date.getMonth() + 1) ? 1.2 : 1;
+      targets.push({
+        id: `tgt-${staff.id}-${month}`,
+        staffId: staff.id,
+        month,
+        amount: Math.round((base * seasonal) / 50_000) * 50_000,
+      });
+    }
+  }
+  return targets;
 }
 
 export function createSeedDatabase(): MockDatabase {
@@ -606,6 +659,7 @@ export function createSeedDatabase(): MockDatabase {
     alterations: [],
     messages: built.messages,
     approachTasks: built.approachTasks,
+    revenueTargets: buildRevenueTargets(built.customers, built.orders),
     companyNews: [
       {
         id: "news-1",

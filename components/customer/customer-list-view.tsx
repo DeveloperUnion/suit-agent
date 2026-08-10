@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useState } from "react";
 import { Search, Star, UserPlus } from "lucide-react";
 
+import { DaysSinceDelivery } from "@/components/common/days-since-delivery";
 import { PageHeader } from "@/components/common/page-header";
 import { CustomerCreateDialog } from "@/components/customer/customer-create-dialog";
 import { Button } from "@/components/ui/button";
@@ -104,7 +105,8 @@ export function CustomerListView() {
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="field-label">顧客</TableHead>
                   <TableHead className="field-label">勤務先</TableHead>
-                  <TableHead className="field-label w-32">居住地</TableHead>
+                  <TableHead className="field-label w-28">居住地</TableHead>
+                  <TableHead className="field-label w-32 text-right">納品から</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -126,6 +128,9 @@ export function CustomerListView() {
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {c.residencePrefecture ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <DaysSinceDelivery days={c.daysSinceDelivery} />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -149,13 +154,16 @@ export function CustomerListView() {
                       )}
                     </span>
                     <span className="truncate text-xs text-muted-foreground">{c.nameKana}</span>
-                    {c.companyName && (
-                      <span className="truncate text-xs text-muted-foreground">{c.companyName}</span>
+                    {/* 狭い画面では行を増やさず、勤務先と居住地を1行に畳む */}
+                    {(c.companyName || c.residencePrefecture) && (
+                      <span className="truncate text-xs text-muted-foreground">
+                        {[c.companyName, c.residencePrefecture].filter(Boolean).join("・")}
+                      </span>
                     )}
                   </div>
-                  <span className="shrink-0 text-sm text-muted-foreground">
-                    {c.residencePrefecture ?? "—"}
-                  </span>
+                  <div className="shrink-0">
+                    <DaysSinceDelivery days={c.daysSinceDelivery} />
+                  </div>
                 </Link>
               </li>
             ))}

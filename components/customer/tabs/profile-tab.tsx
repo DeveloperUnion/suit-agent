@@ -279,12 +279,14 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
             silhouette: customer.preferences?.silhouette ?? "",
             scenes: fromList(customer.preferences?.scenes),
             familyInfo: customer.familyInfo ?? "",
+            embroideryName: customer.embroideryName ?? "",
           })}
           onSave={(v) =>
             save(
               {
                 hobbies: v.hobbies || undefined,
                 familyInfo: v.familyInfo || undefined,
+                embroideryName: v.embroideryName || undefined,
                 preferences: {
                   colors: toList(v.colors),
                   patterns: toList(v.patterns),
@@ -324,6 +326,8 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
                 }
               />
               <Field label="家族構成" value={customer.familyInfo} className="sm:col-span-2" />
+              {/* 発注書に毎回入れる文字。人に紐づくので票ではなくここに置く */}
+              <Field label="ネーム刺繍" value={customer.embroideryName} />
             </div>
           }
           edit={(v, set) => (
@@ -371,6 +375,14 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
                 <Input
                   value={v.familyInfo}
                   onChange={(e) => set({ familyInfo: e.target.value })}
+                  className={INPUT}
+                />
+              </FormField>
+              <FormField label="ネーム刺繍">
+                <Input
+                  value={v.embroideryName}
+                  onChange={(e) => set({ embroideryName: e.target.value })}
+                  placeholder="T.TOKIEDA"
                   className={INPUT}
                 />
               </FormField>

@@ -1,8 +1,11 @@
 import type {
   AdjustmentMaster,
+  AppliedAdjustment,
   BodyPart,
+  IsoDate,
   ItemType,
   MeasurementField,
+  MeasurementSection,
   MeasurementSheet,
   MeasurementValue,
   SilhouetteCorrection,
@@ -184,6 +187,31 @@ export async function createSheetFromPrevious(customerId: Uuid, staffId: Uuid): 
       };
 
   mutateDb((db) => ({ ...db, measurementSheets: [...db.measurementSheets, sheet] }));
+  return id;
+}
+
+/**
+ * 工場発注書から採寸票を作る。
+ *
+ * inputMethod: "ocr" を書くのはここだけ。採寸票の出どころが手入力か紙かは、
+ * 値を疑うときに真っ先に知りたい情報なので、票そのものに残す。
+ */
+export async function createSheetFromImport(input: {
+  customerId: Uuid;
+  measuredAt: IsoDate;
+  staffId: Uuid;
+  sections: MeasurementSection[];
+  adjustments: AppliedAdjustment[];
+  note?: string;
+}): Promise<Uuid> {
+  const id = newId("sheet");
+  mutateDb((db) => ({
+    ...db,
+    measurementSheets: [
+      ...db.measurementSheets,
+      { ...input, id, inputMethod: "ocr" as const },
+    ],
+  }));
   return id;
 }
 

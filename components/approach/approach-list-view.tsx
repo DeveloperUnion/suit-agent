@@ -5,7 +5,7 @@ import { useCallback, useState } from "react";
 import { CalendarClock, Check, ChevronRight, EyeOff, MessageSquarePlus, Star } from "lucide-react";
 import { toast } from "sonner";
 
-import { ElapsedDays } from "@/components/common/elapsed-days";
+import { DaysSinceDelivery } from "@/components/common/days-since-delivery";
 import { PageHeader } from "@/components/common/page-header";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,7 +30,7 @@ import { cn } from "@/lib/utils";
 
 const FILTERS: { value: TriggerType | "all"; label: string }[] = [
   { value: "all", label: "すべて" },
-  { value: "elapsed_days", label: TRIGGER_LABEL.elapsed_days },
+  { value: "post_delivery", label: TRIGGER_LABEL.post_delivery },
   { value: "anniversary", label: TRIGGER_LABEL.anniversary },
   { value: "season", label: TRIGGER_LABEL.season },
   { value: "company_news", label: TRIGGER_LABEL.company_news },
@@ -197,8 +197,8 @@ function ApproachRow({ item }: { item: ApproachItem }) {
             </span>
           )}
           <span className="flex flex-col items-end">
-            <span className="field-label">最終接触から</span>
-            <ElapsedDays days={customer.elapsedDays} />
+            <span className="field-label">納品から</span>
+            <DaysSinceDelivery days={customer.daysSinceDelivery} />
           </span>
         </div>
       </div>

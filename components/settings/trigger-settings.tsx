@@ -49,19 +49,24 @@ export function TriggerSettings() {
 
       <div className="grid gap-x-8 gap-y-6 lg:grid-cols-2">
         <EditableSection
-          title="経過日数トリガー"
-          initial={() => ({ value: String(settings.elapsedDaysThreshold) })}
+          title="納品後フォロートリガー"
+          initial={() => ({ value: String(settings.deliveryFollowUpDays) })}
           onSave={(v) =>
-            save({ elapsedDaysThreshold: clamp(v.value, 7, 730, 90) }, "経過日数トリガー")
+            save({ deliveryFollowUpDays: clamp(v.value, 1, 365, 30) }, "納品後フォロートリガー")
           }
           view={
-            <Field
-              label="最終接触からの日数"
-              value={`${settings.elapsedDaysThreshold}日を超えたら連絡対象にする`}
-            />
+            <div className="flex flex-col gap-2">
+              <Field
+                label="納品からの日数"
+                value={`納品から${settings.deliveryFollowUpDays}日後に「着心地確認」を出す`}
+              />
+              <p className="text-xs text-muted-foreground">
+                期限より後に連絡していれば出しません。長く離れている顧客は季節トリガーが拾います。
+              </p>
+            </div>
           }
           edit={(v, set) => (
-            <FormField label="最終接触から何日で発火するか">
+            <FormField label="納品から何日で発火するか">
               <span className="flex items-center gap-2">
                 <Input
                   value={v.value}

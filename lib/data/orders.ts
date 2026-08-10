@@ -6,7 +6,6 @@ import type {
   Order,
   OrderItem,
   OrderPurpose,
-  SpecSelection,
   Uuid,
 } from "@/lib/types";
 import { getDb, mutateDb, newId } from "@/lib/store/mock-db";
@@ -133,24 +132,6 @@ export async function checkFabricOverlap(
   };
 }
 
-/** 直近の注文で使った仕様。リピートが多いためプリセットに使う */
-export async function getPreviousSpecs(
-  customerId: Uuid,
-  itemTypeId: ItemTypeId,
-): Promise<SpecSelection | null> {
-  const db = getDb();
-  const orders = db.orders
-    .filter((o) => o.customerId === customerId)
-    .sort((a, b) => b.orderedAt.localeCompare(a.orderedAt));
-  for (const order of orders) {
-    const item = db.orderItems.find(
-      (i) => i.orderId === order.id && i.itemTypeId === itemTypeId,
-    );
-    if (item) return item.specs;
-  }
-  return null;
-}
-
 export type CreateOrderInput = {
   customerId: Uuid;
   staffId: Uuid;
@@ -159,12 +140,41 @@ export type CreateOrderInput = {
   purpose: OrderPurpose;
   /** どの寸法で作るか。リピートは前回の採寸票をそのまま使うことが多い */
   measurementSheetId?: Uuid;
-  items: { itemTypeId: ItemTypeId; fabricId: Uuid; specs: SpecSelection; amount: number }[];
+  items: { itemTypeId: ItemTypeId; fabricId: Uuid; amount: number }[];
+  /**
+   * 合計金額。工場発注書は明細ごとの金額を持たないため、合計だけを正とする場合に渡す。
+   * 明細金額はこの合計に合わせて按分し、内訳の和と必ず一致させる
+   * （一致しないと注文カードの内訳と合計が食い違って見える）
+   */
+  totalAmount?: number;
+  /**
+   * 最終接触日を今日に更新するか。過去日付の紙を取り込むときは false。
+   * 取り込みは来店ではないうえ、今日に更新すると企業ニュースの
+   * 「連絡済みなら出さない」判定まで誤って抑止してしまう
+   */
+  touchLastContact?: boolean;
 };
+
+/**
+ * 合計を明細へ按分する。端数は先頭に寄せて、和が合計と必ず一致するようにする。
+ */
+function distributeAmount(total: number, items: { amount: number }[]): number[] {
+  const base = items.reduce((sum, i) => sum + i.amount, 0);
+  if (items.length === 0) return [];
+  if (base <= 0) {
+    const each = Math.floor(total / items.length);
+    return items.map((_, i) => (i === 0 ? total - each * (items.length - 1) : each));
+  }
+  const shares = items.map((i) => Math.round((total * i.amount) / base));
+  shares[0] += total - shares.reduce((sum, v) => sum + v, 0);
+  return shares;
+}
 
 export async function createOrder(input: CreateOrderInput): Promise<Uuid> {
   const orderId = newId("ord");
-  const total = input.items.reduce((sum, i) => sum + i.amount, 0);
+  const total = input.totalAmount ?? input.items.reduce((sum, i) => sum + i.amount, 0);
+  const amounts = distributeAmount(total, input.items);
+  const touchLastContact = input.touchLastContact ?? true;
   const seq = Math.floor(Math.random() * 900) + 100;
 
   mutateDb((db) => ({
@@ -190,8 +200,7 @@ export async function createOrder(input: CreateOrderInput): Promise<Uuid> {
         orderId,
         itemTypeId: item.itemTypeId,
         fabricId: item.fabricId,
-        specs: item.specs,
-        amount: item.amount,
+        amount: amounts[i],
       })),
     ],
     // 採寸票を注文に紐づける（どの寸法で作ったかを後から追えるように）
@@ -201,12 +210,40 @@ export async function createOrder(input: CreateOrderInput): Promise<Uuid> {
         )
       : db.measurementSheets,
     // 注文＝来店なので最終接触日も動く。放置リストに残り続けるのを防ぐ
-    customers: db.customers.map((c) =>
-      c.id === input.customerId ? { ...c, lastContactedAt: toIsoDate(new Date()) } : c,
-    ),
+    customers: touchLastContact
+      ? db.customers.map((c) =>
+          c.id === input.customerId ? { ...c, lastContactedAt: toIsoDate(new Date()) } : c,
+        )
+      : db.customers,
   }));
 
   return orderId;
 }
 
+// ── 納品の記録 ──────────────────────────────────
+
+/**
+ * 納品を記録する。
+ *
+ * 納品日は「納品後フォロー（着心地確認）」トリガーの起点そのもので、
+ * ここが動かないとアプローチが一切立たない。
+ */
+export async function markOrderDelivered(orderId: Uuid, deliveredAt: IsoDate): Promise<void> {
+  mutateDb((db) => ({
+    ...db,
+    orders: db.orders.map((o) =>
+      o.id === orderId ? { ...o, deliveredAt, status: "delivered" as const } : o,
+    ),
+  }));
+}
+
+/** 誤操作の取り消し。受注済みまで戻す */
+export async function clearOrderDelivery(orderId: Uuid): Promise<void> {
+  mutateDb((db) => ({
+    ...db,
+    orders: db.orders.map((o) =>
+      o.id === orderId ? { ...o, deliveredAt: undefined, status: "ordered" as const } : o,
+    ),
+  }));
+}
 

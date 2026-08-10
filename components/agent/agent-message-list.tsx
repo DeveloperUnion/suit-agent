@@ -80,7 +80,7 @@ export function AgentMessageList({
                     className={cn(
                       "max-w-[min(34rem,88%)] whitespace-pre-wrap rounded-md px-3.5 py-2.5 text-sm leading-relaxed",
                       mine
-                        ? "rounded-tr-sm bg-brand text-primary-foreground"
+                        ? "rounded-tr-sm bg-brand-fill text-primary-foreground"
                         : "rounded-tl-sm border border-border bg-card",
                     )}
                   >

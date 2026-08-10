@@ -31,11 +31,11 @@ export function AgentFab() {
         setOpen(true);
       }}
       className={cn(
-        "fixed z-40 flex items-center justify-center rounded-full bg-brand text-primary-foreground shadow-lg",
+        "fixed z-40 flex items-center justify-center rounded-full bg-brand-fill text-primary-foreground shadow-lg",
         "size-14 lg:size-12",
         // ホームバーぶんは viewport-fit=cover を入れるまで 0 に潰れる。将来の保険
         "right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] lg:right-6 lg:bottom-6",
-        "transition-[transform,opacity] hover:bg-brand/90",
+        "transition-[transform,opacity] hover:bg-brand-fill/90",
         "focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
         // 開いている間は引っ込めるが、DOM からは外さない。
         // Radix が閉じるときフォーカスを戻す先がなくなるため

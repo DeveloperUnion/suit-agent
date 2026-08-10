@@ -15,7 +15,7 @@ import { addDays, daysAgo, toIsoDate, toIsoMonth } from "@/lib/utils/date";
 import { DEFAULT_SETTINGS } from "@/lib/constants/settings-defaults";
 
 /** 構造を変えたら上げる。localStorage 側が古ければ自動でシードに戻る */
-export const SEED_VERSION = 13;
+export const SEED_VERSION = 14;
 
 /**
  * 決定的な擬似乱数。リセットのたびに同じデータが再現されるようにする

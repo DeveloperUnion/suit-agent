@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { AgentAction, AgentCustomerRef } from "@/lib/types";
 import { splitHobbies } from "@/lib/ai/agent-tools";
+import { cn } from "@/lib/utils";
 
 /**
  * アシスタントの提案。
@@ -47,8 +48,8 @@ export function AgentActionCard({
             </Badge>
           ))}
           {action.added.map((hobby) => (
-            // 増える分だけブランド色にする。どこが変わるのかを見た瞬間に分かるように
-            <Badge key={hobby} className="font-normal">
+            // 増える分だけ塗る。どこが変わるのかを見た瞬間に分かるように
+            <Badge key={hobby} className="bg-brand-fill font-normal text-primary-foreground">
               ＋{hobby}
             </Badge>
           ))}
@@ -150,8 +151,11 @@ function CustomerRow({
             // 引いた理由になった趣味だけ塗る。並べただけでは何が当たったか分からない
             <Badge
               key={hobby}
-              variant={hobby.includes(highlight) ? "default" : "secondary"}
-              className="font-normal"
+              variant="secondary"
+              className={cn(
+                "font-normal",
+                hobby.includes(highlight) && "bg-brand-fill text-primary-foreground",
+              )}
             >
               {hobby}
             </Badge>

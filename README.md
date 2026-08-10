@@ -1,36 +1,115 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# suit-agent
 
-## Getting Started
+オーダースーツの顧客カルテ。採寸・注文・メッセージを 1 枚にまとめ、
+「そろそろ連絡すべき顧客」をアプリ側から出すことを狙っている。
 
-First, run the development server:
+**まだモックの段階**で、DB は無い。データは `lib/mock/seed.ts` のシードを
+`localStorage` に載せているだけで、画面は `lib/data/*` だけを見る。
+DB に差し替えるときに画面を書き換えずに済むよう、`lib/data/*` の関数は
+すべて `Promise` を返す形にしてある。
+
+## 動かす
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev     # http://localhost:3000
+npm run build
+npm run lint
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+サイドバーの「モックデータをリセット」でシードに戻せる。
+`SEED_VERSION`（`lib/mock/seed.ts`）を上げると、古い `localStorage` は自動で捨てられる。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 画面
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| パス | 内容 |
+|---|---|
+| `/dashboard` | 今月の目標・達成率、売上の月次推移、本日のアプローチ |
+| `/customers` | 顧客一覧。氏名/カナ/会社名の検索、居住地・業種での絞り込み |
+| `/customers/[id]` | 顧客カルテ。基本情報 / 採寸 / 注文履歴 / メッセージ / アプローチ |
+| `/settings` | トリガー・売上目標・スタッフ・マスタ・メッセージの業務ルール |
 
-## Learn More
+顧客はスタッフごとに分割していて、ログインした人には自分の顧客しか見えない。
+絞り込みは `lib/data/customers.ts` の層で必ず効かせ、画面側の実装漏れで
+他人の顧客が出ないようにしている。
 
-To learn more about Next.js, take a look at the following resources:
+## 色の決め事
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+定義は `app/globals.css` の 1 ファイルに集約されている。TSX 側に色のハードコードは無い。
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+素材の比喩でトークンを持っている（テーラーの製図台から）。
 
-## Deploy on Vercel
+| トークン | 役割 |
+|---|---|
+| `paper` | 製図紙。紫みを含んだ白 |
+| `ink` | バイオレットブラック。本文と数値 |
+| `brand` `#331e6d` | **読ませるもの** — 見出し・リンク・タグの文字・帳票の罫線 |
+| `brand-fill` `#5b47a8` | **塗る面** — チャート・バー・吹き出し・選択中のチップ |
+| `rule` | 細罫。紙の帳票の区切り線 |
+| `measure` | メジャーの目盛りグレー。ラベル・補助情報 |
+| `chalk` | 青チャコ。減少方向・情報 |
+| `thread` | しつけ糸。警告・増加方向・重要顧客 — 唯一の暖色 |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+`brand` と `brand-fill` を分けているのは、サイドバーの面（`#211a35`）と
+濃い紫のコントラストが 1.22:1 しかなく、濃い紫でベタを塗ると画面の左右に
+同じ濃さの紫が並んで潰れるため。塗りだけ 1 段明るい紫に逃がしてある（2.3:1）。
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`chalk`（寒色＝減少）と `thread`（暖色＝増加・警告）は意味を担う色なので、
+ブランドの色相を変えても触らない。
+
+## データの持ち方で決めたこと
+
+- **採寸データは紙の採寸票に準拠**する。要件定義書の ER 図と食い違う場合は
+  `private/採寸データ.jpg` が正（`docs/README.md` 参照）
+- **居住地は都道府県だけ**を住所と別に持つ（`residencePrefecture`）。
+  自由記述の住所からは絞り込めず、災害時にその地域の顧客をまとめて拾えないため。
+  選択肢は `lib/constants/prefectures.ts`
+- **業種は定数から選ぶ**（`lib/constants/industries.ts`、46 件）。表記が揺れると
+  同じ業界の顧客がまとまらない。ただし選択肢に無い勤務先は必ず出るので、
+  「その他（自由記述）」で手入力も残してある。型が `Industry` ではなく
+  `string` なのはそのため
+- **顧客ランク（A/B/C）は持たない**。手で付ける序列は形骸化するうえ、
+  接客中に見せる画面に顧客の格付けを出すことになる
+- 一覧の並びは**納品からの経過日数の降順**。列としては表示していないが、
+  放置が長い顧客が上に来る順序は保っている
+
+## 画面に文章を置くかどうか
+
+図から読めることは書かない。ダッシュボードに「月の進みを上回っています」のような
+判断の文は置いていない。数字とバーを見れば分かることを言い直す行が、
+毎週見る画面では読み飛ばす行として溜まっていくため。
+
+一方で、図では言えないこと（破線が何か、いちばん右のバーがまだ途中であること）は
+注記として残す。
+
+## AI の扱い
+
+`lib/ai/` は**まだ実際のモデルを呼んでいない**。決まったフィクスチャを返すが、
+入出力は実の API を想定した形にしてある。
+
+- `draft-messages.ts` — メッセージの下書き 3 案。設定のトーン・長さ・禁止事項を前提に組む
+- `extract-business-card.ts` / `extract-order-sheet.ts` — 名刺・発注書の読み取り
+
+読み取り結果はどの項目にも確信度を付けて返す。確認画面が「どこを人が見るべきか」を
+出せるようにするためで、全項目が同じ見た目で並ぶと結局すべて読み直すことになる。
+
+## 構成
+
+```
+app/                画面（App Router）
+components/
+  common/           帳票の部品（Field、EditableSection など）
+  customer/         顧客カルテとタブ
+  dashboard/        目標パネル・売上チャート・アプローチ一覧
+  measurement/      採寸票と発注書の取り込み
+  settings/         業務ルールの設定画面
+  ui/               shadcn/ui
+lib/
+  ai/               下書き生成・読み取り（フィクスチャ）
+  constants/        マスタ（採寸項目・補正・都道府県・業種・ラベル）
+  data/             データアクセス。画面が見るのはここだけ
+  mock/seed.ts      シード。SEED_VERSION を上げると作り直される
+  store/mock-db.ts  localStorage を裏に持つモックストア
+  types/index.ts    ドメインの型
+docs/               クライアント資料の所在（実体は private/、リポジトリ外）
+```

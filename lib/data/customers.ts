@@ -1,6 +1,7 @@
 import type { Customer, CustomerAnniversary, IsoDate, MockDatabase, Staff, Uuid } from "@/lib/types";
 import { getDb, mutateDb, newId } from "@/lib/store/mock-db";
 import { getCurrentStaffId } from "@/lib/auth/current-staff";
+import { INDUSTRIES } from "@/lib/constants/industries";
 import { PREFECTURES } from "@/lib/constants/prefectures";
 import { daysSince } from "@/lib/utils/date";
 import { getSettings } from "@/lib/data/settings";
@@ -28,6 +29,8 @@ export type CustomerFilter = {
   keyword?: string;
   /** 居住地の都道府県。災害時にその地域の顧客だけを出すために使う */
   residencePrefecture?: string;
+  /** 勤務先の業種。業界単位で連絡する理由ができたときに絞る */
+  industry?: string;
 };
 
 /** 顧客ごとの最終納品日。一覧のたびに 1 度だけ組み立て、顧客数×注文数の走査を避ける */
@@ -65,6 +68,7 @@ export async function listCustomers(filter: CustomerFilter = {}): Promise<Custom
   return db.customers
     .filter((c) => c.staffId === staffId)
     .filter((c) => !filter.residencePrefecture || c.residencePrefecture === filter.residencePrefecture)
+    .filter((c) => !filter.industry || c.industry === filter.industry)
     .filter((c) => {
       if (!keyword) return true;
       const haystack = `${c.name}${c.nameKana}${c.companyName ?? ""}`;
@@ -100,6 +104,27 @@ export async function listResidencePrefectures(): Promise<
     prefecture: p,
     count: counts.get(p) as number,
   }));
+}
+
+/**
+ * 絞り込みに出す業種の一覧。居住地と同じく、担当顧客に実在する業種だけを返す。
+ *
+ * 業種は自由記述も許しているため、定数に無い値も入ってくる。
+ * 定数の順に並べたあと、自由記述のものを五十音で後ろに足す。
+ * 定数だけを見て組むと、自分で入れた業種が絞り込みに出てこない。
+ */
+export async function listIndustries(): Promise<{ industry: string; count: number }[]> {
+  const staffId = getCurrentStaffId();
+  const counts = new Map<string, number>();
+  for (const c of getDb().customers) {
+    if (c.staffId !== staffId || !c.industry) continue;
+    counts.set(c.industry, (counts.get(c.industry) ?? 0) + 1);
+  }
+  const known = INDUSTRIES.filter((i) => counts.has(i)) as readonly string[];
+  const free = [...counts.keys()]
+    .filter((i) => !known.includes(i))
+    .sort((a, b) => a.localeCompare(b, "ja"));
+  return [...known, ...free].map((i) => ({ industry: i, count: counts.get(i) as number }));
 }
 
 /** 担当外の顧客は null を返す。URL を直接叩かれても開けない */

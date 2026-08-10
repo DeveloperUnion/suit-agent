@@ -174,8 +174,6 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
           title="勤務先"
           initial={() => ({
             companyName: customer.companyName ?? "",
-            corporateNumber: customer.corporateNumber ?? "",
-            listingStatus: customer.listingStatus ?? "",
             department: customer.department ?? "",
             jobTitle: customer.jobTitle ?? "",
             industry: customer.industry ?? "",
@@ -184,8 +182,6 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
             save(
               {
                 companyName: v.companyName || undefined,
-                corporateNumber: v.corporateNumber || undefined,
-                listingStatus: (v.listingStatus || undefined) as CustomerListItem["listingStatus"],
                 department: v.department || undefined,
                 jobTitle: v.jobTitle || undefined,
                 industry: v.industry || undefined,
@@ -196,17 +192,6 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
           view={
             <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
               <Field label="会社名" value={customer.companyName} className="sm:col-span-2" />
-              <Field label="法人番号" value={customer.corporateNumber} mono />
-              <Field
-                label="上場区分"
-                value={
-                  customer.listingStatus
-                    ? customer.listingStatus === "listed"
-                      ? "上場"
-                      : "非上場"
-                    : undefined
-                }
-              />
               <Field label="部署" value={customer.department} />
               <Field label="役職" value={customer.jobTitle} />
               <Field label="業種" value={customer.industry} />
@@ -220,29 +205,6 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
                   onChange={(e) => set({ companyName: e.target.value })}
                   className={INPUT}
                 />
-              </FormField>
-              <FormField label="法人番号（ニュースの名寄せキー）">
-                <Input
-                  value={v.corporateNumber}
-                  onChange={(e) => set({ corporateNumber: e.target.value })}
-                  inputMode="numeric"
-                  className={`${INPUT} font-mono`}
-                />
-              </FormField>
-              <FormField label="上場区分">
-                <Select
-                  value={v.listingStatus || "none"}
-                  onValueChange={(next) => set({ listingStatus: next === "none" ? "" : next })}
-                >
-                  <SelectTrigger className={INPUT}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">未設定</SelectItem>
-                    <SelectItem value="listed">上場</SelectItem>
-                    <SelectItem value="unlisted">非上場</SelectItem>
-                  </SelectContent>
-                </Select>
               </FormField>
               <FormField label="部署">
                 <Input
@@ -512,7 +474,6 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
           initial={() => ({
             firstVisitDate: customer.firstVisitDate ?? "",
             acquisitionChannel: customer.acquisitionChannel ?? "",
-            isKeyAccount: customer.isKeyAccount,
             tags: fromList(customer.tags),
             ngNotes: customer.ngNotes ?? "",
           })}
@@ -521,7 +482,6 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
               {
                 firstVisitDate: v.firstVisitDate || undefined,
                 acquisitionChannel: v.acquisitionChannel || undefined,
-                isKeyAccount: v.isKeyAccount,
                 tags: toList(v.tags),
                 ngNotes: v.ngNotes || undefined,
               },
@@ -532,10 +492,6 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
             <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
               <Field label="初回来店日" value={formatDateLong(customer.firstVisitDate)} />
               <Field label="流入経路" value={customer.acquisitionChannel} />
-              <Field
-                label="重要顧客"
-                value={customer.isKeyAccount ? "対象（ニュース巡回あり）" : "対象外"}
-              />
               <Field
                 label="タグ"
                 value={customer.tags?.length ? <ChipList items={customer.tags} /> : undefined}
@@ -567,17 +523,6 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
                   className={INPUT}
                 />
               </FormField>
-              <div className="flex items-end py-1">
-                <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={v.isKeyAccount}
-                    onChange={(e) => set({ isKeyAccount: e.target.checked })}
-                    className="size-4 accent-[var(--brand)]"
-                  />
-                  重要顧客にする（企業ニュースの巡回対象）
-                </label>
-              </div>
               <FormField label="NG事項" className="sm:col-span-2">
                 <Textarea
                   value={v.ngNotes}

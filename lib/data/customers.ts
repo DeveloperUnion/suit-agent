@@ -3,7 +3,6 @@ import { getDb, mutateDb, newId } from "@/lib/store/mock-db";
 import { getCurrentStaffId } from "@/lib/auth/current-staff";
 import { PREFECTURES } from "@/lib/constants/prefectures";
 import { daysSince } from "@/lib/utils/date";
-import { getSettings } from "@/lib/data/settings";
 
 /**
  * 顧客のデータアクセス。
@@ -14,14 +13,13 @@ import { getSettings } from "@/lib/data/settings";
 export type CustomerListItem = Customer & {
   /** 最終納品日。納品済みの注文が1件も無ければ undefined */
   lastDeliveredAt?: IsoDate;
+  /** 最終納品の注文 ID。納品後フォローがどの納品に対する通知かを識別するのに使う */
+  lastDeliveredOrderId?: Uuid;
   /**
    * 納品からの経過日数。納品済みの注文が1件も無ければ null。
-   * 「最終接触から」ではない。着心地を伺うのに意味があるのは納品からの日数で、
-   * 長く離れている顧客は季節トリガーが拾う。
+   * 「最終接触から」ではない。着心地を伺うのに意味があるのは納品からの日数のため。
    */
   daysSinceDelivery: number | null;
-  /** 納品後フォローの期限を過ぎているか */
-  isFollowUpDue: boolean;
 };
 
 export type CustomerFilter = {
@@ -30,26 +28,28 @@ export type CustomerFilter = {
   residencePrefecture?: string;
 };
 
-/** 顧客ごとの最終納品日。一覧のたびに 1 度だけ組み立て、顧客数×注文数の走査を避ける */
-function lastDeliveredMap(db: MockDatabase): Map<Uuid, IsoDate> {
-  const map = new Map<Uuid, IsoDate>();
+type LastDelivery = { orderId: Uuid; deliveredAt: IsoDate };
+
+/** 顧客ごとの最終納品。一覧のたびに 1 度だけ組み立て、顧客数×注文数の走査を避ける */
+function lastDeliveredMap(db: MockDatabase): Map<Uuid, LastDelivery> {
+  const map = new Map<Uuid, LastDelivery>();
   for (const order of db.orders) {
     if (!order.deliveredAt) continue;
     const current = map.get(order.customerId);
-    if (!current || order.deliveredAt > current) map.set(order.customerId, order.deliveredAt);
+    if (!current || order.deliveredAt > current.deliveredAt) {
+      map.set(order.customerId, { orderId: order.id, deliveredAt: order.deliveredAt });
+    }
   }
   return map;
 }
 
-function decorate(customer: Customer, delivered: Map<Uuid, IsoDate>): CustomerListItem {
-  const lastDeliveredAt = delivered.get(customer.id);
-  const daysSinceDelivery = daysSince(lastDeliveredAt);
+function decorate(customer: Customer, delivered: Map<Uuid, LastDelivery>): CustomerListItem {
+  const last = delivered.get(customer.id);
   return {
     ...customer,
-    lastDeliveredAt,
-    daysSinceDelivery,
-    isFollowUpDue:
-      daysSinceDelivery !== null && daysSinceDelivery >= getSettings().deliveryFollowUpDays,
+    lastDeliveredAt: last?.deliveredAt,
+    lastDeliveredOrderId: last?.orderId,
+    daysSinceDelivery: daysSince(last?.deliveredAt),
   };
 }
 
@@ -200,7 +200,6 @@ export async function createCustomer(
       {
         // 登録した人が担当になる
         staffId: getCurrentStaffId(),
-        isKeyAccount: false,
         createdAt: new Date().toISOString().slice(0, 10),
         ...input,
         id,

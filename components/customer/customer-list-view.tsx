@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
-import { Search, Star, UserPlus } from "lucide-react";
+import { Search, UserPlus } from "lucide-react";
 
 import { DaysSinceDelivery } from "@/components/common/days-since-delivery";
 import { PageHeader } from "@/components/common/page-header";
@@ -114,12 +114,7 @@ export function CustomerListView() {
                   <TableRow key={c.id} className="group">
                     <TableCell>
                       <Link href={`/customers/${c.id}`} className="flex flex-col gap-0.5">
-                        <span className="flex items-center gap-1.5 font-medium group-hover:underline">
-                          {c.name}
-                          {c.isKeyAccount && (
-                            <Star className="size-3.5 fill-thread text-thread" aria-label="重要顧客" />
-                          )}
-                        </span>
+                        <span className="font-medium group-hover:underline">{c.name}</span>
                         <span className="text-xs text-muted-foreground">{c.nameKana}</span>
                       </Link>
                     </TableCell>
@@ -147,12 +142,7 @@ export function CustomerListView() {
                   className="flex min-h-11 items-center gap-3 rounded-md border border-border bg-card p-3 transition-colors active:bg-accent/40"
                 >
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="flex items-center gap-1.5 font-medium">
-                      <span className="truncate">{c.name}</span>
-                      {c.isKeyAccount && (
-                        <Star className="size-3.5 shrink-0 fill-thread text-thread" aria-label="重要顧客" />
-                      )}
-                    </span>
+                    <span className="truncate font-medium">{c.name}</span>
                     <span className="truncate text-xs text-muted-foreground">{c.nameKana}</span>
                     {/* 狭い画面では行を増やさず、勤務先と居住地を1行に畳む */}
                     {(c.companyName || c.residencePrefecture) && (

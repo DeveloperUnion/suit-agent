@@ -1,36 +1,153 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TORICO — オーダースーツ店の顧客管理
 
-## Getting Started
+顧客カルテ・採寸・注文を 1 か所にまとめ、**次に誰へ声をかけるべきかを知らせる**ためのシステム。
 
-First, run the development server:
+いまはモック段階で、バックエンドを持たない。データは `localStorage` に入る。
+1 画面ずつ壁打ちしながら形を決めている途中のため、確定した仕様はここに書き足していく。
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+---
+
+## やらないこと
+
+作らないと決めたものを先に書く。ここが曖昧なままだと、要らないものが増える。
+
+### 公式 LINE の一斉配信はしない
+
+公式 LINE から送るのは **春夏・秋冬の新作案内だけ**で、その配信は **Lstep** で行う。
+セグメント配信もリッチメニューも、このシステムの担当ではない。
+
+### メッセージを送らない・下書きも作らない
+
+記念日や納品後の連絡は、**いま使っている個人 LINE から手で**送る。
+このシステムがやるのは「今日この人に連絡したほうがいい」と知らせるところまで。
+
+送信機能を持たせない以上、AI の文面下書き、メッセージ履歴、送信チャネルの記録も持たない。
+半端に記録だけ残すと、実際の会話は個人 LINE にあるのに、システム側にも断片が溜まって
+どちらが本当か分からなくなる。
+
+### 勤務先ニュースの巡回をしない
+
+法人番号で企業ニュースを拾って話のきっかけにする、という案は取りやめた。
+そのために持っていた法人番号・上場区分・会社 URL・業種、および重要顧客フラグも削除している。
+勤務先は名刺から読み取れる **会社名・部署・役職** だけを持つ。
+
+### 通知はアプリの中だけ
+
+LINE やメールへプッシュしない。アプリを開けば「本日のアプローチ」に出ている、という形にとどめる。
+
+---
+
+## アプローチ（通知）の仕様
+
+「今日連絡すべき人」は、事前にレコードを作らず **画面を開くたびにその場で評価して導出する**
+（`lib/data/approaches.ts`）。閾値を変えたら即座に結果へ反映されるべきだから。
+保存するのは、その結果に人が下した判断だけ。
+
+### トリガーは 2 つ
+
+| トリガー | 発火条件 |
+|---|---|
+| 納品後フォロー | 最後の納品から **半年** または **1 年** が経った |
+| 記念日 | 誕生日・初回購入記念日・結婚記念日などが近い（既定 21 日前から） |
+
+**納品後フォローの節目（半年・1 年）は設定画面に出さない。**
+店舗として確定した決めごとで、試しに動かして様子を見るための数字ではないため
+（`lib/constants/approach.ts` の `POST_DELIVERY_MILESTONES`）。
+記念日の予告日数だけは設定から変えられる。
+
+起点は **最後の納品** で、注文ごとには立てない。新しく納品があれば、
+古い納品のフォローはもう意味を持たないから。
+半年を逃したまま 1 年が来た場合は **1 年のほうだけ**を出す。そのとき言うべきことは
+「1 年経ちました」であって「半年経ちました」ではない。
+
+### 消えるのは押されたときだけ
+
+通知は時間では消えない。**「連絡した」か「スキップ」を押すまで残る。**
+見落としが勝手に消えてしまうと、気づかせるという目的を果たせない。
+
+- **連絡した** — 対応済みとして履歴に残し、最終接触日を今日にする
+- **スキップ** — 履歴には残すが、最終接触日は動かさない（連絡していないため）
+
+判断は顧客単位ではなく **トリガー実体ごと**（`ApproachTask.triggerKey`）に保存する。
+
+```
+post_delivery:{orderId}:6m
+post_delivery:{orderId}:12m
+anniversary:{anniversaryId}:{発火する年}
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+顧客単位で持つと「納品半年後をスキップしたら 1 年後も出なくなる」「今年の誕生日を見送ったら
+来年も出なくなる」ことになる。上の粒度なら、スキップした節目だけが閉じる。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 表示は顧客ごとに 1 件
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+同じ人に納品後フォローと記念日が同時に立ったら、1 件へまとめて理由を 2 行並べる。
+「連絡した」「スキップ」を押すと、立っているものはまとめて畳まれる。1 回の連絡で
+どちらの話にも触れられるため。
 
-## Learn More
+**1 日に出す件数の上限は設けていない。** トリガーが 2 つだけならリストが溢れることはなく、
+上限で隠すと「見えていない分がある」という不安のほうが残る。
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 画面
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| ルート | 内容 |
+|---|---|
+| `/dashboard` | 月次売上と目標の達成度、上位のアプローチ |
+| `/customers` | 顧客一覧。氏名・勤務先で検索、居住地で絞り込み |
+| `/customers/[id]` | 顧客カルテ。基本情報 / 採寸 / 注文履歴 / アプローチ の 4 タブ |
+| `/approaches` | 本日のアプローチ |
+| `/settings` | トリガー / 売上目標 / スタッフ / マスタ |
 
-## Deploy on Vercel
+採寸は、カルテ右上のシルエットから全画面の採寸ビューへ入る。
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## データモデルの要点
+
+型はすべて `lib/types/index.ts` にある。判断の根拠はそこのコメントに書いてある。
+
+- **採寸は紙の採寸票（`private/採寸データ.jpg`）に準拠する。**
+  要件定義書の ER 図は身体寸法と仕上がり寸法を別テーブルに分けていたが、実物は
+  「実寸 / 上がり寸」が同じ行に並記されている。その変換こそが職人の判断なので、ペアで持つ。
+  食い違ったら紙のほうが正。
+- **顧客はスタッフごとに分割する。** ログインした人には自分の顧客だけが見える。
+  絞り込みは `lib/data/customers.ts` で必ず効かせ、画面側の実装漏れで他人の顧客が出ないようにする。
+- **顧客ランクも重要顧客フラグも持たない。** 手で付ける序列は形骸化するうえ、
+  接客中に見せる画面に顧客の格付けを出すことになる。
+- **注文明細に仕様（胸ポケット・ベント・袖釦）を持たない。** あれは工場に伝えるためのもので、
+  店側が後から見返す場面がない。扱うのは「何が売れていくらだったか」まで。
+- **LINE の連携情報は持つが使わない。** 公式アカウントの配信は Lstep の領域なので、
+  `lineUserId` は将来 Lstep 側の友だちと突き合わせるための鍵として残しているだけ。
+  `lineDisplayName` は個人 LINE のトーク一覧で相手を見分けるのに使う。
+
+---
+
+## モックの前提
+
+| 場所 | 役割 |
+|---|---|
+| `lib/store/mock-db.ts` | `localStorage` のストア。画面から直接触らせない |
+| `lib/data/*` | データアクセス。画面が見るのはここだけ。DB 実装への差し替え点 |
+| `lib/mock/seed.ts` | 決定的なシード。`SEED_VERSION` を上げると次の読み込みで作り直される |
+| `lib/ai/*` | 名刺・工場発注書の読み取り。**実 API は呼ばないスタブ**。関数の本体だけ差し替えれば済む形にしてある |
+| `lib/auth/current-staff.ts` | ログイン中のスタッフ。実装時は Cookie / JWT に差し替える |
+
+戻り値をすべて `Promise` にしてあるのは、DB へ移すときに呼び出し側を書き換えずに済ませるため。
+
+サイドバーの「モックをリセット」で、いつでもシードの状態に戻せる。
+
+---
+
+## 開発
+
+```bash
+npm install
+npm run dev     # http://localhost:3000
+npm run build
+npm run lint
+```
+
+クライアントから受け取った資料（要件定義書・採寸票・ヒアリングリスト）は
+個人情報を含むためリポジトリに入れていない。置き場所は [`docs/README.md`](docs/README.md) を参照。

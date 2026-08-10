@@ -148,7 +148,7 @@ export function MessagesTab({
                     "max-w-[min(34rem,88%)] whitespace-pre-wrap rounded-md px-3.5 py-2.5 text-sm leading-relaxed",
                     inbound
                       ? "rounded-tl-sm border border-border bg-card"
-                      : "rounded-tr-sm bg-brand text-primary-foreground",
+                      : "rounded-tr-sm bg-brand-fill text-primary-foreground",
                   )}
                 >
                   {message.body}

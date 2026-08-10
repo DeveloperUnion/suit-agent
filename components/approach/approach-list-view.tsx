@@ -89,7 +89,7 @@ export function ApproachListView() {
             className={cn(
               "min-h-9 rounded-sm border px-3 text-sm transition-colors",
               trigger === f.value
-                ? "border-brand bg-brand text-primary-foreground"
+                ? "border-brand-fill bg-brand-fill text-primary-foreground"
                 : "border-border bg-card text-muted-foreground hover:border-brand/40",
             )}
           >

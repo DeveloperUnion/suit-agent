@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ANNIVERSARY_LABEL } from "@/lib/constants/labels";
+import { INDUSTRIES } from "@/lib/constants/industries";
 import { PREFECTURES } from "@/lib/constants/prefectures";
 import {
   listAnniversaries,
@@ -27,6 +28,11 @@ const INPUT = "h-11 bg-card";
 
 /** Select は空文字を値に取れないため、未設定を表す番兵を置く */
 const NO_PREFECTURE = "__none__";
+const NO_INDUSTRY = "__none__";
+/** 選択肢に無い業種を手で入れるための番兵 */
+const OTHER_INDUSTRY = "__other__";
+
+const isKnownIndustry = (value: string) => (INDUSTRIES as readonly string[]).includes(value);
 
 /** カンマ区切りの文字列と配列を行き来する。タグや好みの色に使う */
 const toList = (value: string) =>
@@ -179,6 +185,8 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
             department: customer.department ?? "",
             jobTitle: customer.jobTitle ?? "",
             industry: customer.industry ?? "",
+            // 選択肢に無い業種が入っている顧客は、開いた時点で自由記述側にしておく
+            industryFree: !!customer.industry && !isKnownIndustry(customer.industry),
           })}
           onSave={(v) =>
             save(
@@ -258,12 +266,41 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
                   className={INPUT}
                 />
               </FormField>
+              {/* 業種は絞り込みのキーなので選択肢から選ばせる。
+                  表記が揺れると同じ業界の顧客がまとまらないため。
+                  ただし選択肢に無い勤務先は必ず出るので、その他で自由記述も残す */}
               <FormField label="業種">
-                <Input
-                  value={v.industry}
-                  onChange={(e) => set({ industry: e.target.value })}
-                  className={INPUT}
-                />
+                <Select
+                  value={v.industryFree ? OTHER_INDUSTRY : v.industry || NO_INDUSTRY}
+                  onValueChange={(next) =>
+                    set(
+                      next === OTHER_INDUSTRY
+                        ? { industryFree: true, industry: "" }
+                        : { industryFree: false, industry: next === NO_INDUSTRY ? "" : next },
+                    )
+                  }
+                >
+                  <SelectTrigger className={`${INPUT} w-full`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_INDUSTRY}>未設定</SelectItem>
+                    {INDUSTRIES.map((i) => (
+                      <SelectItem key={i} value={i}>
+                        {i}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value={OTHER_INDUSTRY}>その他（自由記述）</SelectItem>
+                  </SelectContent>
+                </Select>
+                {v.industryFree && (
+                  <Input
+                    value={v.industry}
+                    onChange={(e) => set({ industry: e.target.value })}
+                    placeholder="業種を入力"
+                    className={`${INPUT} mt-2`}
+                  />
+                )}
               </FormField>
             </div>
           )}

@@ -72,7 +72,7 @@ export function CustomerListView() {
           <Input
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            placeholder="氏名・カナ・会社名で検索"
+            placeholder="氏名・会社名・趣味・タグで検索"
             className="h-11 bg-card pl-9"
             aria-label="顧客を検索"
           />

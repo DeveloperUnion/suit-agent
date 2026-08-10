@@ -26,3 +26,12 @@ export function useMediaQuery(query: string): boolean {
 export function useIsPhone(): boolean {
   return useMediaQuery("(max-width: 767px)");
 }
+
+/**
+ * Tailwind の lg 以上。useIsPhone の裏返しではない（768〜1023px はどちらにも入らない）。
+ * サイドナビが常時表示されるかどうかの境目なので、
+ * 「本文の横に何かを並べられるか」を判断する場面はこちらを使う。
+ */
+export function useIsDesktop(): boolean {
+  return useMediaQuery("(min-width: 1024px)");
+}

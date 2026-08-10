@@ -14,7 +14,7 @@ import { addDays, daysAgo, toIsoDate, toIsoMonth } from "@/lib/utils/date";
 import { DEFAULT_SETTINGS } from "@/lib/constants/settings-defaults";
 
 /** 構造を変えたら上げる。localStorage 側が古ければ自動でシードに戻る */
-export const SEED_VERSION = 16;
+export const SEED_VERSION = 17;
 
 /**
  * 決定的な擬似乱数。リセットのたびに同じデータが再現されるようにする
@@ -625,5 +625,7 @@ export function createSeedDatabase(): MockDatabase {
     alterations: [],
     approachTasks: built.approachTasks,
     revenueTargets: buildRevenueTargets(built.customers, built.orders),
+    // 会話は空から始める。作り物の履歴を最初に見せても読む意味がない
+    agentMessages: [],
   };
 }

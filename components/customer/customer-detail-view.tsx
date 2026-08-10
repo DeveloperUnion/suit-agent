@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useState } from "react";
 import { ArrowLeft, Plus } from "lucide-react";
 
+import { useAgentContext } from "@/components/agent/agent-provider";
 import { DaysSinceDelivery } from "@/components/common/days-since-delivery";
 import { ApproachesTab } from "@/components/customer/tabs/approaches-tab";
 import { MeasurementTab } from "@/components/customer/tabs/measurement-tab";
@@ -51,6 +52,12 @@ export function CustomerDetailView({
 
   const silhouetteLoader = useCallback(() => getSilhouetteState(customerId), [customerId]);
   const { data: silhouette } = useMockQuery(silhouetteLoader, [customerId]);
+
+  // AI アシスタントに「いま誰のカルテを見ているか」を伝える。
+  // 名前を言わずに「ゴルフが趣味らしい」と話しかけられるようにするため
+  useAgentContext(
+    customer ? { kind: "customer", id: customer.id, label: `${customer.name} 様` } : null,
+  );
 
   if (loading) {
     return (

@@ -14,7 +14,7 @@ import { daysAgo, toIsoDate, addDays } from "@/lib/utils/date";
 import { DEFAULT_SETTINGS } from "@/lib/constants/settings-defaults";
 
 /** 構造を変えたら上げる。localStorage 側が古ければ自動でシードに戻る */
-export const SEED_VERSION = 9;
+export const SEED_VERSION = 10;
 
 /**
  * 決定的な擬似乱数。リセットのたびに同じデータが再現されるようにする
@@ -100,6 +100,44 @@ const COMPANIES: [string, string, string][] = [
 const JOB_TITLES = ["代表取締役", "取締役", "執行役員", "本部長", "部長", "次長", "課長", "マネージャー", "主任", ""];
 const DEPARTMENTS = ["営業本部", "経営企画部", "財務部", "人事部", "法務部", "開発本部", "管理部", ""];
 const CHANNELS = ["紹介", "Instagram", "路面店", "既存客再来", "Web検索", "イベント"];
+
+/**
+ * 居住地の分布。首都圏を厚くしつつ、地方も1県あたり数名まとまるようにしている。
+ * 災害時の絞り込みは「その県に何名いるか」で判断するため、1名ずつ散らばると検証にならない。
+ * 顧客に順番に配って、県ごとの人数がリセットのたびに再現するようにする。
+ */
+const RESIDENCES = [
+  "東京都", "東京都", "東京都", "東京都", "東京都", "東京都",
+  "神奈川県", "神奈川県", "神奈川県", "神奈川県",
+  "埼玉県", "埼玉県", "埼玉県",
+  "千葉県", "千葉県", "千葉県",
+  "大阪府", "大阪府",
+  "愛知県", "愛知県",
+  "北海道", "北海道",
+  "宮城県", "宮城県",
+  "福岡県", "福岡県",
+  "広島県",
+  "熊本県",
+  "静岡県",
+  "石川県",
+];
+
+/** 住所の市区町村。居住地と食い違う住所が並ぶと壁打ちの邪魔になるので対応づけておく */
+const CITIES: Record<string, string[]> = {
+  北海道: ["札幌市中央区", "札幌市北区"],
+  宮城県: ["仙台市青葉区", "仙台市泉区"],
+  埼玉県: ["さいたま市大宮区", "川口市"],
+  千葉県: ["千葉市中央区", "船橋市"],
+  東京都: ["港区", "渋谷区", "中央区", "世田谷区", "目黒区", "文京区"],
+  神奈川県: ["横浜市西区", "川崎市中原区", "横浜市青葉区"],
+  石川県: ["金沢市"],
+  静岡県: ["静岡市葵区", "浜松市中央区"],
+  愛知県: ["名古屋市中区", "名古屋市千種区"],
+  大阪府: ["大阪市北区", "大阪市中央区"],
+  広島県: ["広島市中区"],
+  福岡県: ["福岡市中央区", "福岡市博多区"],
+  熊本県: ["熊本市中央区"],
+};
 
 // 同じ顧客のタイムラインに同じ文面が並ばないよう、インデックスで順に回す
 const INBOUND_BODIES = [
@@ -245,6 +283,9 @@ function buildAll(): Built {
   // 先頭 8 名は「厚い顧客」— 採寸・注文・やり取りが揃っている
   const THICK = 8;
 
+  // 居住地は順に配る。薄い顧客を飛ばすので、県ごとの人数が欠けないよう別に数える
+  let residenceCursor = 0;
+
   for (let i = 0; i < TOTAL; i++) {
     const id = `cust-${String(i + 1).padStart(3, "0")}`;
     const isTokieda = i === 0;
@@ -255,6 +296,11 @@ function buildAll(): Built {
     const [sn, snKana] = isTokieda ? SURNAMES[0] : pick(SURNAMES.slice(1));
     const [gn, gnKana] = isTokieda ? GIVEN_NAMES[0] : pick(GIVEN_NAMES);
     const [companyName, industry, corporateNumber] = pick(COMPANIES);
+
+    // 薄い顧客は居住地も未設定。一覧で「—」が出る状態を残しておく
+    const residencePrefecture = minimal
+      ? undefined
+      : RESIDENCES[residenceCursor++ % RESIDENCES.length];
 
     // 最終接触日は意図的に散らす（30日以内 / 90日超 / 180日超）
     // 経過日数は4つの帯に均等に散らす。ダッシュボードの分布に穴が空かないように
@@ -280,7 +326,10 @@ function buildAll(): Built {
       gender: "male",
       phone: `090-${int(1000, 9999)}-${int(1000, 9999)}`,
       email: minimal ? undefined : `${snKana}@example.com`,
-      address: minimal ? undefined : `東京都${pick(["港区", "渋谷区", "中央区", "世田谷区", "目黒区", "文京区"])}${int(1, 5)}-${int(1, 30)}-${int(1, 20)}`,
+      address: residencePrefecture
+        ? `${residencePrefecture}${pick(CITIES[residencePrefecture])}${int(1, 5)}-${int(1, 30)}-${int(1, 20)}`
+        : undefined,
+      residencePrefecture,
       lineUserId: minimal || rand() < 0.25 ? undefined : `U${Math.floor(rand() * 1e15).toString(16)}`,
       lineDisplayName: minimal ? undefined : gn,
       companyName: minimal ? undefined : companyName,

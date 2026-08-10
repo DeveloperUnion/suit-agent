@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ANNIVERSARY_LABEL } from "@/lib/constants/labels";
+import { PREFECTURES } from "@/lib/constants/prefectures";
 import {
   listAnniversaries,
   saveAnniversaries,
@@ -23,6 +24,9 @@ import type { AnniversaryType } from "@/lib/types";
 import { daysUntilNextAnniversary, formatDateLong } from "@/lib/utils/date";
 
 const INPUT = "h-11 bg-card";
+
+/** Select は空文字を値に取れないため、未設定を表す番兵を置く */
+const NO_PREFECTURE = "__none__";
 
 /** カンマ区切りの文字列と配列を行き来する。タグや好みの色に使う */
 const toList = (value: string) =>
@@ -63,6 +67,7 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
             email: customer.email ?? "",
             birthDate: customer.birthDate ?? "",
             lineDisplayName: customer.lineDisplayName ?? "",
+            residencePrefecture: customer.residencePrefecture ?? NO_PREFECTURE,
             address: customer.address ?? "",
           })}
           onSave={(v) =>
@@ -72,6 +77,8 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
                 email: v.email || undefined,
                 birthDate: v.birthDate || undefined,
                 lineDisplayName: v.lineDisplayName || undefined,
+                residencePrefecture:
+                  v.residencePrefecture === NO_PREFECTURE ? undefined : v.residencePrefecture,
                 address: v.address || undefined,
               },
               "連絡先",
@@ -95,6 +102,7 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
                   )
                 }
               />
+              <Field label="居住地" value={customer.residencePrefecture} />
               <Field label="住所" value={customer.address} className="sm:col-span-2" />
             </div>
           }
@@ -130,6 +138,25 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
                   onChange={(e) => set({ lineDisplayName: e.target.value })}
                   className={INPUT}
                 />
+              </FormField>
+              {/* 災害時にこの地域の顧客をまとめて拾えるよう、住所とは別に県だけ持つ */}
+              <FormField label="居住地">
+                <Select
+                  value={v.residencePrefecture}
+                  onValueChange={(next) => set({ residencePrefecture: next })}
+                >
+                  <SelectTrigger className={`${INPUT} w-full`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_PREFECTURE}>未設定</SelectItem>
+                    {PREFECTURES.map((p) => (
+                      <SelectItem key={p} value={p}>
+                        {p}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </FormField>
               <FormField label="住所" className="sm:col-span-2">
                 <Input

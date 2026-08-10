@@ -4,21 +4,42 @@ import Link from "next/link";
 import { useCallback, useState } from "react";
 import { Search, Star, UserPlus } from "lucide-react";
 
-import { ElapsedDays } from "@/components/common/elapsed-days";
 import { PageHeader } from "@/components/common/page-header";
 import { CustomerCreateDialog } from "@/components/customer/customer-create-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { listCustomers } from "@/lib/data/customers";
+import { listCustomers, listResidencePrefectures } from "@/lib/data/customers";
 import { useMockQuery } from "@/lib/hooks/use-mock-db";
+
+/** 「すべて」を空文字で持つと Select の value と噛み合わないため番兵を置く */
+const ALL = "__all__";
 
 export function CustomerListView() {
   const [keyword, setKeyword] = useState("");
+  const [prefecture, setPrefecture] = useState(ALL);
   const [createOpen, setCreateOpen] = useState(false);
-  const loader = useCallback(() => listCustomers({ keyword }), [keyword]);
-  const { data: customers, loading } = useMockQuery(loader, [keyword]);
+
+  const loader = useCallback(
+    () =>
+      listCustomers({
+        keyword,
+        residencePrefecture: prefecture === ALL ? undefined : prefecture,
+      }),
+    [keyword, prefecture],
+  );
+  const { data: customers, loading } = useMockQuery(loader, [keyword, prefecture]);
+
+  const prefectureLoader = useCallback(() => listResidencePrefectures(), []);
+  const { data: prefectures } = useMockQuery(prefectureLoader, []);
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 p-4 sm:p-6 lg:p-8">
@@ -40,15 +61,32 @@ export function CustomerListView() {
         }
       />
 
-      <div className="relative max-w-sm">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={keyword}
-          onChange={(e) => setKeyword(e.target.value)}
-          placeholder="氏名・カナ・会社名で検索"
-          className="h-11 bg-card pl-9"
-          aria-label="顧客を検索"
-        />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full max-w-sm sm:w-auto sm:flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            placeholder="氏名・カナ・会社名で検索"
+            className="h-11 bg-card pl-9"
+            aria-label="顧客を検索"
+          />
+        </div>
+
+        {/* 災害が起きたとき、その地域の顧客をまとめて拾うための絞り込み */}
+        <Select value={prefecture} onValueChange={setPrefecture}>
+          <SelectTrigger className="h-11 w-48 bg-card" aria-label="居住地で絞り込む">
+            <SelectValue placeholder="居住地" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>居住地 すべて</SelectItem>
+            {prefectures?.map((p) => (
+              <SelectItem key={p.prefecture} value={p.prefecture}>
+                {p.prefecture}（{p.count}）
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {loading || !customers ? (
@@ -66,7 +104,7 @@ export function CustomerListView() {
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="field-label">顧客</TableHead>
                   <TableHead className="field-label">勤務先</TableHead>
-                  <TableHead className="field-label w-32 text-right">最終接触</TableHead>
+                  <TableHead className="field-label w-32">居住地</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -86,8 +124,8 @@ export function CustomerListView() {
                     <TableCell className="text-sm text-muted-foreground">
                       {c.companyName ?? "—"}
                     </TableCell>
-                    <TableCell className="text-right">
-                      <ElapsedDays days={c.elapsedDays} />
+                    <TableCell className="text-sm text-muted-foreground">
+                      {c.residencePrefecture ?? "—"}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -115,9 +153,9 @@ export function CustomerListView() {
                       <span className="truncate text-xs text-muted-foreground">{c.companyName}</span>
                     )}
                   </div>
-                  <div className="shrink-0">
-                    <ElapsedDays days={c.elapsedDays} />
-                  </div>
+                  <span className="shrink-0 text-sm text-muted-foreground">
+                    {c.residencePrefecture ?? "—"}
+                  </span>
                 </Link>
               </li>
             ))}

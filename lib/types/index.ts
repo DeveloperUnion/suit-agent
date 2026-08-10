@@ -57,6 +57,12 @@ export type Customer = {
   phone?: string;
   email?: string;
   address?: string;
+  /**
+   * 居住地の都道府県。住所とは別に持つ。
+   * 自由記述の address からは絞り込めないため、災害時にその地域の顧客を
+   * まとめて拾えるようキーだけ切り出している。
+   */
+  residencePrefecture?: string;
 
   /** LINE 公式アカウント連携 */
   lineUserId?: string;

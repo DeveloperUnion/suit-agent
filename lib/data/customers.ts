@@ -1,6 +1,7 @@
 import type { Customer, CustomerAnniversary, Staff, Uuid } from "@/lib/types";
 import { getDb, mutateDb, newId } from "@/lib/store/mock-db";
 import { getCurrentStaffId } from "@/lib/auth/current-staff";
+import { PREFECTURES } from "@/lib/constants/prefectures";
 import { daysSince } from "@/lib/utils/date";
 import { getSettings } from "@/lib/data/settings";
 
@@ -19,6 +20,8 @@ export type CustomerListItem = Customer & {
 
 export type CustomerFilter = {
   keyword?: string;
+  /** 居住地の都道府県。災害時にその地域の顧客だけを出すために使う */
+  residencePrefecture?: string;
 };
 
 function decorate(customer: Customer): CustomerListItem {
@@ -40,6 +43,7 @@ export async function listCustomers(filter: CustomerFilter = {}): Promise<Custom
   const keyword = filter.keyword?.trim();
   return db.customers
     .filter((c) => c.staffId === staffId)
+    .filter((c) => !filter.residencePrefecture || c.residencePrefecture === filter.residencePrefecture)
     .filter((c) => {
       if (!keyword) return true;
       const haystack = `${c.name}${c.nameKana}${c.companyName ?? ""}`;
@@ -47,6 +51,25 @@ export async function listCustomers(filter: CustomerFilter = {}): Promise<Custom
     })
     .map(decorate)
     .sort((a, b) => (b.elapsedDays ?? -1) - (a.elapsedDays ?? -1));
+}
+
+/**
+ * 絞り込みに出す居住地の一覧。担当顧客に実在する都道府県だけを返す。
+ * 47件を並べても大半が0件になり、選べる県を探すほうが手間になるため。
+ */
+export async function listResidencePrefectures(): Promise<
+  { prefecture: string; count: number }[]
+> {
+  const staffId = getCurrentStaffId();
+  const counts = new Map<string, number>();
+  for (const c of getDb().customers) {
+    if (c.staffId !== staffId || !c.residencePrefecture) continue;
+    counts.set(c.residencePrefecture, (counts.get(c.residencePrefecture) ?? 0) + 1);
+  }
+  return PREFECTURES.filter((p) => counts.has(p)).map((p) => ({
+    prefecture: p,
+    count: counts.get(p) as number,
+  }));
 }
 
 /** 担当外の顧客は null を返す。URL を直接叩かれても開けない */

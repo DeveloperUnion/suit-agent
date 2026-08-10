@@ -40,7 +40,7 @@ const plexCondensed = IBM_Plex_Sans_Condensed({
 
 export const metadata: Metadata = {
   title: "TORICO",
-  description: "採寸・注文・やり取りを1枚にまとめた顧客カルテ",
+  description: "採寸・注文・メッセージを1枚にまとめた顧客カルテ",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

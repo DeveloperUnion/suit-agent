@@ -26,7 +26,7 @@ const TABS = [
   { value: "profile", label: "基本情報" },
   { value: "measurement", label: "採寸" },
   { value: "orders", label: "注文履歴" },
-  { value: "messages", label: "やり取り" },
+  { value: "messages", label: "メッセージ" },
   { value: "approaches", label: "アプローチ" },
 ];
 
@@ -150,7 +150,7 @@ export function CustomerDetailView({
           <ElapsedDays days={customer.elapsedDays} size="lg" />
 
           {/*
-            採寸は右上のシルエット、メッセージはやり取りタブが入口なので、
+            採寸は右上のシルエット、メッセージはメッセージタブが入口なので、
             ここに同じ動作のボタンは置かない。注文は来店時に必ず通る動線のため
             1タップで届くようヘッダーに残している。
           */}

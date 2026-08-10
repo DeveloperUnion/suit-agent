@@ -122,7 +122,7 @@ export function MessageSettings() {
                 </span>
               </FormField>
               <p className="text-xs text-muted-foreground">
-                やり取りタブの文字数カウンタが、この範囲を外れると色で知らせます。
+                メッセージタブの文字数カウンタが、この範囲を外れると色で知らせます。
               </p>
             </div>
           )}

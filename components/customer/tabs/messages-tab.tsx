@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, Send, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -18,10 +18,10 @@ import { formatDateTime } from "@/lib/utils/date";
 import { cn } from "@/lib/utils";
 
 /**
- * やり取りタブ＝メッセージ画面。
+ * メッセージタブ。履歴と作成を同じ画面に置く。
  *
- * 履歴と作成を同じ画面に置く。要件4.5でAIに「過去のやり取り（トーンを合わせるため）」を
- * 渡すと決めている以上、書く側も過去を見ながら書けるべきだという判断。
+ * 要件4.5でAIに「過去のやり取り（トーンを合わせるため）」を渡すと決めている以上、
+ * 書く側も過去を見ながら書けるべきだという判断。
  */
 export function MessagesTab({
   customerId,
@@ -52,12 +52,26 @@ export function MessagesTab({
   const settings = useSettings();
   const overdue = elapsedDays !== null && elapsedDays > settings.elapsedDaysThreshold;
 
-  const handleGenerate = async () => {
+  const handleGenerate = useCallback(async () => {
     setGenerating(true);
-    const result = await generateDrafts(customerId, { approachTaskId });
-    setDrafts(result);
-    setGenerating(false);
-  };
+    try {
+      setDrafts(await generateDrafts(customerId, { approachTaskId }));
+    } finally {
+      setGenerating(false);
+    }
+  }, [customerId, approachTaskId]);
+
+  /**
+   * アプローチから「メッセージを作成」で来たときは、着いた時点で下書きを出す。
+   * 連絡すると決めた直後にもう一度ボタンを押させても得るものがないため。
+   * 同じアプローチで二度走らせない（閉じたのに勝手に出直すのを防ぐ）。
+   */
+  const generatedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!approachTaskId || generatedFor.current === approachTaskId) return;
+    generatedFor.current = approachTaskId;
+    void handleGenerate();
+  }, [approachTaskId, handleGenerate]);
 
   const handleSend = async () => {
     const text = body.trim();
@@ -143,7 +157,7 @@ export function MessagesTab({
         </ul>
       ) : (
         <p className="rounded-md border border-dashed border-border bg-card/40 p-6 text-center text-sm text-muted-foreground">
-          やり取りの記録はまだありません。下から最初の連絡を送れます。
+          メッセージの記録はまだありません。下から最初の連絡を送れます。
         </p>
       )}
 
@@ -184,7 +198,19 @@ export function MessagesTab({
           </p>
         )}
 
-        {drafts && (
+        {/* 自動生成のときは押していないのに待たされるので、生成中であることを場所ごと見せる */}
+        {generating && !drafts && (
+          <div className="flex flex-col gap-2 rounded-md border border-border bg-card p-3">
+            <span className="field-label">AI下書き 3案</span>
+            <div className="grid gap-2 lg:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-24 w-full rounded-sm" />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {drafts && drafts.length > 0 && (
           <div className="flex flex-col gap-2 rounded-md border border-border bg-card p-3">
             <div className="flex items-center justify-between">
               <span className="field-label">AI下書き 3案</span>
@@ -240,7 +266,7 @@ export function MessagesTab({
             disabled={generating}
           >
             <Sparkles className="size-4" />
-            {generating ? "作成中…" : "AI下書きを出す"}
+            {generating ? "作成中…" : drafts ? "AI下書きを出し直す" : "AI下書きを出す"}
           </Button>
           <div className="flex items-center gap-3">
             {/* 目安字数は設定から。LINE で読みやすい長さに収める（要件4.5） */}

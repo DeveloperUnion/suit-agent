@@ -6,20 +6,22 @@ import { toast } from "sonner";
 import { EditableSection, FormField } from "@/components/common/editable-section";
 import { Field } from "@/components/common/field";
 import { Input } from "@/components/ui/input";
+import { POST_DELIVERY_MILESTONES } from "@/lib/constants/approach";
 import { listApproaches } from "@/lib/data/approaches";
 import { updateSettings } from "@/lib/data/settings";
 import { useMockQuery } from "@/lib/hooks/use-mock-db";
 import { useSettings } from "@/lib/hooks/use-settings";
-import { cn } from "@/lib/utils";
 
-const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
 const NUM_INPUT = "h-11 w-24 bg-card font-mono";
 
 /**
- * トリガーの閾値。
+ * トリガーの設定。
  *
  * アプローチは毎回評価する作りなので、保存すればリストの出方が即座に変わる。
- * その効果がこの場で見えるよう、現在の件数を各項目に添える。
+ * その効果がこの場で見えるよう、現在の件数を添える。
+ *
+ * 納品後フォローの節目は編集させない。半年と1年で確定した決めごとであり、
+ * 入力欄を置くと「変えられる」という誤った期待を生むため。
  */
 export function TriggerSettings() {
   const settings = useSettings();
@@ -37,49 +39,12 @@ export function TriggerSettings() {
       {approaches && (
         <p className="rounded-md border border-border bg-card px-4 py-3 text-sm">
           いまの設定では
-          <span className="tnum mx-1 font-mono font-medium">{approaches.total}件</span>
-          が対象になり、
-          <span className="tnum mx-1 font-mono font-medium">{approaches.items.length}件</span>
+          <span className="tnum mx-1 font-mono font-medium">{approaches.length}件</span>
           をリストに出しています。
-          {approaches.hidden > 0 && (
-            <span className="text-muted-foreground">（{approaches.hidden}件は上限で保留）</span>
-          )}
         </p>
       )}
 
       <div className="grid gap-x-8 gap-y-6 lg:grid-cols-2">
-        <EditableSection
-          title="納品後フォロートリガー"
-          initial={() => ({ value: String(settings.deliveryFollowUpDays) })}
-          onSave={(v) =>
-            save({ deliveryFollowUpDays: clamp(v.value, 1, 365, 30) }, "納品後フォロートリガー")
-          }
-          view={
-            <div className="flex flex-col gap-2">
-              <Field
-                label="納品からの日数"
-                value={`納品から${settings.deliveryFollowUpDays}日後に「着心地確認」を出す`}
-              />
-              <p className="text-xs text-muted-foreground">
-                期限より後に連絡していれば出しません。長く離れている顧客は季節トリガーが拾います。
-              </p>
-            </div>
-          }
-          edit={(v, set) => (
-            <FormField label="納品から何日で発火するか">
-              <span className="flex items-center gap-2">
-                <Input
-                  value={v.value}
-                  onChange={(e) => set({ value: e.target.value })}
-                  inputMode="numeric"
-                  className={NUM_INPUT}
-                />
-                <span className="text-sm text-muted-foreground">日</span>
-              </span>
-            </FormField>
-          )}
-        />
-
         <EditableSection
           title="記念日トリガー"
           initial={() => ({ value: String(settings.anniversaryLeadDays) })}
@@ -107,101 +72,26 @@ export function TriggerSettings() {
           )}
         />
 
-        <EditableSection
-          title="1日に出す上限"
-          initial={() => ({ value: String(settings.dailyApproachLimit) })}
-          onSave={(v) =>
-            save({ dailyApproachLimit: clamp(v.value, 1, 200, 24) }, "1日に出す上限")
-          }
-          view={
+        {/* 変えられない決めごとも、どう動くかは見えている必要がある */}
+        <section className="flex flex-col gap-2">
+          <h3 className="font-heading text-base font-medium">納品後フォロー</h3>
+          <div className="flex flex-col gap-2 rounded-md border border-border bg-card px-4 py-3">
             <Field
-              label="リストに出す件数"
-              value={`根拠の強い順に${settings.dailyApproachLimit}件まで`}
+              label="出すタイミング"
+              value={`最後の納品から${POST_DELIVERY_MILESTONES.map((m) => m.label).join("・")}が経った日`}
             />
-          }
-          edit={(v, set) => (
-            <FormField label="さばける件数に合わせる">
-              <span className="flex items-center gap-2">
-                <Input
-                  value={v.value}
-                  onChange={(e) => set({ value: e.target.value })}
-                  inputMode="numeric"
-                  className={NUM_INPUT}
-                />
-                <span className="text-sm text-muted-foreground">件</span>
-              </span>
-              <span className="text-xs text-muted-foreground">
-                これを超えて出しても消化されず、リスト全体が見られなくなります。
-              </span>
-            </FormField>
-          )}
-        />
-
-        <EditableSection
-          title="季節の入荷期"
-          initial={() => settings.seasonWindows.map((w) => ({ ...w, months: [...w.months] }))}
-          onSave={(windows) => save({ seasonWindows: windows }, "季節の入荷期")}
-          view={
-            <div className="flex flex-col">
-              {settings.seasonWindows.map((w) => (
-                <Field
-                  key={w.season}
-                  label={w.label}
-                  value={
-                    w.months.length > 0
-                      ? w.months.map((m) => `${m}月`).join("・")
-                      : "設定なし（発火しない）"
-                  }
-                />
-              ))}
-            </div>
-          }
-          edit={(windows, _update, setAll) => (
-            <div className="flex flex-col gap-3">
-              {windows.map((w, i) => (
-                <FormField key={w.season} label={w.label}>
-                  <span className="flex flex-wrap gap-1">
-                    {MONTHS.map((m) => {
-                      const on = w.months.includes(m);
-                      return (
-                        <button
-                          key={m}
-                          type="button"
-                          onClick={() =>
-                            setAll(
-                              windows.map((x, j) =>
-                                j === i
-                                  ? {
-                                      ...x,
-                                      months: on
-                                        ? x.months.filter((v) => v !== m)
-                                        : [...x.months, m].sort((a, b) => a - b),
-                                    }
-                                  : x,
-                              ),
-                            )
-                          }
-                          className={cn(
-                            "tnum min-h-9 w-10 rounded-sm border font-mono text-sm transition-colors",
-                            on
-                              ? "border-brand-fill bg-brand-fill text-primary-foreground"
-                              : "border-border bg-card text-muted-foreground hover:border-brand/40",
-                          )}
-                        >
-                          {m}
-                        </button>
-                      );
-                    })}
-                  </span>
-                </FormField>
-              ))}
-              <p className="text-xs text-muted-foreground">
-                季節は単独では出しません。他のトリガーが立ったときの加点と文脈に使います。
-              </p>
-            </div>
-          )}
-        />
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              店舗として確定した決めごとのため、ここでは変えられません。
+              半年を逃したまま1年が来た場合は、1年のほうだけを出します。
+            </p>
+          </div>
+        </section>
       </div>
+
+      <p className="max-w-prose text-xs leading-relaxed text-muted-foreground">
+        春夏・秋冬の新作案内は公式LINEから一斉に送るもので、配信はLstepが担います。
+        ここで出すのは1対1で声をかける相手だけです。
+      </p>
     </div>
   );
 }

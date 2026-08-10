@@ -1,24 +1,22 @@
 "use client";
 
 import { useCallback } from "react";
-import { ExternalLink, MessageSquarePlus } from "lucide-react";
+import { Check, SkipForward } from "lucide-react";
+import { toast } from "sonner";
 
 import { EmptyState } from "@/components/common/field";
 import { Button } from "@/components/ui/button";
 import { APPROACH_STATUS_LABEL, TRIGGER_LABEL } from "@/lib/constants/labels";
-import { getApproachForCustomer } from "@/lib/data/approaches";
-import { listApproachHistory } from "@/lib/data/approaches";
-import { listCompanyNews } from "@/lib/data/messages";
+import { getApproachForCustomer, listApproachHistory, resolveApproach } from "@/lib/data/approaches";
 import { useMockQuery } from "@/lib/hooks/use-mock-db";
-import { formatDateDot, formatDateTime } from "@/lib/utils/date";
+import { formatDateTime } from "@/lib/utils/date";
 
 export function ApproachesTab({
   customerId,
-  onComposeMessage,
+  customerName,
 }: {
   customerId: string;
-  /** 根拠を持ったままメッセージ作成へ渡す。ここが切れると下書きの材料が失われる */
-  onComposeMessage: (approachTaskId: string) => void;
+  customerName: string;
 }) {
   const currentLoader = useCallback(() => getApproachForCustomer(customerId), [customerId]);
   const { data: current, loading } = useMockQuery(currentLoader, [customerId]);
@@ -26,8 +24,19 @@ export function ApproachesTab({
   const historyLoader = useCallback(() => listApproachHistory(customerId), [customerId]);
   const { data: history } = useMockQuery(historyLoader, [customerId]);
 
-  const newsLoader = useCallback(() => listCompanyNews(customerId), [customerId]);
-  const { data: news } = useMockQuery(newsLoader, [customerId]);
+  const handleDone = async () => {
+    await resolveApproach(customerId, "done");
+    toast.success(`${customerName}様を対応済みにしました`, {
+      description: "最終接触日を更新しました。",
+    });
+  };
+
+  const handleSkip = async () => {
+    await resolveApproach(customerId, "skipped");
+    toast.success("今回の通知を閉じました", {
+      description: "次の節目や来年の記念日が来れば、また出ます。",
+    });
+  };
 
   const nothing = !loading && !current && (!history || history.length === 0);
   if (nothing) {
@@ -46,33 +55,32 @@ export function ApproachesTab({
                   {TRIGGER_LABEL[t]}
                 </span>
               ))}
-              {current.status !== "open" && (
-                <span className="rounded-sm border border-border px-1.5 py-0.5 text-xs text-muted-foreground">
-                  {current.status === "snoozed"
-                    ? `${formatDateDot(current.snoozedUntil)}まで見送り`
-                    : "対象外"}
-                </span>
-              )}
             </div>
 
             <ul className="mt-2.5 flex flex-col gap-1.5">
               {current.hits.map((hit) => (
-                <li key={hit.type} className="border-l-2 border-brand/30 pl-3">
+                <li key={hit.key} className="border-l-2 border-brand/30 pl-3">
                   <p className="text-sm leading-relaxed">{hit.reason}</p>
                 </li>
               ))}
             </ul>
 
-            {current.status === "open" && (
-              <Button
-                size="sm"
-                className="mt-3 h-10 gap-1.5"
-                onClick={() => onComposeMessage(current.id)}
-              >
-                <MessageSquarePlus className="size-4" />
-                メッセージを作成
+            {/* 連絡は個人 LINE から手で行う。ここでやるのはその結果を残すことだけ */}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Button size="sm" className="h-10 gap-1.5" onClick={handleDone}>
+                <Check className="size-4" />
+                連絡した
               </Button>
-            )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-10 gap-1.5 text-muted-foreground"
+                onClick={handleSkip}
+              >
+                <SkipForward className="size-4" />
+                スキップ
+              </Button>
+            </div>
           </div>
         </section>
       )}
@@ -89,49 +97,13 @@ export function ApproachesTab({
                 <span className="tnum w-24 shrink-0 font-mono text-sm text-muted-foreground">
                   {formatDateTime(task.resolvedAt)}
                 </span>
-                <span className="flex flex-wrap gap-1">
-                  {task.triggerTypes.map((t) => (
-                    <span key={t} className="rounded-sm bg-muted px-1.5 text-xs text-muted-foreground">
-                      {TRIGGER_LABEL[t]}
-                    </span>
-                  ))}
+                <span className="rounded-sm bg-muted px-1.5 text-xs text-muted-foreground">
+                  {TRIGGER_LABEL[task.triggerType]}
                 </span>
                 <span className="min-w-0 flex-1 text-sm text-muted-foreground">{task.reason}</span>
                 <span className="shrink-0 text-xs text-muted-foreground">
                   {APPROACH_STATUS_LABEL[task.status]}
                 </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {news && news.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <span className="field-label">収集された企業ニュース</span>
-          <ul className="flex flex-col gap-2">
-            {news.map((item) => (
-              <li key={item.id} className="rounded-md border border-border bg-card p-3.5">
-                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                  <a
-                    href={item.sourceUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-1 text-sm font-medium text-brand hover:underline"
-                  >
-                    {item.title}
-                    <ExternalLink className="size-3" />
-                  </a>
-                  <span className="tnum font-mono text-xs text-muted-foreground">
-                    {formatDateDot(item.publishedAt)}
-                  </span>
-                  <span className="tnum ml-auto font-mono text-xs text-muted-foreground">
-                    活用度 {item.usabilityScore}
-                  </span>
-                </div>
-                <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                  {item.aiSummary}
-                </p>
               </li>
             ))}
           </ul>

@@ -5,8 +5,6 @@ import type {
   FabricPattern,
   FabricSeason,
   MeasurementInputMethod,
-  MessageChannel,
-  MessagePoliteness,
   OrderPurpose,
   OrderStatus,
   StaffRole,
@@ -67,25 +65,14 @@ export const FABRIC_SEASON_LABEL: Record<FabricSeason, string> = {
   all_season: "オールシーズン",
 };
 
-export const MESSAGE_CHANNEL_LABEL: Record<MessageChannel, string> = {
-  line: "LINE",
-  phone: "電話",
-  visit: "来店",
-  email: "メール",
-};
-
 export const TRIGGER_LABEL: Record<TriggerType, string> = {
   post_delivery: "納品後フォロー",
   anniversary: "記念日",
-  season: "季節",
-  company_news: "企業ニュース",
 };
 
 export const APPROACH_STATUS_LABEL: Record<ApproachStatus, string> = {
-  open: "未対応",
-  done: "対応済",
-  snoozed: "スヌーズ",
-  dismissed: "対象外",
+  done: "連絡した",
+  skipped: "スキップ",
 };
 
 export const INPUT_METHOD_LABEL: Record<MeasurementInputMethod, string> = {
@@ -94,14 +81,9 @@ export const INPUT_METHOD_LABEL: Record<MeasurementInputMethod, string> = {
   ocr: "OCR取り込み",
 };
 
-export const POLITENESS_LABEL: Record<MessagePoliteness, string> = {
-  formal: "かしこまった",
-  standard: "標準",
-  casual: "くだけた",
-};
-
 /*
- * トリガーの閾値・入荷期・アイテム価格は、設定として店舗が変えられるようにしたため
+ * 記念日の予告日数とアイテム価格は、設定として店舗が変えられるようにしたため
  * ここには置かない。既定値は lib/constants/settings-defaults.ts、
  * 実際に効く値は lib/data/settings.ts の getSettings() から読む。
+ * 納品後フォローの節目は確定しているので lib/constants/approach.ts にある。
  */

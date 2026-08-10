@@ -15,6 +15,19 @@ export function addDays(date: Date, days: number): Date {
   return next;
 }
 
+/**
+ * n ヶ月後の同日。
+ *
+ * 8/31 の半年後のように同日が存在しない月は、その月の末日へ丸める
+ * （setMonth は翌月へ繰り上がってしまい、「半年後」が 7 ヶ月後になるため）。
+ */
+export function addMonths(date: Date, months: number): Date {
+  const y = date.getFullYear();
+  const m = date.getMonth() + months;
+  const lastDay = new Date(y, m + 1, 0).getDate();
+  return new Date(y, m, Math.min(date.getDate(), lastDay));
+}
+
 /** n 日前の日付を ISO で返す */
 export function daysAgo(days: number, from: Date = new Date()): IsoDate {
   return toIsoDate(addDays(from, -days));

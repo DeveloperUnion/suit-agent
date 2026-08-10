@@ -2,7 +2,6 @@
 
 import { PageHeader } from "@/components/common/page-header";
 import { MasterSettings } from "@/components/settings/master-settings";
-import { MessageSettings } from "@/components/settings/message-settings";
 import { RevenueTargetSettings } from "@/components/settings/revenue-target-settings";
 import { StaffSettings } from "@/components/settings/staff-settings";
 import { TriggerSettings } from "@/components/settings/trigger-settings";
@@ -14,7 +13,6 @@ const TABS = [
   { value: "targets", label: "売上目標" },
   { value: "staff", label: "スタッフ" },
   { value: "masters", label: "マスタ" },
-  { value: "messages", label: "メッセージ" },
 ];
 
 export function SettingsView({ initialTab }: { initialTab?: string }) {
@@ -47,9 +45,6 @@ export function SettingsView({ initialTab }: { initialTab?: string }) {
         </TabsContent>
         <TabsContent value="masters">
           <MasterSettings />
-        </TabsContent>
-        <TabsContent value="messages">
-          <MessageSettings />
         </TabsContent>
       </Tabs>
     </div>

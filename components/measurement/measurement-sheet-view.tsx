@@ -257,7 +257,7 @@ export function MeasurementSheetView({
                       className={cn(
                         "min-h-11 flex-1 rounded-sm border text-sm transition-colors",
                         tab === key
-                          ? "border-brand bg-brand text-primary-foreground"
+                          ? "border-brand-fill bg-brand-fill text-primary-foreground"
                           : "border-border bg-card text-muted-foreground",
                       )}
                     >

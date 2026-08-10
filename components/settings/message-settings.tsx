@@ -50,7 +50,7 @@ export function MessageSettings() {
                     className={cn(
                       "min-h-11 rounded-sm border px-3 text-sm transition-colors",
                       v.politeness === level
-                        ? "border-brand bg-brand text-primary-foreground"
+                        ? "border-brand-fill bg-brand-fill text-primary-foreground"
                         : "border-border bg-card text-muted-foreground hover:border-brand/40",
                     )}
                   >

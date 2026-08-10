@@ -184,7 +184,7 @@ export function TriggerSettings() {
                           className={cn(
                             "tnum min-h-9 w-10 rounded-sm border font-mono text-sm transition-colors",
                             on
-                              ? "border-brand bg-brand text-primary-foreground"
+                              ? "border-brand-fill bg-brand-fill text-primary-foreground"
                               : "border-border bg-card text-muted-foreground hover:border-brand/40",
                           )}
                         >

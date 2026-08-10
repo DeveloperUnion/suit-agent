@@ -13,9 +13,6 @@ import { cn } from "@/lib/utils";
  */
 export function RevenueChart({ points }: { points: MonthlyRevenuePoint[] }) {
   const max = Math.max(1, ...points.flatMap((p) => [p.revenue, p.target ?? 0]));
-  const achieved = points.filter(
-    (p) => !p.isCurrent && p.target !== null && p.revenue >= p.target,
-  ).length;
   const closedWithTarget = points.filter((p) => !p.isCurrent && p.target !== null).length;
 
   return (
@@ -37,7 +34,7 @@ export function RevenueChart({ points }: { points: MonthlyRevenuePoint[] }) {
               <span
                 className={cn(
                   "absolute bottom-0 w-full rounded-t-[3px]",
-                  point.isCurrent ? "bg-brand/45" : "bg-brand",
+                  point.isCurrent ? "bg-brand-fill/45" : "bg-brand-fill",
                 )}
                 style={{
                   height: `${Math.max(point.revenue === 0 ? 0 : 2, (point.revenue / max) * 100)}%`,
@@ -63,24 +60,13 @@ export function RevenueChart({ points }: { points: MonthlyRevenuePoint[] }) {
         ))}
       </div>
 
+      {/* 図から読めることは書かない。破線と当月の扱いだけ、図では言えないので注記する */}
       <footer className="flex flex-col gap-1 border-t border-border pt-3">
-        <p className="text-sm text-muted-foreground">
-          {closedWithTarget === 0 ? (
-            "目標を登録すると、各月に破線で表示されます。"
-          ) : (
-            <>
-              締まった
-              <span className="tnum mx-1 font-mono font-medium text-foreground">
-                {closedWithTarget}ヶ月
-              </span>
-              のうち、目標を達成したのは
-              <span className="tnum mx-1 font-mono font-medium text-foreground">
-                {achieved}ヶ月
-              </span>
-              です。
-            </>
-          )}
-        </p>
+        {closedWithTarget === 0 && (
+          <p className="text-sm text-muted-foreground">
+            目標を登録すると、各月に破線で表示されます。
+          </p>
+        )}
         <p className="text-xs text-muted-foreground">
           いちばん右は当月で、まだ途中の数字です。
         </p>

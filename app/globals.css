@@ -17,6 +17,7 @@
   --color-paper: var(--paper);
   --color-ink: var(--ink);
   --color-brand: var(--brand);
+  --color-brand-fill: var(--brand-fill);
   --color-rule: var(--rule);
   --color-measure: var(--measure);
   --color-chalk: var(--chalk);
@@ -64,7 +65,11 @@
   /* ── 素材 ───────────────────────────────────
      paper   製図紙。紫みを含んだ白（クリームではない）
      ink     バイオレットブラック。本文と数値
-     brand   深い紫 — このプロダクトの色。プライマリ
+     brand   深い紫 — このプロダクトの色。プライマリ。
+             読ませるものに使う — 見出し・リンク・帳票の罫線
+     brand-fill 塗る面の紫。チャート・バー・吹き出し・選択中のチップ。
+             面を brand の濃さで塗ると、同じ濃さのサイドバーと差がつかず
+             画面が紫の塊になる。塗りだけ1段明るい紫に逃がす
      rule    細罫。紙の帳票の区切り線
      measure メジャーの目盛りグレー。ラベル・補助情報
      chalk   青チャコ。減少方向・情報
@@ -73,6 +78,7 @@
   --paper: #f3f2f7;
   --ink: #1b1626;
   --brand: #331e6d;
+  --brand-fill: #5b47a8;
   --rule: #e0dee7;
   --measure: #6f6a83;
   --chalk: #2a6098;
@@ -96,7 +102,7 @@
   --border: var(--rule);
   --input: #cbc6da;
   --ring: var(--brand);
-  --chart-1: var(--brand);
+  --chart-1: var(--brand-fill);
   --chart-2: var(--chalk);
   --chart-3: var(--measure);
   --chart-4: var(--thread);
@@ -117,6 +123,8 @@
   --paper: #16121d;
   --ink: #e8e5ef;
   --brand: #a294cf;
+  /* 暗い面ではこの明るさが既に塗りとして働くため、brand と同値でよい */
+  --brand-fill: #a294cf;
   --rule: #2f2940;
   --measure: #918aa3;
   --chalk: #6aa3d8;

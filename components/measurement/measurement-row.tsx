@@ -116,7 +116,7 @@ function ValueCell({
       }}
       className={cn(
         "tnum h-9 w-full rounded-sm border border-input bg-card px-1.5 text-right font-mono text-sm",
-        "focus:border-navy focus:outline-none focus:ring-1 focus:ring-navy/30",
+        "focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand/30",
         emphasis && "font-medium",
       )}
     />

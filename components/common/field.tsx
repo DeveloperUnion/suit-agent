@@ -33,7 +33,7 @@ export function Field({
 export function SectionTitle({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={cn("flex items-center gap-2 border-b border-border pb-1.5", className)}>
-      <span className="h-3 w-0.5 shrink-0 bg-navy" />
+      <span className="h-3 w-0.5 shrink-0 bg-brand" />
       <h3 className="font-heading text-sm font-medium tracking-wide">{children}</h3>
     </div>
   );

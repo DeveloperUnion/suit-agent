@@ -83,7 +83,7 @@ export function DashboardView() {
           <h2 className="font-heading text-sm font-medium tracking-wide">本日のアプローチ</h2>
           <Link
             href="/approaches"
-            className="flex items-center gap-1 text-sm text-navy hover:underline"
+            className="flex items-center gap-1 text-sm text-brand hover:underline"
           >
             すべて見る
             <ChevronRight className="size-4" />
@@ -111,7 +111,7 @@ export function DashboardView() {
                   </span>
                   <span className="flex flex-wrap gap-1">
                     {item.triggerTypes.map((t) => (
-                      <span key={t} className="rounded-sm bg-navy/10 px-1.5 text-xs text-navy">
+                      <span key={t} className="rounded-sm bg-brand/10 px-1.5 text-xs text-brand">
                         {TRIGGER_LABEL[t]}
                       </span>
                     ))}
@@ -164,7 +164,7 @@ function Stat({
 
   const className = cn(
     "flex min-h-24 flex-col justify-center gap-1.5 rounded-md border border-border bg-card p-4",
-    href && "transition-colors hover:border-navy/40 hover:bg-accent/30",
+    href && "transition-colors hover:border-brand/40 hover:bg-accent/30",
   );
 
   return href ? (

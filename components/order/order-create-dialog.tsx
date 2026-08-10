@@ -176,7 +176,7 @@ export function OrderCreateDialog({
                       onOpenChange(false);
                       onOpenMeasurement();
                     }}
-                    className="mx-1 text-navy underline underline-offset-2"
+                    className="mx-1 text-brand underline underline-offset-2"
                   >
                     新しく採寸する
                   </button>
@@ -282,9 +282,9 @@ export function OrderCreateDialog({
                             [type]: { ...s[type], selected: e.target.checked },
                           }))
                         }
-                        className="size-4 accent-[var(--navy)]"
+                        className="size-4 accent-[var(--brand)]"
                       />
-                      <span className="font-heading text-sm font-semibold uppercase tracking-[0.1em] text-navy">
+                      <span className="font-heading text-sm font-semibold uppercase tracking-[0.1em] text-brand">
                         {ITEM_TYPE_MAP[type].sheetLabel}
                       </span>
                       <span className="text-sm text-muted-foreground">
@@ -416,7 +416,7 @@ function Step({
   return (
     <section className="flex flex-col gap-2">
       <div className="flex flex-wrap items-baseline gap-2 border-b border-border pb-1.5">
-        <span className="tnum font-mono text-sm text-navy">{number}</span>
+        <span className="tnum font-mono text-sm text-brand">{number}</span>
         <h3 className="font-heading text-sm font-medium tracking-wide">{title}</h3>
         {note && <span className="text-xs text-muted-foreground">{note}</span>}
       </div>

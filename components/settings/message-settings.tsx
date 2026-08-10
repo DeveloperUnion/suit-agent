@@ -50,8 +50,8 @@ export function MessageSettings() {
                     className={cn(
                       "min-h-11 rounded-sm border px-3 text-sm transition-colors",
                       v.politeness === level
-                        ? "border-navy bg-navy text-primary-foreground"
-                        : "border-border bg-card text-muted-foreground hover:border-navy/40",
+                        ? "border-brand bg-brand text-primary-foreground"
+                        : "border-border bg-card text-muted-foreground hover:border-brand/40",
                     )}
                   >
                     {POLITENESS_LABEL[level]}
@@ -76,7 +76,7 @@ export function MessageSettings() {
                   type="checkbox"
                   checked={v.allowEmoji}
                   onChange={(e) => set({ allowEmoji: e.target.checked })}
-                  className="size-4 accent-[var(--navy)]"
+                  className="size-4 accent-[var(--brand)]"
                 />
                 季節に合う絵文字を末尾に添える
               </label>
@@ -130,7 +130,7 @@ export function MessageSettings() {
 
         <section className="flex flex-col gap-1">
           <div className="flex items-center gap-2 border-b border-border pb-1.5">
-            <span className="h-3 w-0.5 shrink-0 bg-navy" />
+            <span className="h-3 w-0.5 shrink-0 bg-brand" />
             <h3 className="flex-1 font-heading text-sm font-medium tracking-wide">
               生成しない内容
             </h3>
@@ -150,7 +150,7 @@ export function MessageSettings() {
         <button
           type="button"
           onClick={() => setPreviewOpen((v) => !v)}
-          className="flex w-fit items-center gap-1 text-sm text-navy hover:underline"
+          className="flex w-fit items-center gap-1 text-sm text-brand hover:underline"
         >
           {previewOpen ? "プレビューを閉じる" : "いまの設定で下書きを確認する"}
         </button>
@@ -185,7 +185,7 @@ function DraftPreview() {
       <div className="grid gap-2 lg:grid-cols-3">
         {data.drafts.map((draft) => (
           <div key={draft.id} className="flex flex-col gap-1.5 rounded-sm border border-border p-2.5">
-            <span className="field-label text-navy">{draft.angle}</span>
+            <span className="field-label text-brand">{draft.angle}</span>
             <span className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
               {draft.body}
             </span>

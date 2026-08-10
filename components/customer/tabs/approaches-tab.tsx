@@ -42,7 +42,7 @@ export function ApproachesTab({
           <div className="rounded-md border border-border bg-card p-4">
             <div className="flex flex-wrap items-center gap-2">
               {current.triggerTypes.map((t) => (
-                <span key={t} className="rounded-sm bg-navy/10 px-1.5 py-0.5 text-xs text-navy">
+                <span key={t} className="rounded-sm bg-brand/10 px-1.5 py-0.5 text-xs text-brand">
                   {TRIGGER_LABEL[t]}
                 </span>
               ))}
@@ -57,7 +57,7 @@ export function ApproachesTab({
 
             <ul className="mt-2.5 flex flex-col gap-1.5">
               {current.hits.map((hit) => (
-                <li key={hit.type} className="border-l-2 border-navy/30 pl-3">
+                <li key={hit.type} className="border-l-2 border-brand/30 pl-3">
                   <p className="text-sm leading-relaxed">{hit.reason}</p>
                 </li>
               ))}
@@ -117,7 +117,7 @@ export function ApproachesTab({
                     href={item.sourceUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center gap-1 text-sm font-medium text-navy hover:underline"
+                    className="flex items-center gap-1 text-sm font-medium text-brand hover:underline"
                   >
                     {item.title}
                     <ExternalLink className="size-3" />

@@ -28,8 +28,8 @@ export function MeasurementSection({
 }) {
   return (
     <section className={cn("flex flex-col", className)}>
-      <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b-2 border-navy/25 pb-1.5">
-        <h3 className="font-heading text-sm font-semibold uppercase tracking-[0.1em] text-navy">
+      <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b-2 border-brand/25 pb-1.5">
+        <h3 className="font-heading text-sm font-semibold uppercase tracking-[0.1em] text-brand">
           {section.itemType.sheetLabel}
         </h3>
         <span className="text-xs text-muted-foreground">{section.itemType.name}</span>

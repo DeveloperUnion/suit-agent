@@ -50,7 +50,7 @@ export function MeasurementTab({
           <button
             type="button"
             onClick={onOpenSheet}
-            className="flex min-h-11 items-center gap-1 text-sm text-navy hover:underline"
+            className="flex min-h-11 items-center gap-1 text-sm text-brand hover:underline"
           >
             採寸票を開く
             <ChevronRight className="size-4" />
@@ -61,7 +61,7 @@ export function MeasurementTab({
           {sections.map((section) => (
             <div key={section.itemType.id} className="flex flex-col rounded-md border border-border bg-card p-3">
               <div className="flex items-baseline gap-2 border-b border-border pb-1.5">
-                <span className="font-heading text-xs font-semibold uppercase tracking-[0.1em] text-navy">
+                <span className="font-heading text-xs font-semibold uppercase tracking-[0.1em] text-brand">
                   {section.itemType.sheetLabel}
                 </span>
                 {section.silhouette && (
@@ -169,7 +169,7 @@ export function MeasurementTab({
                   補正 {sheet.adjustments.length}
                 </span>
                 {i === 0 && (
-                  <span className="shrink-0 rounded-sm bg-navy/10 px-1.5 py-0.5 text-xs text-navy">
+                  <span className="shrink-0 rounded-sm bg-brand/10 px-1.5 py-0.5 text-xs text-brand">
                     最新
                   </span>
                 )}

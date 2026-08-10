@@ -46,13 +46,13 @@ export function EditableSection<T>({
   return (
     <section className={cn("flex flex-col gap-1", className)}>
       <div className="flex items-center gap-2 border-b border-border pb-1.5">
-        <span className="h-3 w-0.5 shrink-0 bg-navy" />
+        <span className="h-3 w-0.5 shrink-0 bg-brand" />
         <h3 className="flex-1 font-heading text-sm font-medium tracking-wide">{title}</h3>
         {draft === null && (
           <button
             type="button"
             onClick={() => setDraft(initial())}
-            className="flex min-h-8 items-center gap-1 rounded-sm px-1.5 text-xs text-muted-foreground transition-colors hover:text-navy"
+            className="flex min-h-8 items-center gap-1 rounded-sm px-1.5 text-xs text-muted-foreground transition-colors hover:text-brand"
             aria-label={`${title}を編集`}
           >
             <Pencil className="size-3" />

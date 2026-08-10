@@ -16,7 +16,7 @@
   /* 素材トークン — テーラーの製図台から */
   --color-paper: var(--paper);
   --color-ink: var(--ink);
-  --color-navy: var(--navy);
+  --color-brand: var(--brand);
   --color-rule: var(--rule);
   --color-measure: var(--measure);
   --color-chalk: var(--chalk);
@@ -62,19 +62,19 @@
 
 :root {
   /* ── 素材 ───────────────────────────────────
-     paper   製図紙。青みを含んだ白（クリームではない）
-     ink     ネイビーブラック。本文と数値
-     navy    紺 — スーツそのものの色。プライマリ
+     paper   製図紙。紫みを含んだ白（クリームではない）
+     ink     バイオレットブラック。本文と数値
+     brand   深い紫 — このプロダクトの色。プライマリ
      rule    細罫。紙の帳票の区切り線
      measure メジャーの目盛りグレー。ラベル・補助情報
      chalk   青チャコ。減少方向・情報
      thread  しつけ糸。警告・増加方向・重要顧客 — 唯一の暖色
   */
-  --paper: #f1f4f6;
-  --ink: #16202b;
-  --navy: #26364f;
-  --rule: #dbe0e4;
-  --measure: #6f7a85;
+  --paper: #f3f2f7;
+  --ink: #1b1626;
+  --brand: #331e6d;
+  --rule: #e0dee7;
+  --measure: #6f6a83;
   --chalk: #2a6098;
   --thread: #a83b2a;
 
@@ -84,19 +84,19 @@
   --card-foreground: var(--ink);
   --popover: #ffffff;
   --popover-foreground: var(--ink);
-  --primary: var(--navy);
-  --primary-foreground: #f6f8fa;
-  --secondary: #e3e8eb;
-  --secondary-foreground: var(--navy);
-  --muted: #e7ebee;
+  --primary: var(--brand);
+  --primary-foreground: #f6f5fa;
+  --secondary: #e6e3ee;
+  --secondary-foreground: var(--brand);
+  --muted: #eae7f1;
   --muted-foreground: var(--measure);
-  --accent: #dfe6ec;
-  --accent-foreground: var(--navy);
+  --accent: #e3dfec;
+  --accent-foreground: var(--brand);
   --destructive: var(--thread);
   --border: var(--rule);
-  --input: #c9d1d7;
-  --ring: var(--navy);
-  --chart-1: var(--navy);
+  --input: #cbc6da;
+  --ring: var(--brand);
+  --chart-1: var(--brand);
   --chart-2: var(--chalk);
   --chart-3: var(--measure);
   --chart-4: var(--thread);
@@ -105,69 +105,69 @@
 
   /* 経過日数の順序ランプ。1色相 light→dark、放置が長いほど濃い。
      dataviz の validate_palette.js で --ordinal 検証済み（ライト面）*/
-  --recency-1: #8fb8d8;
-  --recency-2: #5f95c4;
-  --recency-3: #376ea6;
-  --recency-4: #17497a;
+  --recency-1: #b3a4d6;
+  --recency-2: #8c78bd;
+  --recency-3: #654f9b;
+  --recency-4: #3f2a76;
 
-  --sidebar: #1c2839;
-  --sidebar-foreground: #c3ccd6;
-  --sidebar-primary: #f6f8fa;
-  --sidebar-primary-foreground: var(--navy);
-  --sidebar-accent: #2a3a4f;
+  --sidebar: #211a35;
+  --sidebar-foreground: #c6c0d4;
+  --sidebar-primary: #f6f5fa;
+  --sidebar-primary-foreground: var(--brand);
+  --sidebar-accent: #2f2747;
   --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #2b3a4e;
-  --sidebar-ring: #5d7a9c;
+  --sidebar-border: #302747;
+  --sidebar-ring: #6f5fa0;
 }
 
 .dark {
-  --paper: #131a22;
-  --ink: #e6ebef;
-  --navy: #8fa8c9;
-  --rule: #2a3542;
-  --measure: #8d99a5;
+  --paper: #16121d;
+  --ink: #e8e5ef;
+  --brand: #a294cf;
+  --rule: #2f2940;
+  --measure: #918aa3;
   --chalk: #6aa3d8;
   --thread: #d9705c;
 
   --background: var(--paper);
   --foreground: var(--ink);
-  --card: #1a232d;
+  --card: #1d1828;
   --card-foreground: var(--ink);
-  --popover: #1a232d;
+  --popover: #1d1828;
   --popover-foreground: var(--ink);
-  --primary: #c8d6e8;
-  --primary-foreground: #16202b;
-  --secondary: #232e3a;
+  --primary: #cfc6e6;
+  --primary-foreground: #1b1626;
+  --secondary: #272134;
   --secondary-foreground: var(--ink);
-  --muted: #212b36;
+  --muted: #241f30;
   --muted-foreground: var(--measure);
-  --accent: #26323f;
+  --accent: #2a2438;
   --accent-foreground: var(--ink);
   --destructive: var(--thread);
   --border: var(--rule);
-  --input: #34404e;
-  --ring: #7f97b5;
-  --chart-1: #8fa8c9;
+  --input: #3a3350;
+  --ring: #8b7cba;
+  --chart-1: #a294cf;
   --chart-2: #6aa3d8;
-  --chart-3: #8d99a5;
+  --chart-3: #918aa3;
   --chart-4: #d9705c;
-  --chart-5: #5f6b78;
+  --chart-5: #63596f;
 
   /* 暗い面では明るいほど手前に出るため、ランプの向きを入れ替える。
      こちらも --ordinal で検証済み */
-  --recency-1: #2b5b86;
-  --recency-2: #3f7bad;
-  --recency-3: #6ba0cb;
-  --recency-4: #9cc3e0;
+  --recency-1: #54428d;
+  --recency-2: #6f5cae;
+  --recency-3: #9080c4;
+  --recency-4: #b1a4da;
 
-  --sidebar: #101720;
-  --sidebar-foreground: #a8b4c1;
-  --sidebar-primary: #e6ebef;
-  --sidebar-primary-foreground: #101720;
-  --sidebar-accent: #1e2937;
+  --sidebar: #100d18;
+  --sidebar-foreground: #aaa2bc;
+  --sidebar-primary: #e8e5ef;
+  --sidebar-primary-foreground: #100d18;
+  --sidebar-accent: #201a2e;
   --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #242f3d;
-  --sidebar-ring: #4a5a6d;
+  --sidebar-border: #262035;
+  --sidebar-ring: #514764;
 }
 
 @layer base {

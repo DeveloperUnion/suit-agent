@@ -145,7 +145,7 @@ export function BodySilhouette({
     >
       {/* 基準線 — 製図用紙の当たり。thumb では省く */}
       {!isThumb && (
-        <g stroke="currentColor" strokeWidth={0.9} strokeDasharray="4 5" className="text-navy/30">
+        <g stroke="currentColor" strokeWidth={0.9} strokeDasharray="4 5" className="text-brand/30">
           {GUIDE_LINES.map((line) => (
             <line key={line.y} x1={line.x1} y1={line.y} x2={line.x2} y2={line.y} />
           ))}
@@ -159,10 +159,10 @@ export function BodySilhouette({
         strokeWidth={isThumb ? 6 : 1.8}
         strokeLinecap="round"
         strokeLinejoin="round"
-        className={isThumb ? "text-navy/45" : "text-navy/70"}
+        className={isThumb ? "text-brand/45" : "text-brand/70"}
       >
-        <ellipse cx={100} cy={29} rx={16} ry={21} className="fill-navy/[0.06]" />
-        <path d={BODY_PATH} className="fill-navy/[0.06]" />
+        <ellipse cx={100} cy={29} rx={16} ry={21} className="fill-brand/[0.06]" />
+        <path d={BODY_PATH} className="fill-brand/[0.06]" />
       </g>
 
       {/* 補正マーク — 紙で補正コードを○で囲むのと同じ意味。番号を添えて何の丸か示す */}

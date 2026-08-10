@@ -146,7 +146,7 @@ export function MessagesTab({
                     "max-w-[min(34rem,88%)] whitespace-pre-wrap rounded-md px-3.5 py-2.5 text-sm leading-relaxed",
                     inbound
                       ? "rounded-tl-sm border border-border bg-card"
-                      : "rounded-tr-sm bg-navy text-primary-foreground",
+                      : "rounded-tr-sm bg-brand text-primary-foreground",
                   )}
                 >
                   {message.body}
@@ -164,12 +164,12 @@ export function MessagesTab({
       {/* ── 作成 ── */}
       <div className="sticky bottom-0 -mx-4 flex flex-col gap-2 border-t border-border bg-background/95 px-4 pb-4 pt-3 backdrop-blur sm:-mx-6 sm:px-6">
         {approach && (
-          <div className="flex items-start gap-2 rounded-md border border-navy/25 bg-accent/50 px-3 py-2">
+          <div className="flex items-start gap-2 rounded-md border border-brand/25 bg-accent/50 px-3 py-2">
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               <span className="flex flex-wrap items-center gap-1.5">
                 <span className="field-label">きっかけ</span>
                 {approach.triggerTypes.map((t) => (
-                  <span key={t} className="rounded-sm bg-navy/10 px-1.5 text-xs text-navy">
+                  <span key={t} className="rounded-sm bg-brand/10 px-1.5 text-xs text-brand">
                     {TRIGGER_LABEL[t]}
                   </span>
                 ))}
@@ -232,9 +232,9 @@ export function MessagesTab({
                     setUsedDraft(true);
                     setDrafts(null);
                   }}
-                  className="flex flex-col gap-1.5 rounded-sm border border-border p-2.5 text-left transition-colors hover:border-navy/40 hover:bg-accent/40"
+                  className="flex flex-col gap-1.5 rounded-sm border border-border p-2.5 text-left transition-colors hover:border-brand/40 hover:bg-accent/40"
                 >
-                  <span className="field-label text-navy">{draft.angle}</span>
+                  <span className="field-label text-brand">{draft.angle}</span>
                   <span className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
                     {draft.body}
                   </span>

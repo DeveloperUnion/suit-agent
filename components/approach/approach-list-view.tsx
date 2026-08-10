@@ -89,8 +89,8 @@ export function ApproachListView() {
             className={cn(
               "min-h-9 rounded-sm border px-3 text-sm transition-colors",
               trigger === f.value
-                ? "border-navy bg-navy text-primary-foreground"
-                : "border-border bg-card text-muted-foreground hover:border-navy/40",
+                ? "border-brand bg-brand text-primary-foreground"
+                : "border-border bg-card text-muted-foreground hover:border-brand/40",
             )}
           >
             {f.label}
@@ -101,7 +101,7 @@ export function ApproachListView() {
             type="checkbox"
             checked={showParked}
             onChange={(e) => setShowParked(e.target.checked)}
-            className="size-4 accent-[var(--navy)]"
+            className="size-4 accent-[var(--brand)]"
           />
           スヌーズ中・対象外も表示
         </label>
@@ -207,7 +207,7 @@ function ApproachRow({ item }: { item: ApproachItem }) {
       <ul className="mt-3 flex flex-col gap-1.5">
         {item.hits.map((hit) => (
           <li key={hit.type} className="flex items-start gap-2">
-            <span className="mt-0.5 shrink-0 rounded-sm bg-navy/10 px-1.5 py-0.5 text-xs text-navy">
+            <span className="mt-0.5 shrink-0 rounded-sm bg-brand/10 px-1.5 py-0.5 text-xs text-brand">
               {TRIGGER_LABEL[hit.type]}
             </span>
             <p className="min-w-0 flex-1 text-sm leading-relaxed">{hit.reason}</p>

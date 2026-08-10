@@ -115,7 +115,7 @@ export function OrdersTab({ customerId }: { customerId: string }) {
 
                     <div className="flex min-w-0 flex-1 flex-col gap-2">
                       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                        <span className="font-heading text-sm font-semibold uppercase tracking-[0.1em] text-navy">
+                        <span className="font-heading text-sm font-semibold uppercase tracking-[0.1em] text-brand">
                           {ITEM_TYPE_MAP[item.itemTypeId].sheetLabel}
                         </span>
                         {item.fabric && (

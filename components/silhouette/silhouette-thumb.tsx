@@ -31,7 +31,7 @@ export function SilhouetteThumb({
       onClick={onClick}
       className={cn(
         "group flex min-h-11 items-center gap-3 rounded-md border border-border bg-card px-3 py-2 text-left transition-colors",
-        "hover:border-navy/40 hover:bg-accent/40",
+        "hover:border-brand/40 hover:bg-accent/40",
         "focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
         className,
       )}
@@ -52,7 +52,7 @@ export function SilhouetteThumb({
             </span>
           </>
         ) : (
-          <span className="text-sm text-navy">採寸する</span>
+          <span className="text-sm text-brand">採寸する</span>
         )}
       </span>
     </button>

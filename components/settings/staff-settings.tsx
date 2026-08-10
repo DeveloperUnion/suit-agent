@@ -62,7 +62,7 @@ export function StaffSettings() {
               <span className="flex items-center gap-2 font-medium">
                 {s.name}
                 {s.isCurrent && (
-                  <span className="rounded-sm bg-navy/10 px-1.5 text-xs text-navy">ログイン中</span>
+                  <span className="rounded-sm bg-brand/10 px-1.5 text-xs text-brand">ログイン中</span>
                 )}
               </span>
               <span className="truncate text-xs text-muted-foreground">{s.email}</span>

@@ -561,7 +561,7 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
                     type="checkbox"
                     checked={v.isKeyAccount}
                     onChange={(e) => set({ isKeyAccount: e.target.checked })}
-                    className="size-4 accent-[var(--navy)]"
+                    className="size-4 accent-[var(--brand)]"
                   />
                   重要顧客にする（企業ニュースの巡回対象）
                 </label>

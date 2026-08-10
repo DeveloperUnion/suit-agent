@@ -76,7 +76,7 @@ export function CustomerDetailView({
         <p className="text-sm text-muted-foreground">
           このカルテは開けません。存在しないか、他のスタッフが担当している顧客です。
         </p>
-        <Link href="/customers" className="text-sm text-navy hover:underline">
+        <Link href="/customers" className="text-sm text-brand hover:underline">
           顧客一覧に戻る
         </Link>
       </div>

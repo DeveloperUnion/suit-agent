@@ -97,7 +97,7 @@ export function MeasurementSheetView({ customerId, customerName, open, onOpenCha
     <div className="flex flex-col items-center gap-3">
       <div
         className={cn(
-          "text-navy",
+          "text-brand",
           // iPad 縦ではシルエットが上に載るため、数値を押し下げないよう小さく保つ
           isPhone ? "h-28 w-14" : "h-52 w-26 lg:h-[26rem] lg:w-52",
         )}
@@ -179,7 +179,7 @@ export function MeasurementSheetView({ customerId, customerName, open, onOpenCha
           ) : !view ? (
             /* 一度も採寸していない顧客。ここが最初の採寸の入口になる */
             <div className="flex flex-col items-center gap-5 px-6 py-12 text-center">
-              <div className="h-52 w-26 text-navy">
+              <div className="h-52 w-26 text-brand">
                 <BodySilhouette animate={false} />
               </div>
               <div className="flex flex-col gap-1">
@@ -213,7 +213,7 @@ export function MeasurementSheetView({ customerId, customerName, open, onOpenCha
                       className={cn(
                         "min-h-11 flex-1 rounded-sm border text-sm transition-colors",
                         tab === key
-                          ? "border-navy bg-navy text-primary-foreground"
+                          ? "border-brand bg-brand text-primary-foreground"
                           : "border-border bg-card text-muted-foreground",
                       )}
                     >
@@ -348,7 +348,7 @@ export function MeasurementSheetView({ customerId, customerName, open, onOpenCha
 function SideHeading({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-2">
-      <span className="h-3 w-0.5 bg-navy" />
+      <span className="h-3 w-0.5 bg-brand" />
       <span className="font-heading text-sm font-medium tracking-wide">{label}</span>
     </div>
   );

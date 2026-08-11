@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { AlertTriangle, Search } from "lucide-react";
+import { AlertTriangle, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 
 import { FileDrop } from "@/components/common/file-drop";
+import { AmountFields, applyAmountChange } from "@/components/order/amount-fields";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,25 +25,30 @@ import { extractOrderSheet } from "@/lib/ai/extract-order-sheet";
 import { CONFIDENCE_WARN } from "@/lib/ai/extraction";
 import { ADJUSTMENT_MAP, MAX_ADJUSTMENTS } from "@/lib/constants/adjustments";
 import { ITEM_TYPE_MAP } from "@/lib/constants/measurement-fields";
-import { ORDER_PURPOSE_LABEL, FABRIC_PATTERN_LABEL } from "@/lib/constants/labels";
+import { ORDER_PURPOSE_LABEL } from "@/lib/constants/labels";
 import {
   buildImportPlan,
   commitOrderSheetImport,
   type ImportPlan,
   type ImportPlanSection,
+  type ResolvedImportPlan,
 } from "@/lib/data/order-sheet-import";
-import { listFabrics } from "@/lib/data/orders";
+import { createCustomer, findSimilarCustomers } from "@/lib/data/customers";
 import { useMockQuery } from "@/lib/hooks/use-mock-db";
+import type { OrderItemFabric } from "@/lib/data/orders";
 import type { OrderPurpose } from "@/lib/types";
-import { formatAmount, parseAmount } from "@/lib/utils/date";
+import { formatDateDot } from "@/lib/utils/date";
 import { cn } from "@/lib/utils";
 
 /**
- * 工場発注書の取り込み。
+ * 工場発注書の取り込み。注文と採寸の主動線。
  *
  * 読み取り → 確認 → 書き込み の 3 段。確認画面を飛ばさないのは、
- * 紙は上がり寸しか持たず、顧客も生地も文字列からの推測になるため。
+ * 紙は上がり寸しか持たず、顧客も文字列からの推測になるため。
  * 黙って書くと、誰も気づけない誤りがそのまま採寸履歴に残る。
+ *
+ * customerId を渡さずに開くと、確認画面の先頭で顧客を決めるステップが増える。
+ * 溜まった紙をまとめて処理する日は、先に顧客を開く順序のほうが不自然になるため。
  */
 export function OrderSheetImportDialog({
   customerId,
@@ -50,50 +56,82 @@ export function OrderSheetImportDialog({
   open,
   onOpenChange,
   onImported,
+  onOpenManual,
 }: {
-  customerId: string;
-  customerName: string;
+  /** 省略すると確認画面で顧客を選ぶ */
+  customerId?: string;
+  customerName?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** 取り込んだ採寸票を親が開けるようにする */
-  onImported: (sheetId: string) => void;
+  onImported: (sheetId: string, customerId: string) => void;
+  /** 紙が手元に無いときの逃げ道。顧客が決まっている画面からだけ渡す */
+  onOpenManual?: () => void;
 }) {
   const [phase, setPhase] = useState<"select" | "reading" | "confirm">("select");
   const [plan, setPlan] = useState<ImportPlan | null>(null);
   const [nameMismatchAccepted, setNameMismatchAccepted] = useState(false);
-  const [fabricKeyword, setFabricKeyword] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newKana, setNewKana] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const fabricsLoader = useCallback(() => listFabrics(fabricKeyword), [fabricKeyword]);
-  const { data: fabrics } = useMockQuery(fabricsLoader, [fabricKeyword]);
-
-  const allFabricsLoader = useCallback(() => listFabrics(), []);
-  const { data: allFabrics } = useMockQuery(allFabricsLoader, []);
-  const selectedFabric = allFabrics?.find((f) => f.id === plan?.fabricId);
+  // 顧客が決まっていない取り込みだけ、紙の氏名で候補を引く
+  const picking = customerId === undefined && plan !== null && plan.customerId === undefined;
+  const candidatesLoader = useCallback(
+    () => (picking ? findSimilarCustomers({ name: newName, nameKana: newKana }) : Promise.resolve([])),
+    [picking, newName, newKana],
+  );
+  const { data: candidates } = useMockQuery(candidatesLoader, [picking, newName, newKana]);
 
   const reset = () => {
     setPhase("select");
     setPlan(null);
     setNameMismatchAccepted(false);
-    setFabricKeyword("");
+    setNewName("");
+    setNewKana("");
   };
 
   const handleFile = async (file: File) => {
     setPhase("reading");
-    const extraction = await extractOrderSheet(file);
-    const next = buildImportPlan(extraction, {
-      customerId,
-      fabrics: await listFabrics(),
-    });
+    let extraction;
+    try {
+      extraction = await extractOrderSheet(file);
+    } catch (error) {
+      // 確認画面へは進めない。空の確認画面を見せると、読めたのか読めなかったのか分からない
+      setPhase("select");
+      toast.error("発注書を読み取れませんでした", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+      return;
+    }
+    const next = buildImportPlan(extraction, { customerId });
     setPlan(next);
-    setFabricKeyword(next.fabricId ? "" : (next.fabricHint ?? ""));
+    setNewName(next.paperCustomerName ?? "");
+    setNewKana(next.paperCustomerNameKana ?? "");
     setPhase("confirm");
   };
 
   const update = (patch: Partial<ImportPlan>) =>
     setPlan((current) => (current ? { ...current, ...patch } : current));
 
+  const updateFabric = (patch: Partial<OrderItemFabric>) =>
+    setPlan((current) => (current ? { ...current, fabric: { ...current.fabric, ...patch } } : current));
+
+  const updateAmount = (key: keyof ImportPlan["amounts"], value: number) =>
+    setPlan((current) =>
+      current ? { ...current, amounts: applyAmountChange(current.amounts, key, value) } : current,
+    );
+
+  const handlePickNew = async () => {
+    if (newName.trim() === "") return;
+    const id = await createCustomer({ name: newName.trim(), nameKana: newKana.trim() });
+    update({ customerId: id });
+    toast.success("顧客を登録しました", { description: "続けて発注書を取り込みます。" });
+  };
+
+  // 開いているカルテと紙の名前が食い違うのは、別の方の紙を出した可能性がある
   const nameMismatch =
+    customerName !== undefined &&
     plan?.paperCustomerName !== undefined &&
     normalize(plan.paperCustomerName) !== normalize(customerName);
 
@@ -102,22 +140,313 @@ export function OrderSheetImportDialog({
 
   const canSubmit =
     plan !== null &&
-    plan.fabricId !== undefined &&
+    plan.customerId !== undefined &&
     plan.sections.length > 0 &&
     (!nameMismatch || nameMismatchAccepted);
 
   const handleSubmit = async () => {
     if (!plan || !canSubmit) return;
     setSaving(true);
-    const { sheetId } = await commitOrderSheetImport(plan, getCurrentStaffId());
+    const resolved = plan as ResolvedImportPlan;
+    const { sheetId } = await commitOrderSheetImport(resolved, getCurrentStaffId());
     setSaving(false);
     onOpenChange(false);
     reset();
     toast.success("発注書を取り込みました", {
       description: "採寸票と注文を作成しました。実寸は空欄のままです。",
     });
-    onImported(sheetId);
+    onImported(sheetId, resolved.customerId);
   };
+
+  /* ── 確認画面のステップ。顧客を選ぶかどうかで本数が変わるので、番号は並びから振る ── */
+  const steps: { title: string; content: React.ReactNode }[] = [];
+
+  if (plan) {
+    if (customerId === undefined) {
+      steps.push({
+        title: "お客様",
+        content: (
+          <div className="flex flex-col gap-3">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="import-name">紙のお客様名</Label>
+                <Input
+                  id="import-name"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  className="h-11 bg-card"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="import-kana">フリガナ</Label>
+                <Input
+                  id="import-kana"
+                  value={newKana}
+                  onChange={(e) => setNewKana(e.target.value)}
+                  className="h-11 bg-card"
+                />
+              </div>
+            </div>
+
+            {plan.customerId ? (
+              <p className="text-sm">
+                取り込み先
+                <span className="ml-2 font-medium">{newName} 様</span>
+                <button
+                  type="button"
+                  onClick={() => update({ customerId: undefined })}
+                  className="ml-3 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                >
+                  選び直す
+                </button>
+              </p>
+            ) : (
+              <>
+                <span className="field-label">同じ方がいませんか</span>
+                {(candidates ?? []).length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    似た名前のお客様は見つかりませんでした。
+                  </p>
+                ) : (
+                  <ul className="flex max-h-48 flex-col overflow-y-auto rounded-md border border-border">
+                    {(candidates ?? []).map((candidate) => (
+                      <li key={candidate.id}>
+                        <button
+                          type="button"
+                          disabled={candidate.isOtherStaff}
+                          onClick={() => update({ customerId: candidate.id })}
+                          className="flex min-h-11 w-full flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b border-border/60 px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-accent/30 disabled:pointer-events-none disabled:opacity-60"
+                        >
+                          <span className="font-medium">{candidate.name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {candidate.nameKana}
+                          </span>
+                          {candidate.isOtherStaff ? (
+                            <span className="ml-auto text-xs text-muted-foreground">
+                              他のスタッフの担当
+                            </span>
+                          ) : (
+                            <span className="ml-auto text-xs text-muted-foreground">
+                              {candidate.lastDeliveredAt
+                                ? `最終納品 ${formatDateDot(candidate.lastDeliveredAt)}`
+                                : "納品履歴なし"}
+                            </span>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <Button
+                  variant="outline"
+                  className="h-11 gap-1.5 self-start"
+                  disabled={newName.trim() === ""}
+                  onClick={handlePickNew}
+                >
+                  <UserPlus className="size-4" />
+                  新しい顧客として登録する
+                </Button>
+              </>
+            )}
+          </div>
+        ),
+      });
+    }
+
+    steps.push({
+      title: "受注情報",
+      content: (
+        <>
+          <div className="grid gap-4 sm:grid-cols-4">
+            <DateField
+              id="import-ordered"
+              label="受注日"
+              value={plan.orderedAt}
+              onChange={(v) => update({ orderedAt: v, measuredAt: v })}
+            />
+            <DateField
+              id="import-due"
+              label="納期"
+              value={plan.dueDate ?? ""}
+              onChange={(v) => update({ dueDate: v || undefined })}
+            />
+            <DateField
+              id="import-delivered"
+              label="お渡し日"
+              value={plan.deliveredAt ?? ""}
+              onChange={(v) => update({ deliveredAt: v || undefined })}
+            />
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="import-purpose">用途</Label>
+              <Select
+                value={plan.purpose}
+                onValueChange={(v) => update({ purpose: v as OrderPurpose })}
+              >
+                <SelectTrigger id="import-purpose" className="h-11 bg-card">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(ORDER_PURPOSE_LABEL) as OrderPurpose[]).map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {ORDER_PURPOSE_LABEL[p]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* 生地はマスタを引かない。紙に書かれているものがそのまま正 */}
+          <div className="mt-4 grid gap-4 sm:grid-cols-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="import-fabric-no">原反NO</Label>
+              <Input
+                id="import-fabric-no"
+                value={plan.fabric.fabricProductNumber ?? ""}
+                onChange={(e) => updateFabric({ fabricProductNumber: e.target.value || undefined })}
+                className="h-11 bg-card font-mono"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="import-fabric-color-no">色番</Label>
+              <Input
+                id="import-fabric-color-no"
+                value={plan.fabric.fabricColorNumber ?? ""}
+                onChange={(e) => updateFabric({ fabricColorNumber: e.target.value || undefined })}
+                className="h-11 bg-card font-mono"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="import-fabric-color">色名</Label>
+              <Input
+                id="import-fabric-color"
+                value={plan.fabric.fabricColorName ?? ""}
+                onChange={(e) => updateFabric({ fabricColorName: e.target.value || undefined })}
+                placeholder="カーキ無地"
+                className="h-11 bg-card"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="import-fabric-composition">組成</Label>
+              <Input
+                id="import-fabric-composition"
+                value={plan.fabric.fabricComposition ?? ""}
+                onChange={(e) => updateFabric({ fabricComposition: e.target.value || undefined })}
+                className="h-11 bg-card"
+              />
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <AmountFields
+              idPrefix="import"
+              amounts={plan.amounts}
+              onChange={updateAmount}
+              hint={
+                plan.amountsFromPaper
+                  ? "紙の金額欄から読み取った額です。"
+                  : "紙の金額欄が空欄でした。紙を見ながら入れてください。"
+              }
+            />
+          </div>
+        </>
+      ),
+    });
+
+    steps.push({
+      title: "採寸（上がり寸のみ）",
+      content: (
+        <>
+          <div className="flex flex-col gap-4">
+            {plan.sections.map((section, i) => (
+              <ImportSectionTable
+                key={section.itemTypeId}
+                section={section}
+                onChange={(next) =>
+                  update({ sections: plan.sections.map((s, k) => (k === i ? next : s)) })
+                }
+              />
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            紙には上がり寸しか載りません。実寸は次の採寸時に測って入れてください。
+          </p>
+        </>
+      ),
+    });
+
+    steps.push({
+      title: "補正",
+      content: (
+        <>
+          <ul className="flex flex-col gap-1">
+            {plan.adjustments.map((adjustment) => (
+              <li
+                key={adjustment.code}
+                className="flex min-h-9 flex-wrap items-baseline gap-x-3 gap-y-1"
+              >
+                <span className="tnum w-8 shrink-0 font-mono text-sm text-muted-foreground">
+                  {adjustment.code}
+                </span>
+                <span className="text-sm">{adjustment.label}</span>
+                <span className="tnum font-mono text-sm">
+                  {adjustment.value === 0 ? "—" : adjustment.value}
+                </span>
+                {adjustment.unknown && (
+                  <span className="ml-auto text-xs text-thread">
+                    未登録のため取り込みません（備考へ回します）
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-muted-foreground">
+            上半身 {upperCount}/{MAX_ADJUSTMENTS.upper}・下半身 {lowerCount}/
+            {MAX_ADJUSTMENTS.lower}
+          </p>
+          {(upperCount > MAX_ADJUSTMENTS.upper || lowerCount > MAX_ADJUSTMENTS.lower) && (
+            <p className="mt-1 text-xs text-thread">
+              紙の上限を超えています。取り込んだあと採寸票で整理してください。
+            </p>
+          )}
+        </>
+      ),
+    });
+
+    steps.push({
+      title: "備考",
+      content: (
+        <>
+          <Textarea
+            value={plan.note}
+            onChange={(e) => update({ note: e.target.value })}
+            rows={5}
+            className="bg-card"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            販売店・フィッター・裏地など、項目として持っていない情報をここに残しています。
+          </p>
+        </>
+      ),
+    });
+
+    if (plan.embroideryName) {
+      steps.push({
+        title: "顧客カルテ",
+        content: (
+          <label className="flex min-h-11 cursor-pointer items-center gap-2.5 text-sm">
+            <input
+              type="checkbox"
+              checked={plan.updateEmbroideryName}
+              onChange={(e) => update({ updateEmbroideryName: e.target.checked })}
+              className="size-4 accent-[var(--brand)]"
+            />
+            ネーム刺繍「{plan.embroideryName}」をカルテに保存する
+          </label>
+        ),
+      });
+    }
+  }
 
   return (
     <Dialog
@@ -131,7 +460,7 @@ export function OrderSheetImportDialog({
         <DialogHeader className="shrink-0 space-y-0 border-b border-border px-4 py-3 text-left sm:px-6">
           <span className="field-label">Order Sheet</span>
           <DialogTitle className="font-heading text-base font-medium sm:text-lg">
-            発注書を取り込む — {customerName} 様
+            発注書を取り込む{customerName ? ` — ${customerName} 様` : ""}
           </DialogTitle>
           <DialogDescription className="sr-only">
             工場発注書を読み取り、内容を確認してから採寸票と注文を作成します。
@@ -140,12 +469,29 @@ export function OrderSheetImportDialog({
 
         <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto p-4 sm:p-6">
           {phase === "select" && (
-            <FileDrop
-              accept="image/*,application/pdf"
-              onFile={handleFile}
-              label="工場発注書（PDF・画像）をここにドロップ"
-              hint="受注日・寸法・補正・生地・備考を読み取ります。紙は上がり寸のみのため、実寸欄は空のままになります。"
-            />
+            <div className="flex flex-col gap-3">
+              <FileDrop
+                accept="image/*,application/pdf"
+                onFile={handleFile}
+                label="工場発注書（PDF・画像）をここにドロップ"
+                hint="受注日・寸法・補正・生地・備考を読み取ります。紙は上がり寸のみのため、実寸欄は空のままになります。"
+              />
+              {onOpenManual && (
+                <p className="text-sm text-muted-foreground">
+                  紙が手元に無い場合は{" "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenChange(false);
+                      onOpenManual();
+                    }}
+                    className="text-brand underline underline-offset-2"
+                  >
+                    › 手で入力する
+                  </button>
+                </p>
+              )}
+            </div>
           )}
 
           {phase === "reading" && (
@@ -185,202 +531,11 @@ export function OrderSheetImportDialog({
                 </p>
               )}
 
-              {/* ① 受注情報 */}
-              <Step number={1} title="受注情報">
-                <div className="grid gap-4 sm:grid-cols-4">
-                  <DateField
-                    id="import-ordered"
-                    label="受注日"
-                    value={plan.orderedAt}
-                    onChange={(v) => update({ orderedAt: v, measuredAt: v })}
-                  />
-                  <DateField
-                    id="import-due"
-                    label="納期"
-                    value={plan.dueDate ?? ""}
-                    onChange={(v) => update({ dueDate: v || undefined })}
-                  />
-                  <DateField
-                    id="import-delivered"
-                    label="お渡し日"
-                    value={plan.deliveredAt ?? ""}
-                    onChange={(v) => update({ deliveredAt: v || undefined })}
-                  />
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="import-purpose">用途</Label>
-                    <Select
-                      value={plan.purpose}
-                      onValueChange={(v) => update({ purpose: v as OrderPurpose })}
-                    >
-                      <SelectTrigger id="import-purpose" className="h-11 bg-card">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(Object.keys(ORDER_PURPOSE_LABEL) as OrderPurpose[]).map((p) => (
-                          <SelectItem key={p} value={p}>
-                            {ORDER_PURPOSE_LABEL[p]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex flex-col gap-2">
-                  <span className="field-label">生地</span>
-                  {plan.fabricId === undefined ? (
-                    <p className="text-sm text-thread">
-                      原反NO「{plan.fabricHint ?? "—"}」に一致する生地がありません。一覧から選んでください。
-                    </p>
-                  ) : (
-                    // 一覧の中で選ばれている行は下にあって見えないことがある。
-                    // 何が選ばれているかは、探さなくても分かる位置に出す
-                    <p className="text-sm">
-                      選択中
-                      <span className="ml-2 font-medium">{selectedFabric?.brand}</span>
-                      <span className="tnum ml-2 font-mono text-xs text-muted-foreground">
-                        {selectedFabric?.productNumber}
-                      </span>
-                      <span className="ml-2">{selectedFabric?.color}</span>
-                      {plan.fabricHint && selectedFabric?.productNumber !== plan.fabricHint && (
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          （紙の原反NO「{plan.fabricHint}」）
-                        </span>
-                      )}
-                    </p>
-                  )}
-                  <div className="relative max-w-sm">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      value={fabricKeyword}
-                      onChange={(e) => setFabricKeyword(e.target.value)}
-                      placeholder="ブランド・品番・色で絞り込む"
-                      className="h-11 bg-card pl-9"
-                    />
-                  </div>
-                  <ul className="flex max-h-40 flex-col overflow-y-auto rounded-md border border-border">
-                    {(fabrics ?? []).map((fabric) => (
-                      <li key={fabric.id}>
-                        <button
-                          type="button"
-                          onClick={() => update({ fabricId: fabric.id })}
-                          className={cn(
-                            "flex min-h-11 w-full flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b border-border/60 px-3 py-2 text-left transition-colors last:border-b-0",
-                            plan.fabricId === fabric.id ? "bg-accent/60" : "hover:bg-accent/30",
-                          )}
-                        >
-                          <span className="font-medium">{fabric.brand}</span>
-                          <span className="tnum font-mono text-xs text-muted-foreground">
-                            {fabric.productNumber}
-                          </span>
-                          <span className="text-sm">{fabric.color}</span>
-                          <span className="ml-auto text-xs text-muted-foreground">
-                            {FABRIC_PATTERN_LABEL[fabric.pattern]}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="mt-4 flex flex-col gap-1.5">
-                  <Label htmlFor="import-amount">合計金額</Label>
-                  <Input
-                    id="import-amount"
-                    value={formatAmount(plan.totalAmount)}
-                    onChange={(e) => update({ totalAmount: parseAmount(e.target.value) })}
-                    inputMode="numeric"
-                    className="h-11 max-w-[12rem] bg-card text-right font-mono"
-                  />
-                  <span className="text-xs text-muted-foreground">
-                    {plan.totalFromPaper
-                      ? "紙の合計金額欄から読み取った額です。"
-                      : "紙の金額欄が空欄のため、標準価格の合算を入れています。実額に直してください。"}
-                  </span>
-                </div>
-              </Step>
-
-              {/* ② 採寸 */}
-              <Step number={2} title="採寸（上がり寸のみ）">
-                <div className="flex flex-col gap-4">
-                  {plan.sections.map((section, i) => (
-                    <ImportSectionTable
-                      key={section.itemTypeId}
-                      section={section}
-                      onChange={(next) =>
-                        update({
-                          sections: plan.sections.map((s, k) => (k === i ? next : s)),
-                        })
-                      }
-                    />
-                  ))}
-                </div>
-                <p className="mt-3 text-xs text-muted-foreground">
-                  紙には上がり寸しか載りません。実寸は次の採寸時に測って入れてください。
-                </p>
-              </Step>
-
-              {/* ③ 補正 */}
-              <Step number={3} title="補正">
-                <ul className="flex flex-col gap-1">
-                  {plan.adjustments.map((adjustment) => (
-                    <li
-                      key={adjustment.code}
-                      className="flex min-h-9 flex-wrap items-baseline gap-x-3 gap-y-1"
-                    >
-                      <span className="tnum w-8 shrink-0 font-mono text-sm text-muted-foreground">
-                        {adjustment.code}
-                      </span>
-                      <span className="text-sm">{adjustment.label}</span>
-                      <span className="tnum font-mono text-sm">
-                        {adjustment.value === 0 ? "—" : adjustment.value}
-                      </span>
-                      {adjustment.unknown && (
-                        <span className="ml-auto text-xs text-thread">
-                          未登録のため取り込みません（備考へ回します）
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  上半身 {upperCount}/{MAX_ADJUSTMENTS.upper}・下半身 {lowerCount}/
-                  {MAX_ADJUSTMENTS.lower}
-                </p>
-                {(upperCount > MAX_ADJUSTMENTS.upper || lowerCount > MAX_ADJUSTMENTS.lower) && (
-                  <p className="mt-1 text-xs text-thread">
-                    紙の上限を超えています。取り込んだあと採寸票で整理してください。
-                  </p>
-                )}
-              </Step>
-
-              {/* ④ 備考 */}
-              <Step number={4} title="備考">
-                <Textarea
-                  value={plan.note}
-                  onChange={(e) => update({ note: e.target.value })}
-                  rows={5}
-                  className="bg-card"
-                />
-                <p className="mt-1 text-xs text-muted-foreground">
-                  販売店・フィッター・原反NO・色番など、項目として持っていない情報をここに残しています。
-                </p>
-              </Step>
-
-              {/* ⑤ カルテ */}
-              {plan.embroideryName && (
-                <Step number={5} title="顧客カルテ">
-                  <label className="flex min-h-11 cursor-pointer items-center gap-2.5 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={plan.updateEmbroideryName}
-                      onChange={(e) => update({ updateEmbroideryName: e.target.checked })}
-                      className="size-4 accent-[var(--brand)]"
-                    />
-                    ネーム刺繍「{plan.embroideryName}」をカルテに保存する
-                  </label>
+              {steps.map((step, i) => (
+                <Step key={step.title} number={i + 1} title={step.title}>
+                  {step.content}
                 </Step>
-              )}
+              ))}
             </>
           )}
         </div>
@@ -388,9 +543,11 @@ export function OrderSheetImportDialog({
         {phase === "confirm" && plan && (
           <DialogFooter className="shrink-0 flex-row items-center justify-between gap-3 border-t border-border px-4 py-3 sm:px-6">
             <span className="text-xs text-muted-foreground">
-              採寸票 1枚 と 注文 1件（
-              {plan.sections.map((s) => ITEM_TYPE_MAP[s.itemTypeId].sheetLabel).join(" / ")}
-              ）を作成します。
+              {plan.customerId === undefined
+                ? "取り込み先のお客様を決めてください。"
+                : `採寸票 1枚 と 注文 1件（${plan.sections
+                    .map((s) => ITEM_TYPE_MAP[s.itemTypeId].sheetLabel)
+                    .join(" / ")}）を作成します。`}
             </span>
             <span className="flex shrink-0 gap-2">
               <Button variant="outline" className="h-11" onClick={() => onOpenChange(false)}>

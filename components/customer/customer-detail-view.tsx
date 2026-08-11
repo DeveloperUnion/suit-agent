@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, FileUp } from "lucide-react";
 
 import { useAgentContext } from "@/components/agent/agent-provider";
 import { DaysSinceDelivery } from "@/components/common/days-since-delivery";
@@ -151,15 +151,18 @@ export function CustomerDetailView({
           {/*
             採寸は右上のシルエットが入口なので、ここに同じ動作のボタンは置かない。
             注文は来店時に必ず通る動線のため 1タップで届くようヘッダーに残している。
+            その動線の中身は手入力ではなく工場発注書の取り込みで、
+            寸法・補正・生地・日付が 1 枚で揃うぶん、注文と採寸が同時に片付く。
+            紙がまだ無いときの手入力は、取り込み画面の中のリンクから開く。
           */}
           <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
               className="h-11 gap-1.5 sm:h-10"
-              onClick={() => setOrderOpen(true)}
+              onClick={() => setImportOpen(true)}
             >
-              <Plus className="size-4" />
-              <span className="hidden sm:inline">注文を追加</span>
+              <FileUp className="size-4" />
+              <span className="hidden sm:inline">発注書を取り込む</span>
             </Button>
           </div>
         </div>
@@ -213,6 +216,7 @@ export function CustomerDetailView({
           setSheetId(id);
           setSheetOpen(true);
         }}
+        onOpenManual={() => setOrderOpen(true)}
       />
 
       <OrderCreateDialog

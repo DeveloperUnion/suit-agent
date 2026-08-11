@@ -1,23 +1,11 @@
-import type {
-  ColorFamily,
-  Fabric,
-  IsoDate,
-  ItemTypeId,
-  Order,
-  OrderItem,
-  OrderPurpose,
-  Uuid,
-} from "@/lib/types";
+import type { IsoDate, ItemTypeId, Order, OrderItem, OrderPurpose, Uuid } from "@/lib/types";
 import { getDb, mutateDb, newId } from "@/lib/store/mock-db";
 import { ITEM_TYPE_MAP } from "@/lib/constants/measurement-fields";
-import { COLOR_FAMILY_LABEL, FABRIC_PATTERN_LABEL } from "@/lib/constants/labels";
 import { toIsoDate } from "@/lib/utils/date";
-
-export type OrderItemView = OrderItem & { fabric?: Fabric };
 
 export type OrderView = Order & {
   staffName: string;
-  items: OrderItemView[];
+  items: OrderItem[];
 };
 
 export async function listOrders(customerId: Uuid): Promise<OrderView[]> {
@@ -28,17 +16,13 @@ export async function listOrders(customerId: Uuid): Promise<OrderView[]> {
     .map((order) => ({
       ...order,
       staffName: db.staff.find((s) => s.id === order.staffId)?.name ?? "—",
-      items: db.orderItems
-        .filter((item) => item.orderId === order.id)
-        .map((item) => ({ ...item, fabric: db.fabrics.find((f) => f.id === item.fabricId) })),
+      items: db.orderItems.filter((item) => item.orderId === order.id),
     }));
 }
 
 export type OwnedItemSummary = {
   /** アイテム種別ごとの保有数 */
   byItemType: { itemTypeId: ItemTypeId; name: string; count: number }[];
-  /** 色×柄の内訳。同系統を重ねて勧めないための判定材料 */
-  byColorPattern: { label: string; count: number }[];
   /** まだ 1 着も持っていないアイテム種別 */
   missingItemTypes: { itemTypeId: ItemTypeId; name: string }[];
   /** 注文が 1 件でもあるか。表示の出し分けにだけ使う */
@@ -46,11 +30,14 @@ export type OwnedItemSummary = {
 };
 
 /**
- * 保有アイテム構成の集計。
- * 「紺の無地を既に3着持つ顧客に紺の無地を勧める」事故を防ぐための材料であり、
- * 注文タブの最上部に出す。
+ * 保有アイテム構成の集計。注文タブの最上部に出す。
  *
- * 累計購入額・購入回数はここに含めない。顧客を金額で格付けする表示は、
+ * 色×柄の内訳は持たない。生地マスタを廃して紙の値をそのまま保存するようにしたため、
+ * 「ネイビー」「無地」といった正規化された系統がどこにも無くなった。
+ * 原反NO の文字列だけでは同系統かどうかを判定できず、
+ * 当てにならない集計を出すくらいなら出さないほうがよい。
+ *
+ * 累計購入額・購入回数もここに含めない。顧客を金額で格付けする表示は、
  * 本システムが信頼関係の維持を目的としていることと衝突するため
  * （個々の注文の金額は事実の記録として注文カードに残す）。
  */
@@ -61,16 +48,8 @@ export async function getOwnedItemSummary(customerId: Uuid): Promise<OwnedItemSu
   const items = db.orderItems.filter((item) => orderIds.has(item.orderId));
 
   const itemCounts = new Map<ItemTypeId, number>();
-  const colorPatternCounts = new Map<string, number>();
-
   for (const item of items) {
     itemCounts.set(item.itemTypeId, (itemCounts.get(item.itemTypeId) ?? 0) + 1);
-    const fabric = db.fabrics.find((f) => f.id === item.fabricId);
-    if (!fabric) continue;
-    // ジャケットとパンツで同じ生地が二重計上されるのを避け、上衣だけを数える
-    if (item.itemTypeId !== "jacket" && item.itemTypeId !== "coat") continue;
-    const label = `${COLOR_FAMILY_LABEL[fabric.colorFamily as ColorFamily]}${FABRIC_PATTERN_LABEL[fabric.pattern]}`;
-    colorPatternCounts.set(label, (colorPatternCounts.get(label) ?? 0) + 1);
   }
 
   const tracked: ItemTypeId[] = ["jacket", "pants", "vest", "shirt", "coat"];
@@ -79,9 +58,6 @@ export async function getOwnedItemSummary(customerId: Uuid): Promise<OwnedItemSu
     byItemType: tracked
       .filter((id) => (itemCounts.get(id) ?? 0) > 0)
       .map((id) => ({ itemTypeId: id, name: ITEM_TYPE_MAP[id].name, count: itemCounts.get(id) ?? 0 })),
-    byColorPattern: [...colorPatternCounts.entries()]
-      .map(([label, count]) => ({ label, count }))
-      .sort((a, b) => b.count - a.count),
     hasOrders: orders.length > 0,
     missingItemTypes: tracked
       .filter((id) => !itemCounts.get(id))
@@ -91,45 +67,24 @@ export async function getOwnedItemSummary(customerId: Uuid): Promise<OwnedItemSu
 
 // ── 注文の登録 ──────────────────────────────────
 
-export async function listFabrics(keyword = ""): Promise<Fabric[]> {
-  const q = keyword.trim().toLowerCase();
-  return getDb().fabrics.filter((f) => {
-    if (!q) return true;
-    return `${f.brand} ${f.productNumber} ${f.color}`.toLowerCase().includes(q);
-  });
-}
+/** 紙の生地欄。原反NO・色番・色名・組成をそのまま持つ */
+export type OrderItemFabric = Pick<
+  OrderItem,
+  "fabricProductNumber" | "fabricColorNumber" | "fabricColorName" | "fabricComposition"
+>;
+
+/** 紙の右上と同じ4欄 */
+export type OrderAmounts = Pick<
+  Order,
+  "subtotalAmount" | "surchargeAmount" | "taxAmount" | "totalAmount"
+>;
 
 /**
- * その生地と同系統のものを、顧客がすでに何着持っているか。
- *
- * 「紺の無地を既に3着持つ顧客に紺の無地を勧める」事故は高価格帯の信頼商売で
- * 致命的（要件3.1）。注文履歴を見に行かないと気づけないのでは遅いため、
- * 生地を選ぶその瞬間に出す。
+ * 合計の既定値。
+ * 紙では合計欄も手書きなので、人が上書きするまでの初期値としてだけ使う。
  */
-export type FabricOverlap = { label: string; count: number };
-
-export async function checkFabricOverlap(
-  customerId: Uuid,
-  fabricId: Uuid,
-): Promise<FabricOverlap | null> {
-  const db = getDb();
-  const fabric = db.fabrics.find((f) => f.id === fabricId);
-  if (!fabric) return null;
-
-  const orderIds = new Set(db.orders.filter((o) => o.customerId === customerId).map((o) => o.id));
-  const count = db.orderItems.filter((item) => {
-    if (!orderIds.has(item.orderId)) return false;
-    // 上衣だけ数える。同じ生地のジャケットとパンツを二重に数えないため
-    if (item.itemTypeId !== "jacket" && item.itemTypeId !== "coat") return false;
-    const f = db.fabrics.find((x) => x.id === item.fabricId);
-    return f?.colorFamily === fabric.colorFamily && f?.pattern === fabric.pattern;
-  }).length;
-
-  if (count === 0) return null;
-  return {
-    label: `${COLOR_FAMILY_LABEL[fabric.colorFamily]}${FABRIC_PATTERN_LABEL[fabric.pattern]}`,
-    count,
-  };
+export function defaultTotal(amounts: Omit<OrderAmounts, "totalAmount">): number {
+  return amounts.subtotalAmount + amounts.surchargeAmount + amounts.taxAmount;
 }
 
 export type CreateOrderInput = {
@@ -140,40 +95,20 @@ export type CreateOrderInput = {
   purpose: OrderPurpose;
   /** どの寸法で作るか。リピートは前回の採寸票をそのまま使うことが多い */
   measurementSheetId?: Uuid;
-  items: { itemTypeId: ItemTypeId; fabricId: Uuid; amount: number }[];
-  /**
-   * 合計金額。工場発注書は明細ごとの金額を持たないため、合計だけを正とする場合に渡す。
-   * 明細金額はこの合計に合わせて按分し、内訳の和と必ず一致させる
-   * （一致しないと注文カードの内訳と合計が食い違って見える）
-   */
-  totalAmount?: number;
+  /** 生地は 1 注文で 1 種類。紙が原反NO を 1 つしか持たない */
+  items: { itemTypeId: ItemTypeId }[];
+  fabric: OrderItemFabric;
+  amounts: OrderAmounts;
   /**
    * 最終接触日を今日に更新するか。過去日付の紙を取り込むときは false。
-   * 取り込みは来店ではないうえ、今日に更新すると企業ニュースの
+   * 取り込みは来店ではないうえ、今日に更新すると
    * 「連絡済みなら出さない」判定まで誤って抑止してしまう
    */
   touchLastContact?: boolean;
 };
 
-/**
- * 合計を明細へ按分する。端数は先頭に寄せて、和が合計と必ず一致するようにする。
- */
-function distributeAmount(total: number, items: { amount: number }[]): number[] {
-  const base = items.reduce((sum, i) => sum + i.amount, 0);
-  if (items.length === 0) return [];
-  if (base <= 0) {
-    const each = Math.floor(total / items.length);
-    return items.map((_, i) => (i === 0 ? total - each * (items.length - 1) : each));
-  }
-  const shares = items.map((i) => Math.round((total * i.amount) / base));
-  shares[0] += total - shares.reduce((sum, v) => sum + v, 0);
-  return shares;
-}
-
 export async function createOrder(input: CreateOrderInput): Promise<Uuid> {
   const orderId = newId("ord");
-  const total = input.totalAmount ?? input.items.reduce((sum, i) => sum + i.amount, 0);
-  const amounts = distributeAmount(total, input.items);
   const touchLastContact = input.touchLastContact ?? true;
   const seq = Math.floor(Math.random() * 900) + 100;
 
@@ -189,7 +124,7 @@ export async function createOrder(input: CreateOrderInput): Promise<Uuid> {
         dueDate: input.dueDate,
         status: "ordered",
         purpose: input.purpose,
-        totalAmount: total,
+        ...input.amounts,
         staffId: input.staffId,
       },
     ],
@@ -199,8 +134,7 @@ export async function createOrder(input: CreateOrderInput): Promise<Uuid> {
         id: `${orderId}-item-${i + 1}`,
         orderId,
         itemTypeId: item.itemTypeId,
-        fabricId: item.fabricId,
-        amount: amounts[i],
+        ...input.fabric,
       })),
     ],
     // 採寸票を注文に紐づける（どの寸法で作ったかを後から追えるように）

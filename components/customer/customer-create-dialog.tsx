@@ -86,7 +86,17 @@ export function CustomerCreateDialog({
    */
   const handleCard = async (file: File) => {
     setReading(true);
-    const result = await extractBusinessCard(file);
+    let result: BusinessCardExtraction;
+    try {
+      result = await extractBusinessCard(file);
+    } catch (error) {
+      // 読めなければ何も埋めない。半端に埋まると、どこが読み取りでどこが空欄か分からなくなる
+      setReading(false);
+      toast.error("名刺を読み取れませんでした", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+      return;
+    }
     setCard(result);
     if (result.fields.name) setName(result.fields.name.value);
     if (result.fields.nameKana) setNameKana(result.fields.nameKana.value);

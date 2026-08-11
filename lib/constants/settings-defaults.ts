@@ -8,11 +8,4 @@ import type { AppSettings } from "@/lib/types";
  */
 export const DEFAULT_SETTINGS: AppSettings = {
   anniversaryLeadDays: 21,
-  itemPrices: {
-    jacket: 95000,
-    pants: 45000,
-    vest: 30000,
-    shirt: 18000,
-    coat: 120000,
-  },
 };

@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
-import { Search, UserPlus } from "lucide-react";
+import { FileUp, Search, UserPlus } from "lucide-react";
 
 import { PageHeader } from "@/components/common/page-header";
 import { CustomerCreateDialog } from "@/components/customer/customer-create-dialog";
+import { OrderSheetImportDialog } from "@/components/measurement/order-sheet-import-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -24,10 +26,12 @@ import { useMockQuery } from "@/lib/hooks/use-mock-db";
 const ALL = "__all__";
 
 export function CustomerListView() {
+  const router = useRouter();
   const [keyword, setKeyword] = useState("");
   const [prefecture, setPrefecture] = useState(ALL);
   const [industry, setIndustry] = useState(ALL);
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const loader = useCallback(
     () =>
@@ -58,6 +62,15 @@ export function CustomerListView() {
                 {customers.length}名
               </span>
             )}
+            {/* 溜まった紙をまとめて片付ける日は、顧客を先に開く順序のほうが不自然になる */}
+            <Button
+              variant="outline"
+              className="h-11 gap-1.5 sm:h-10"
+              onClick={() => setImportOpen(true)}
+            >
+              <FileUp className="size-4" />
+              発注書を取り込む
+            </Button>
             <Button className="h-11 gap-1.5 sm:h-10" onClick={() => setCreateOpen(true)}>
               <UserPlus className="size-4" />
               顧客を登録
@@ -182,6 +195,18 @@ export function CustomerListView() {
       )}
 
       <CustomerCreateDialog open={createOpen} onOpenChange={setCreateOpen} />
+
+      {/*
+        顧客を渡さずに開く。紙の氏名から確認画面の中で顧客を決めるので、
+        取り込み終わったらそのお客様のカルテへ送る。
+      */}
+      <OrderSheetImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onImported={(_sheetId, importedCustomerId) =>
+          router.push(`/customers/${importedCustomerId}?tab=measurement`)
+        }
+      />
     </div>
   );
 }

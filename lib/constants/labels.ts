@@ -1,9 +1,6 @@
 import type {
   AnniversaryType,
   ApproachStatus,
-  ColorFamily,
-  FabricPattern,
-  FabricSeason,
   MeasurementInputMethod,
   OrderPurpose,
   OrderStatus,
@@ -38,31 +35,6 @@ export const ORDER_PURPOSE_LABEL: Record<OrderPurpose, string> = {
   formal: "礼服",
   wedding: "結婚式",
   casual: "カジュアル",
-};
-
-export const COLOR_FAMILY_LABEL: Record<ColorFamily, string> = {
-  navy: "ネイビー",
-  charcoal: "チャコール",
-  gray: "グレー",
-  brown: "ブラウン",
-  black: "ブラック",
-  blue: "ブルー",
-  other: "その他",
-};
-
-export const FABRIC_PATTERN_LABEL: Record<FabricPattern, string> = {
-  solid: "無地",
-  stripe: "ストライプ",
-  check: "チェック",
-  herringbone: "ヘリンボーン",
-  birdseye: "バーズアイ",
-  other: "その他",
-};
-
-export const FABRIC_SEASON_LABEL: Record<FabricSeason, string> = {
-  spring_summer: "春夏",
-  autumn_winter: "秋冬",
-  all_season: "オールシーズン",
 };
 
 export const TRIGGER_LABEL: Record<TriggerType, string> = {

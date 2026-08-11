@@ -1,18 +1,20 @@
 "use client";
 
 import { PageHeader } from "@/components/common/page-header";
-import { MasterSettings } from "@/components/settings/master-settings";
 import { RevenueTargetSettings } from "@/components/settings/revenue-target-settings";
 import { StaffSettings } from "@/components/settings/staff-settings";
 import { TriggerSettings } from "@/components/settings/trigger-settings";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+/**
+ * マスタのタブは無い。生地は発注書に書かれた値をそのまま保存し、
+ * 価格は注文ごとに紙から転記するので、店舗が育てるマスタが残らなかった。
+ */
 const TABS = [
   { value: "triggers", label: "トリガー" },
   { value: "targets", label: "売上目標" },
   { value: "staff", label: "スタッフ" },
-  { value: "masters", label: "マスタ" },
 ];
 
 export function SettingsView({ initialTab }: { initialTab?: string }) {
@@ -42,9 +44,6 @@ export function SettingsView({ initialTab }: { initialTab?: string }) {
         </TabsContent>
         <TabsContent value="staff">
           <StaffSettings />
-        </TabsContent>
-        <TabsContent value="masters">
-          <MasterSettings />
         </TabsContent>
       </Tabs>
     </div>

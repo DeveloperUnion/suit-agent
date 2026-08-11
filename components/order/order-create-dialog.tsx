@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Ruler, Search } from "lucide-react";
+import { Ruler } from "lucide-react";
 import { toast } from "sonner";
 
+import { AmountFields, applyAmountChange } from "@/components/order/amount-fields";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,15 +18,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getCurrentStaffId } from "@/lib/auth/current-staff";
-import {
-  FABRIC_PATTERN_LABEL,
-  FABRIC_SEASON_LABEL,
-  ORDER_PURPOSE_LABEL,
-} from "@/lib/constants/labels";
+import { ORDER_PURPOSE_LABEL } from "@/lib/constants/labels";
 import { ITEM_TYPE_MAP } from "@/lib/constants/measurement-fields";
 import { listSheets } from "@/lib/data/measurements";
-import { checkFabricOverlap, createOrder, listFabrics } from "@/lib/data/orders";
-import { getItemPrice } from "@/lib/data/settings";
+import { createOrder, type OrderAmounts, type OrderItemFabric } from "@/lib/data/orders";
 import { useMockQuery } from "@/lib/hooks/use-mock-db";
 import type { ItemTypeId, OrderPurpose } from "@/lib/types";
 import { addDays, formatAmount, formatDateDot, toIsoDate } from "@/lib/utils/date";
@@ -34,8 +30,20 @@ import { cn } from "@/lib/utils";
 /** 注文で扱うアイテム。紙の採寸票と同じ 3 種を既定にする */
 const ITEM_TYPES: ItemTypeId[] = ["jacket", "pants", "vest"];
 
-type ItemState = { selected: boolean; amount: number };
+const EMPTY_AMOUNTS: OrderAmounts = {
+  subtotalAmount: 0,
+  surchargeAmount: 0,
+  taxAmount: 0,
+  totalAmount: 0,
+};
 
+/**
+ * 手入力の注文追加。
+ *
+ * 主動線は工場発注書の取り込み（components/measurement/order-sheet-import-dialog.tsx）で、
+ * ここはその逃げ道。紙がまだ出ていない受注を先に入れたいときに使う。
+ * 入口も取り込み画面の中のリンクだけにしてある。
+ */
 export function OrderCreateDialog({
   customerId,
   customerName,
@@ -53,19 +61,16 @@ export function OrderCreateDialog({
   const today = toIsoDate(new Date());
 
   const [sheetId, setSheetId] = useState<string>("");
-  const [fabricId, setFabricId] = useState<string>("");
-  const [keyword, setKeyword] = useState("");
+  const [fabric, setFabric] = useState<OrderItemFabric>({});
   const [orderedAt, setOrderedAt] = useState(today);
   const [dueDate, setDueDate] = useState(toIsoDate(addDays(new Date(), 45)));
   const [purpose, setPurpose] = useState<OrderPurpose>("business");
-  const [items, setItems] = useState<Record<string, ItemState>>({});
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [amounts, setAmounts] = useState<OrderAmounts>(EMPTY_AMOUNTS);
   const [saving, setSaving] = useState(false);
 
   const sheetsLoader = useCallback(() => listSheets(customerId), [customerId]);
   const { data: sheets } = useMockQuery(sheetsLoader, [customerId, open]);
-
-  const fabricsLoader = useCallback(() => listFabrics(keyword), [keyword]);
-  const { data: fabrics } = useMockQuery(fabricsLoader, [keyword]);
 
   // 開いたときに最新の採寸票をプリセットする。
   // リピートは前回と同じ寸法で作ることが多いため
@@ -75,29 +80,20 @@ export function OrderCreateDialog({
     void listSheets(customerId).then((sheetList) => {
       if (!alive) return;
       setSheetId(sheetList[0]?.id ?? "");
-      setItems(
-        Object.fromEntries(
-          ITEM_TYPES.map((type) => [
-            type,
-            { selected: type !== "vest", amount: getItemPrice(type) },
-          ]),
-        ),
-      );
+      setSelected(Object.fromEntries(ITEM_TYPES.map((type) => [type, type !== "vest"])));
+      setFabric({});
+      setAmounts(EMPTY_AMOUNTS);
     });
     return () => {
       alive = false;
     };
   }, [open, customerId]);
 
-  const overlapLoader = useCallback(
-    () => (fabricId ? checkFabricOverlap(customerId, fabricId) : Promise.resolve(null)),
-    [customerId, fabricId],
-  );
-  const { data: overlap } = useMockQuery(overlapLoader, [customerId, fabricId]);
+  const selectedItems = ITEM_TYPES.filter((t) => selected[t]);
+  const canSubmit = selectedItems.length > 0;
 
-  const selectedItems = ITEM_TYPES.filter((t) => items[t]?.selected);
-  const total = selectedItems.reduce((sum, t) => sum + (items[t]?.amount ?? 0), 0);
-  const canSubmit = fabricId !== "" && selectedItems.length > 0;
+  const setFabricField = (patch: Partial<OrderItemFabric>) =>
+    setFabric((current) => ({ ...current, ...patch }));
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -109,11 +105,9 @@ export function OrderCreateDialog({
       dueDate,
       purpose,
       measurementSheetId: sheetId || undefined,
-      items: selectedItems.map((type) => ({
-        itemTypeId: type,
-        fabricId,
-        amount: items[type].amount,
-      })),
+      fabric,
+      amounts,
+      items: selectedItems.map((type) => ({ itemTypeId: type })),
     });
     setSaving(false);
     onOpenChange(false);
@@ -186,96 +180,89 @@ export function OrderCreateDialog({
             )}
           </Step>
 
-          {/* ② 生地 */}
-          <Step number={2} title="生地">
-            <div className="relative max-w-sm">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                placeholder="ブランド・品番・色で絞り込む"
-                className="h-11 bg-card pl-9"
-              />
+          {/* ② 生地。マスタは引かず、発注書に書くのと同じ値をそのまま入れる */}
+          <Step number={2} title="生地" note="決まっていなければ空のままで構いません">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="order-fabric-no">原反NO</Label>
+                <Input
+                  id="order-fabric-no"
+                  value={fabric.fabricProductNumber ?? ""}
+                  onChange={(e) =>
+                    setFabricField({ fabricProductNumber: e.target.value || undefined })
+                  }
+                  placeholder="AC5601"
+                  className="h-11 bg-card font-mono"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="order-fabric-color-no">色番</Label>
+                <Input
+                  id="order-fabric-color-no"
+                  value={fabric.fabricColorNumber ?? ""}
+                  onChange={(e) =>
+                    setFabricField({ fabricColorNumber: e.target.value || undefined })
+                  }
+                  placeholder="3330"
+                  className="h-11 bg-card font-mono"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="order-fabric-color">色名</Label>
+                <Input
+                  id="order-fabric-color"
+                  value={fabric.fabricColorName ?? ""}
+                  onChange={(e) =>
+                    setFabricField({ fabricColorName: e.target.value || undefined })
+                  }
+                  placeholder="カーキ無地"
+                  className="h-11 bg-card"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="order-fabric-composition">組成</Label>
+                <Input
+                  id="order-fabric-composition"
+                  value={fabric.fabricComposition ?? ""}
+                  onChange={(e) =>
+                    setFabricField({ fabricComposition: e.target.value || undefined })
+                  }
+                  placeholder="Wool 100% / Super110's"
+                  className="h-11 bg-card"
+                />
+              </div>
             </div>
-
-            <ul className="mt-2 flex max-h-56 flex-col overflow-y-auto rounded-md border border-border">
-              {(fabrics ?? []).map((fabric) => (
-                <li key={fabric.id}>
-                  <button
-                    type="button"
-                    onClick={() => setFabricId(fabric.id)}
-                    className={cn(
-                      "flex min-h-12 w-full flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b border-border/60 px-3 py-2 text-left transition-colors last:border-b-0",
-                      fabricId === fabric.id ? "bg-accent/60" : "hover:bg-accent/30",
-                    )}
-                  >
-                    <span className="font-medium">{fabric.brand}</span>
-                    <span className="tnum font-mono text-xs text-muted-foreground">
-                      {fabric.productNumber}
-                    </span>
-                    <span className="text-sm">{fabric.color}</span>
-                    <span className="text-sm text-muted-foreground">
-                      {FABRIC_PATTERN_LABEL[fabric.pattern]}
-                    </span>
-                    <span className="ml-auto text-xs text-muted-foreground">
-                      {fabric.composition}
-                      {fabric.yarnCount ? ` / ${fabric.yarnCount}` : ""} /{" "}
-                      {FABRIC_SEASON_LABEL[fabric.season]}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-
-            {/* 選ぶその瞬間に出す。注文履歴を見に行かないと気づけないのでは遅い */}
-            {overlap && (
-              <p className="mt-2 flex items-start gap-2 rounded-md border border-thread/30 bg-thread/5 px-3 py-2 text-sm text-thread">
-                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                {overlap.label}はすでに {overlap.count} 着お持ちです。
-                系統の違うものも見ていただくと喜ばれるかもしれません。
-              </p>
-            )}
           </Step>
 
           {/* ③ アイテム */}
           <Step number={3} title="アイテム">
             <div className="flex flex-col gap-3">
-              {ITEM_TYPES.map((type) => {
-                const state = items[type];
-                if (!state) return null;
-                return (
-                  <div
-                    key={type}
-                    className={cn(
-                      "rounded-md border p-3 transition-colors",
-                      state.selected ? "border-border bg-card" : "border-dashed border-border",
-                    )}
-                  >
-                    <label className="flex min-h-11 cursor-pointer items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        checked={state.selected}
-                        onChange={(e) =>
-                          setItems((s) => ({
-                            ...s,
-                            [type]: { ...s[type], selected: e.target.checked },
-                          }))
-                        }
-                        className="size-4 accent-[var(--brand)]"
-                      />
-                      <span className="font-heading text-sm font-semibold uppercase tracking-[0.1em] text-brand">
-                        {ITEM_TYPE_MAP[type].sheetLabel}
-                      </span>
-                      <span className="text-sm text-muted-foreground">
-                        {ITEM_TYPE_MAP[type].name}
-                      </span>
-                      <span className="tnum ml-auto font-mono text-sm">
-                        ¥{formatAmount(state.amount)}
-                      </span>
-                    </label>
-                  </div>
-                );
-              })}
+              {ITEM_TYPES.map((type) => (
+                <div
+                  key={type}
+                  className={cn(
+                    "rounded-md border p-3 transition-colors",
+                    selected[type] ? "border-border bg-card" : "border-dashed border-border",
+                  )}
+                >
+                  <label className="flex min-h-11 cursor-pointer items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={selected[type] ?? false}
+                      onChange={(e) =>
+                        setSelected((s) => ({ ...s, [type]: e.target.checked }))
+                      }
+                      className="size-4 accent-[var(--brand)]"
+                    />
+                    <span className="font-heading text-sm font-semibold uppercase tracking-[0.1em] text-brand">
+                      {ITEM_TYPE_MAP[type].sheetLabel}
+                    </span>
+                    <span className="text-sm text-muted-foreground">
+                      {ITEM_TYPE_MAP[type].name}
+                    </span>
+                  </label>
+                </div>
+              ))}
             </div>
           </Step>
 
@@ -318,13 +305,26 @@ export function OrderCreateDialog({
                 </Select>
               </div>
             </div>
+
+            {/* 取り込みと同じ4欄。どちらから入れても同じ形で残す */}
+            <div className="mt-4">
+              <AmountFields
+                idPrefix="order"
+                amounts={amounts}
+                onChange={(key, value) =>
+                  setAmounts((current) => applyAmountChange(current, key, value))
+                }
+              />
+            </div>
           </Step>
         </div>
 
         <DialogFooter className="shrink-0 flex-row items-center justify-between gap-3 border-t border-border px-4 py-3 sm:px-6">
           <span className="flex items-baseline gap-2">
             <span className="field-label">合計</span>
-            <span className="tnum font-mono text-lg font-medium">¥{formatAmount(total)}</span>
+            <span className="tnum font-mono text-lg font-medium">
+              ¥{formatAmount(amounts.totalAmount)}
+            </span>
           </span>
           <span className="flex gap-2">
             <Button variant="outline" className="h-11" onClick={() => onOpenChange(false)}>

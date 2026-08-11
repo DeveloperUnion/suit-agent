@@ -8,6 +8,7 @@ import {
 import { AgentDock } from "@/components/agent/agent-dock";
 import { AgentProvider } from "@/components/agent/agent-provider";
 import { AppShell } from "@/components/layout/app-shell";
+import { AuthGate } from "@/components/layout/auth-gate";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
@@ -75,10 +76,18 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           「いま誰の話をしているか」を Context に名乗るため、上位にいる必要がある。
         */}
         <TooltipProvider delayDuration={200}>
-          <AgentProvider>
-            <AppShell>{children}</AppShell>
-            <AgentDock />
-          </AgentProvider>
+          {/*
+            AuthGate は AgentProvider の外側。サインインしていない状態で
+            アシスタントの FAB が出ると、押せるのに何もできない。
+            権限が人によって違う以上、ここを通らずに中へ入れる経路は作らない
+            （守っているのは DB のほうで、この画面は入れないことを説明するためにある）。
+          */}
+          <AuthGate>
+            <AgentProvider>
+              <AppShell>{children}</AppShell>
+              <AgentDock />
+            </AgentProvider>
+          </AuthGate>
         </TooltipProvider>
         {/* 右下は AI アシスタントの FAB が占めているので、その上に積む */}
         <Toaster

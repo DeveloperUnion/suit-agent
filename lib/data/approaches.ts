@@ -1,9 +1,22 @@
-import type { ApproachStatus, ApproachTask, IsoDate, TriggerType, Uuid } from "@/lib/types";
-import { getDb, mutateDb } from "@/lib/store/mock-db";
+import type {
+  AnniversaryType,
+  ApproachStatus,
+  ApproachTask,
+  IsoDate,
+  TriggerType,
+  Uuid,
+} from "@/lib/types";
+import { supabase } from "@/lib/supabase/client";
+import { bump } from "@/lib/store/revision";
+import { getCurrentStaffId, getViewingStaffId } from "@/lib/auth/current-staff";
 import { ANNIVERSARY_LABEL } from "@/lib/constants/labels";
-import { POST_DELIVERY_MILESTONES } from "@/lib/constants/approach";
-import { getSettings } from "@/lib/data/settings";
-import { listCustomers, type CustomerListItem } from "@/lib/data/customers";
+import {
+  ANNIVERSARY_LEAD_DAYS,
+  postDeliveryMilestones,
+  type PostDeliveryMilestone,
+} from "@/lib/constants/approach";
+import { type CustomerListItem } from "@/lib/data/customers";
+import { getAppSettings } from "@/lib/data/settings";
 import {
   addMonths,
   daysSince,
@@ -19,9 +32,8 @@ import {
  * 閾値を変えたら即座に結果へ反映されるべきだから。
  * 保存するのは、その結果に人が下した判断（連絡した／スキップした）だけ。
  *
- * このシステムはメッセージを送らない。送るのは店主が個人 LINE から手で行い、
- * ここで出すのはその「気づき」まで。春夏・秋冬の新作案内は公式 LINE から
- * 一斉に送るもので、配信は Lstep が担うため、ここでは扱わない。
+ * このシステムはメッセージを送らない。連絡は担当者が普段の連絡手段で手で行い、
+ * ここで出すのはその「気づき」まで。
  */
 
 /** 1 トリガー分の発火 */
@@ -58,20 +70,25 @@ function approachIdFor(customerId: Uuid): Uuid {
 /**
  * 納品後フォロー。
  *
- * 納品の半年後と 1 年後に声をかける。起点は最新の納品で、注文ごとには立てない
+ * 既定では納品の半年後と 1 年後に声をかける（節目は app_settings で変えられる）。
+ * 起点は最新の納品で、注文ごとには立てない
  * （新しく納品があれば、古い納品のフォローはもう意味を持たないため）。
  *
  * 半年を逃したまま 1 年が来たら、出すのは 1 年のほうだけ。そのとき言うべきことは
  * 「1 年経ちました」であって「半年経ちました」ではないから。
  */
-function evaluatePostDelivery(customer: CustomerListItem, now: Date): TriggerHit | null {
+function evaluatePostDelivery(
+  customer: CustomerListItem,
+  now: Date,
+  milestones: PostDeliveryMilestone[],
+): TriggerHit | null {
   const { lastDeliveredAt, lastDeliveredOrderId } = customer;
   if (!lastDeliveredAt || !lastDeliveredOrderId) return null;
 
   const delivered = new Date(`${lastDeliveredAt}T00:00:00`);
 
   // 過ぎている節目のうち最も後のものを採る
-  for (const milestone of [...POST_DELIVERY_MILESTONES].reverse()) {
+  for (const milestone of [...milestones].reverse()) {
     const dueDate = toIsoDate(addMonths(delivered, milestone.months));
     if (dueDate > toIsoDate(now)) continue;
 
@@ -88,11 +105,10 @@ function evaluatePostDelivery(customer: CustomerListItem, now: Date): TriggerHit
   return null;
 }
 
-function evaluateAnniversary(customerId: Uuid, now: Date): TriggerHit | null {
-  const anniversaries = getDb().anniversaries.filter((a) => a.customerId === customerId);
+function evaluateAnniversary(anniversaries: AnniversaryInput[], now: Date): TriggerHit | null {
   const upcoming = anniversaries
     .map((a) => ({ ...a, until: daysUntilNextAnniversary(a.date, now) }))
-    .filter((a) => a.until <= getSettings().anniversaryLeadDays)
+    .filter((a) => a.until <= ANNIVERSARY_LEAD_DAYS)
     .sort((a, b) => a.until - b.until)[0];
   if (!upcoming) return null;
 
@@ -126,18 +142,64 @@ export type ApproachFilter = {
  * リストが溢れることはなく、上限で隠すと「見えていない分がある」という
  * 不安のほうが残るため。
  */
+export type AnniversaryInput = { id: Uuid; type: AnniversaryType; date: IsoDate; label: string };
+
+type ApproachInputRow = {
+  customerId: Uuid;
+  name: string;
+  nameKana: string;
+  companyName: string | null;
+  staffId: Uuid;
+  lastContactedAt: IsoDate | null;
+  lastDeliveredAt: IsoDate | null;
+  lastDeliveredOrderId: Uuid | null;
+  daysSinceDelivery: number | null;
+  anniversaries: AnniversaryInput[];
+};
+
 export async function listApproaches(filter: ApproachFilter = {}): Promise<ApproachItem[]> {
   const now = new Date();
   const today = toIsoDate(now);
-  const customers = await listCustomers();
-  const resolved = new Set(getDb().approachTasks.map((t) => t.triggerKey));
+
+  // 入力は 1 クエリで束ねる。モックは顧客ごとに anniversaries を走査していて、
+  // localStorage では無害だったが DB では 300 クエリになる。
+  let q = supabase().from("v_approach_inputs").select(`
+    customerId:customer_id, name, nameKana:name_kana, companyName:company_name,
+    staffId:staff_id, lastContactedAt:last_contacted_at,
+    lastDeliveredAt:last_delivered_at, lastDeliveredOrderId:last_delivered_order_id,
+    daysSinceDelivery:days_since_delivery, anniversaries
+  `);
+  // 既定は自分の担当。管理者が切り替えていればその人の分だけ。
+  q = q.eq("staff_id", getViewingStaffId() ?? (await getCurrentStaffId()) ?? "");
+
+  const [{ data, error }, { data: done }, settings] = await Promise.all([
+    q,
+    supabase().from("approach_resolutions").select("trigger_key"),
+    getAppSettings(),
+  ]);
+  if (error) throw error;
+
+  const milestones = postDeliveryMilestones(settings.postDeliveryMonths);
+
+  const resolved = new Set(
+    (done ?? []).map((r) => (r as { trigger_key: string }).trigger_key),
+  );
 
   const items: ApproachItem[] = [];
 
-  for (const customer of customers) {
+  for (const row of (data ?? []) as unknown as ApproachInputRow[]) {
+    const customer = {
+      ...row,
+      id: row.customerId,
+      companyName: row.companyName ?? undefined,
+      lastContactedAt: row.lastContactedAt ?? undefined,
+      lastDeliveredAt: row.lastDeliveredAt ?? undefined,
+      lastDeliveredOrderId: row.lastDeliveredOrderId ?? undefined,
+    } as unknown as CustomerListItem;
+
     const hits = [
-      evaluatePostDelivery(customer, now),
-      evaluateAnniversary(customer.id, now),
+      evaluatePostDelivery(customer, now, milestones),
+      evaluateAnniversary(row.anniversaries ?? [], now),
     ].filter((hit): hit is TriggerHit => hit !== null && !resolved.has(hit.key));
 
     if (hits.length === 0) continue;
@@ -185,31 +247,42 @@ export async function resolveApproach(
   const item = await getApproachForCustomer(customerId);
   if (!item) return;
 
-  const resolvedAt = new Date().toISOString();
-  const today = toIsoDate(new Date());
-  const records: ApproachTask[] = item.hits.map((hit) => ({
-    id: `apt-${hit.key}`,
-    customerId,
-    triggerKey: hit.key,
-    triggerType: hit.type,
-    reason: hit.reason,
-    status,
-    resolvedAt,
-  }));
+  // resolved_by_staff_id は渡さない。DB の default が app.current_staff_id()。
+  // trigger_key の unique が冪等性の本体なので、二度押しは何も増やさない。
+  const { error } = await supabase()
+    .from("approach_resolutions")
+    .upsert(
+      item.hits.map((hit) => ({
+        trigger_key: hit.key,
+        customer_id: customerId,
+        trigger_type: hit.type,
+        reason: hit.reason,
+        status,
+      })),
+      { onConflict: "trigger_key", ignoreDuplicates: true },
+    );
+  if (error) throw error;
 
-  mutateDb((db) => ({
-    ...db,
-    approachTasks: [...db.approachTasks, ...records],
-    customers:
-      status === "done"
-        ? db.customers.map((c) => (c.id === customerId ? { ...c, lastContactedAt: today } : c))
-        : db.customers,
-  }));
+  // 「連絡した」のときだけ最終接触日を動かす。スキップは連絡していない。
+  if (status === "done") {
+    const { error: touchError } = await supabase()
+      .from("customers")
+      .update({ last_contacted_at: toIsoDate(new Date()) })
+      .eq("id", customerId);
+    if (touchError) throw touchError;
+  }
+  bump();
 }
 
 /** 対応履歴。カルテのアプローチタブに出す */
 export async function listApproachHistory(customerId: Uuid): Promise<ApproachTask[]> {
-  return getDb()
-    .approachTasks.filter((t) => t.customerId === customerId)
-    .sort((a, b) => b.resolvedAt.localeCompare(a.resolvedAt));
+  const { data, error } = await supabase()
+    .from("approach_resolutions")
+    .select(
+      "id, customerId:customer_id, triggerKey:trigger_key, triggerType:trigger_type, reason, status, resolvedAt:resolved_at",
+    )
+    .eq("customer_id", customerId)
+    .order("resolved_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as unknown as ApproachTask[];
 }

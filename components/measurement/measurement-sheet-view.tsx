@@ -17,7 +17,6 @@ import {
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getCurrentStaffId } from "@/lib/auth/current-staff";
 import { MAX_ADJUSTMENTS } from "@/lib/constants/adjustments";
 import { INPUT_METHOD_LABEL } from "@/lib/constants/labels";
 import {
@@ -27,7 +26,7 @@ import {
   toggleAdjustment,
   updateMeasurementValue,
 } from "@/lib/data/measurements";
-import { useMockQuery } from "@/lib/hooks/use-mock-db";
+import { useQuery } from "@/lib/hooks/use-query";
 import { useIsPhone } from "@/lib/hooks/use-media-query";
 import type { BodyPart, ItemTypeId } from "@/lib/types";
 import { formatDateDot } from "@/lib/utils/date";
@@ -66,13 +65,13 @@ export function MeasurementSheetView({
   const [tab, setTab] = useState<"upper" | "lower" | "adjust">("upper");
 
   const sheetsLoader = useCallback(() => listSheets(customerId), [customerId]);
-  const { data: sheets } = useMockQuery(sheetsLoader, [customerId, open]);
+  const { data: sheets } = useQuery(sheetsLoader, [customerId, open]);
 
   const viewLoader = useCallback(
     () => getSheetView(customerId, selectedId),
     [customerId, selectedId],
   );
-  const { data: view, loading } = useMockQuery(viewLoader, [customerId, selectedId, open]);
+  const { data: view, loading } = useQuery(viewLoader, [customerId, selectedId, open]);
 
   const handleValueChange = (
     itemTypeId: ItemTypeId,
@@ -99,7 +98,9 @@ export function MeasurementSheetView({
   const handleNewSheet = async () => {
     const isFirst = !view;
     // 採寸票には「誰が採寸したか」を残す。顧客の担当ではなく操作者
-    const id = await createSheetFromPrevious(customerId, getCurrentStaffId());
+    // 採寸者は DB の default（app.current_staff_id()）が入れる。
+    // 画面が「自分が誰か」を知る必要は無くなった。
+    const id = await createSheetFromPrevious(customerId);
     setSelectedId(id);
     setEditing(true);
     toast.success(

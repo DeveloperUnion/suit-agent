@@ -1,23 +1,58 @@
 import type { IsoDate, ItemTypeId, Order, OrderItem, OrderPurpose, Uuid } from "@/lib/types";
-import { getDb, mutateDb, newId } from "@/lib/store/mock-db";
+import { supabase } from "@/lib/supabase/client";
+import { bump } from "@/lib/store/revision";
 import { ITEM_TYPE_MAP } from "@/lib/constants/measurement-fields";
 import { toIsoDate } from "@/lib/utils/date";
+
+/**
+ * 注文のデータアクセス。
+ *
+ * 生地は orders 側に持つ（紙が原反ＮＯ を 1 つしか持たないため）。
+ * 明細は「何を作ったか」だけで、金額も生地も持たない。
+ */
 
 export type OrderView = Order & {
   staffName: string;
   items: OrderItem[];
 };
 
+const ORDER_COLUMNS = `
+  id, customerId:customer_id, orderNumber:order_number,
+  orderedAt:ordered_at, dueDate:due_date, deliveredAt:delivered_at,
+  status, purpose,
+  fabricProductNumber:fabric_product_number, fabricColorNumber:fabric_color_number,
+  fabricColorName:fabric_color_name, fabricComposition:fabric_composition,
+  subtotalAmount:subtotal_amount, surchargeAmount:surcharge_amount,
+  taxAmount:tax_amount, totalAmount:total_amount,
+  takenByStaffId:taken_by_staff_id,
+  staff:taken_by_staff_id ( name ),
+  items:order_items ( id, orderId:order_id, itemTypeId:item_type_id )
+`;
+
+type OrderRow = Order & {
+  staff: { name: string } | null;
+  items: OrderItem[];
+};
+
+function toView(row: OrderRow): OrderView {
+  const { staff, ...order } = row;
+  return {
+    ...order,
+    dueDate: order.dueDate ?? undefined,
+    deliveredAt: order.deliveredAt ?? undefined,
+    staffName: staff?.name ?? "—",
+    items: row.items ?? [],
+  };
+}
+
 export async function listOrders(customerId: Uuid): Promise<OrderView[]> {
-  const db = getDb();
-  return db.orders
-    .filter((o) => o.customerId === customerId)
-    .sort((a, b) => b.orderedAt.localeCompare(a.orderedAt))
-    .map((order) => ({
-      ...order,
-      staffName: db.staff.find((s) => s.id === order.staffId)?.name ?? "—",
-      items: db.orderItems.filter((item) => item.orderId === order.id),
-    }));
+  const { data, error } = await supabase()
+    .from("orders")
+    .select(ORDER_COLUMNS)
+    .eq("customer_id", customerId)
+    .order("ordered_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((r) => toView(r as unknown as OrderRow));
 }
 
 export type OwnedItemSummary = {
@@ -32,33 +67,34 @@ export type OwnedItemSummary = {
 /**
  * 保有アイテム構成の集計。注文タブの最上部に出す。
  *
- * 色×柄の内訳は持たない。生地マスタを廃して紙の値をそのまま保存するようにしたため、
- * 「ネイビー」「無地」といった正規化された系統がどこにも無くなった。
- * 原反NO の文字列だけでは同系統かどうかを判定できず、
- * 当てにならない集計を出すくらいなら出さないほうがよい。
+ * 色×柄の内訳は持たない。生地マスタを廃して紙の値をそのまま保存するように
+ * したため、「ネイビー」「無地」といった正規化された系統がどこにも無くなった。
+ * 原反ＮＯ の文字列だけでは同系統かどうかを判定できず、当てにならない集計を
+ * 出すくらいなら出さないほうがよい。
  *
  * 累計購入額・購入回数もここに含めない。顧客を金額で格付けする表示は、
  * 本システムが信頼関係の維持を目的としていることと衝突するため
  * （個々の注文の金額は事実の記録として注文カードに残す）。
  */
 export async function getOwnedItemSummary(customerId: Uuid): Promise<OwnedItemSummary> {
-  const db = getDb();
-  const orders = db.orders.filter((o) => o.customerId === customerId);
-  const orderIds = new Set(orders.map((o) => o.id));
-  const items = db.orderItems.filter((item) => orderIds.has(item.orderId));
+  const { data, error } = await supabase()
+    .from("order_items")
+    .select("item_type_id, orders!inner ( customer_id )")
+    .eq("orders.customer_id", customerId);
+  if (error) throw error;
 
   const itemCounts = new Map<ItemTypeId, number>();
-  for (const item of items) {
-    itemCounts.set(item.itemTypeId, (itemCounts.get(item.itemTypeId) ?? 0) + 1);
+  for (const row of data ?? []) {
+    const id = (row as { item_type_id: ItemTypeId }).item_type_id;
+    itemCounts.set(id, (itemCounts.get(id) ?? 0) + 1);
   }
 
   const tracked: ItemTypeId[] = ["jacket", "pants", "vest", "shirt", "coat"];
-
   return {
     byItemType: tracked
       .filter((id) => (itemCounts.get(id) ?? 0) > 0)
       .map((id) => ({ itemTypeId: id, name: ITEM_TYPE_MAP[id].name, count: itemCounts.get(id) ?? 0 })),
-    hasOrders: orders.length > 0,
+    hasOrders: (data ?? []).length > 0,
     missingItemTypes: tracked
       .filter((id) => !itemCounts.get(id))
       .map((id) => ({ itemTypeId: id, name: ITEM_TYPE_MAP[id].name })),
@@ -69,7 +105,7 @@ export async function getOwnedItemSummary(customerId: Uuid): Promise<OwnedItemSu
 
 /** 紙の生地欄。原反NO・色番・色名・組成をそのまま持つ */
 export type OrderItemFabric = Pick<
-  OrderItem,
+  Order,
   "fabricProductNumber" | "fabricColorNumber" | "fabricColorName" | "fabricComposition"
 >;
 
@@ -82,6 +118,8 @@ export type OrderAmounts = Pick<
 /**
  * 合計の既定値。
  * 紙では合計欄も手書きなので、人が上書きするまでの初期値としてだけ使う。
+ * DB 側には CHECK もトリガーも置いていない — 3 つの和と一致しないことが
+ * 正常な状態だから。
  */
 export function defaultTotal(amounts: Omit<OrderAmounts, "totalAmount">): number {
   return amounts.subtotalAmount + amounts.surchargeAmount + amounts.taxAmount;
@@ -89,7 +127,6 @@ export function defaultTotal(amounts: Omit<OrderAmounts, "totalAmount">): number
 
 export type CreateOrderInput = {
   customerId: Uuid;
-  staffId: Uuid;
   orderedAt: IsoDate;
   dueDate?: IsoDate;
   purpose: OrderPurpose;
@@ -107,50 +144,68 @@ export type CreateOrderInput = {
   touchLastContact?: boolean;
 };
 
+/**
+ * 注文の登録。
+ *
+ * 受注者（taken_by_staff_id）を渡さない。DB の default が
+ * app.current_staff_id() なので、アプリは自分が誰かを知らなくてよい。
+ * 顧客の担当（customers.staff_id）とは別物で、あちらはアクセス境界、
+ * こちらは「誰が操作したか」の記録。
+ */
 export async function createOrder(input: CreateOrderInput): Promise<Uuid> {
-  const orderId = newId("ord");
-  const touchLastContact = input.touchLastContact ?? true;
   const seq = Math.floor(Math.random() * 900) + 100;
 
-  mutateDb((db) => ({
-    ...db,
-    orders: [
-      ...db.orders,
-      {
-        id: orderId,
-        customerId: input.customerId,
-        orderNumber: `J1-${seq}-${Math.floor(Math.random() * 900) + 100}`,
-        orderedAt: input.orderedAt,
-        dueDate: input.dueDate,
-        status: "ordered",
-        purpose: input.purpose,
-        ...input.amounts,
-        staffId: input.staffId,
-      },
-    ],
-    orderItems: [
-      ...db.orderItems,
-      ...input.items.map((item, i) => ({
-        id: `${orderId}-item-${i + 1}`,
-        orderId,
-        itemTypeId: item.itemTypeId,
-        ...input.fabric,
-      })),
-    ],
-    // 採寸票を注文に紐づける（どの寸法で作ったかを後から追えるように）
-    measurementSheets: input.measurementSheetId
-      ? db.measurementSheets.map((s) =>
-          s.id === input.measurementSheetId ? { ...s, orderId } : s,
-        )
-      : db.measurementSheets,
-    // 注文＝来店なので最終接触日も動く。放置リストに残り続けるのを防ぐ
-    customers: touchLastContact
-      ? db.customers.map((c) =>
-          c.id === input.customerId ? { ...c, lastContactedAt: toIsoDate(new Date()) } : c,
-        )
-      : db.customers,
-  }));
+  const { data, error } = await supabase()
+    .from("orders")
+    .insert({
+      customer_id: input.customerId,
+      order_number: `J1-${seq}-${Math.floor(Math.random() * 900) + 100}`,
+      ordered_at: input.orderedAt,
+      due_date: input.dueDate ?? null,
+      status: "ordered",
+      purpose: input.purpose,
+      fabric_product_number: input.fabric.fabricProductNumber ?? null,
+      fabric_color_number: input.fabric.fabricColorNumber ?? null,
+      fabric_color_name: input.fabric.fabricColorName ?? null,
+      fabric_composition: input.fabric.fabricComposition ?? null,
+      subtotal_amount: input.amounts.subtotalAmount,
+      surcharge_amount: input.amounts.surchargeAmount,
+      tax_amount: input.amounts.taxAmount,
+      total_amount: input.amounts.totalAmount,
+    })
+    .select("id")
+    .single();
+  if (error) throw error;
+  const orderId = (data as { id: string }).id;
 
+  if (input.items.length > 0) {
+    const { error: itemError } = await supabase()
+      .from("order_items")
+      .insert(input.items.map((i) => ({ order_id: orderId, item_type_id: i.itemTypeId })));
+    if (itemError) throw itemError;
+  }
+
+  // 採寸票を注文に紐づける（どの寸法で作ったかを後から追えるように）
+  if (input.measurementSheetId) {
+    const { error: sheetError } = await supabase()
+      .from("measurement_sheets")
+      .update({ order_id: orderId })
+      .eq("id", input.measurementSheetId);
+    if (sheetError) throw sheetError;
+  }
+
+  // 注文＝来店なので最終接触日も動く。放置リストに残り続けるのを防ぐ。
+  // トリガーにしない — 更新経路が「連絡した」とここの 2 つしかなく、
+  // 型定義にも「トリガーの判定には使わない」と明記されている。
+  if (input.touchLastContact ?? true) {
+    const { error: touchError } = await supabase()
+      .from("customers")
+      .update({ last_contacted_at: toIsoDate(new Date()) })
+      .eq("id", input.customerId);
+    if (touchError) throw touchError;
+  }
+
+  bump();
   return orderId;
 }
 
@@ -163,21 +218,20 @@ export async function createOrder(input: CreateOrderInput): Promise<Uuid> {
  * ここが動かないとアプローチが一切立たない。
  */
 export async function markOrderDelivered(orderId: Uuid, deliveredAt: IsoDate): Promise<void> {
-  mutateDb((db) => ({
-    ...db,
-    orders: db.orders.map((o) =>
-      o.id === orderId ? { ...o, deliveredAt, status: "delivered" as const } : o,
-    ),
-  }));
+  const { error } = await supabase()
+    .from("orders")
+    .update({ delivered_at: deliveredAt, status: "delivered" })
+    .eq("id", orderId);
+  if (error) throw error;
+  bump();
 }
 
 /** 誤操作の取り消し。受注済みまで戻す */
 export async function clearOrderDelivery(orderId: Uuid): Promise<void> {
-  mutateDb((db) => ({
-    ...db,
-    orders: db.orders.map((o) =>
-      o.id === orderId ? { ...o, deliveredAt: undefined, status: "ordered" as const } : o,
-    ),
-  }));
+  const { error } = await supabase()
+    .from("orders")
+    .update({ delivered_at: null, status: "ordered" })
+    .eq("id", orderId);
+  if (error) throw error;
+  bump();
 }
-

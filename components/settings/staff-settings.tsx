@@ -25,13 +25,13 @@ import {
   updateStaff,
   type StaffWithLoad,
 } from "@/lib/data/settings";
-import { useMockQuery } from "@/lib/hooks/use-mock-db";
+import { useQuery } from "@/lib/hooks/use-query";
 import type { StaffRole } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export function StaffSettings() {
   const loader = useCallback(() => listAllStaff(), []);
-  const { data: staff } = useMockQuery(loader, []);
+  const { data: staff } = useQuery(loader, []);
 
   const [editing, setEditing] = useState<StaffWithLoad | null>(null);
   const [creating, setCreating] = useState(false);

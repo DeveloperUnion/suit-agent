@@ -8,17 +8,23 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 /**
+ * 並びは開く頻度の順。
+ *
+ * トリガーが一番右にあるのは、いちど決めたら滅多に触らないため。
+ * 変えられるのも納品後フォローの節目だけで、記念日の 7 日前は
+ * lib/constants/approach.ts の固定値のまま表示だけしている。
+ *
  * マスタのタブは無い。生地は発注書に書かれた値をそのまま保存し、
  * 価格は注文ごとに紙から転記するので、店舗が育てるマスタが残らなかった。
  */
 const TABS = [
-  { value: "triggers", label: "トリガー" },
   { value: "targets", label: "売上目標" },
   { value: "staff", label: "スタッフ" },
+  { value: "triggers", label: "トリガー" },
 ];
 
 export function SettingsView({ initialTab }: { initialTab?: string }) {
-  const tab = initialTab && TABS.some((t) => t.value === initialTab) ? initialTab : "triggers";
+  const tab = initialTab && TABS.some((t) => t.value === initialTab) ? initialTab : "targets";
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 sm:p-6 lg:p-8">
@@ -36,14 +42,14 @@ export function SettingsView({ initialTab }: { initialTab?: string }) {
           <ScrollBar orientation="horizontal" />
         </ScrollArea>
 
-        <TabsContent value="triggers">
-          <TriggerSettings />
-        </TabsContent>
         <TabsContent value="targets">
           <RevenueTargetSettings />
         </TabsContent>
         <TabsContent value="staff">
           <StaffSettings />
+        </TabsContent>
+        <TabsContent value="triggers">
+          <TriggerSettings />
         </TabsContent>
       </Tabs>
     </div>

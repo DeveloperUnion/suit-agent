@@ -1,7 +1,6 @@
 import type { IsoMonth } from "@/lib/types";
-import { getDb } from "@/lib/store/mock-db";
-import { getCurrentStaff, getCurrentStaffId } from "@/lib/auth/current-staff";
-import { getRevenueTarget } from "@/lib/data/settings";
+import { supabase } from "@/lib/supabase/client";
+import { getCurrentStaffId, getViewingStaff, getViewingStaffId } from "@/lib/auth/current-staff";
 import { listCustomers } from "@/lib/data/customers";
 import { listApproaches, type ApproachItem } from "@/lib/data/approaches";
 import { formatMonthLabel, monthProgress, recentMonths, toIsoMonth } from "@/lib/utils/date";
@@ -55,23 +54,39 @@ export type DashboardSummary = {
 };
 
 export async function getDashboardSummary(): Promise<DashboardSummary> {
-  const db = getDb();
-  const customers = await listCustomers();
-  const approaches = await listApproaches();
-
-  const customerIds = new Set(customers.map((c) => c.id));
-  const staffId = getCurrentStaffId();
   const now = new Date();
-
-  // ── 月次の売上 ──
   const months = recentMonths(12, now);
   const currentMonth = toIsoMonth(now);
+
+  // 集計の対象は「表示中のスタッフの担当顧客」。管理者が他のスタッフの
+  // ページを見ているときは、その人の数字が出る。
+  const staffId = (await getViewingStaffId()) ?? (await getCurrentStaffId());
+
+  const [customers, approaches, orders, targets] = await Promise.all([
+    listCustomers(),
+    listApproaches(),
+    // 集計の単位は「担当している顧客の注文」。受注者で数えると、同僚が
+    // 代わりに受けた注文が自分の実績から抜け落ちる。
+    supabase()
+      .from("orders")
+      .select("ordered_at, total_amount, customers!inner ( staff_id )")
+      .gte("ordered_at", `${months[0]}-01`),
+    supabase()
+      .from("revenue_targets")
+      .select("month, amount")
+      .eq("staff_id", staffId ?? ""),
+  ]);
+
+  const targetByMonth = new Map<IsoMonth, number>(
+    ((targets.data ?? []) as { month: string; amount: number }[]).map((t) => [t.month, t.amount]),
+  );
+
   const revenueByMonth = new Map<IsoMonth, { revenue: number; count: number }>();
-  for (const order of db.orders) {
-    if (!customerIds.has(order.customerId)) continue;
-    const month = order.orderedAt.slice(0, 7);
+  for (const row of orders.data ?? []) {
+    const o = row as unknown as { ordered_at: string; total_amount: number };
+    const month = o.ordered_at.slice(0, 7);
     const entry = revenueByMonth.get(month) ?? { revenue: 0, count: 0 };
-    entry.revenue += order.totalAmount;
+    entry.revenue += o.total_amount;
     entry.count += 1;
     revenueByMonth.set(month, entry);
   }
@@ -83,7 +98,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
       label: formatMonthLabel(month, months[i - 1]),
       revenue: entry.revenue,
       orderCount: entry.count,
-      target: getRevenueTarget(staffId, month),
+      target: targetByMonth.get(month) ?? null,
       isCurrent: month === currentMonth,
     };
   });
@@ -99,7 +114,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
   };
 
   return {
-    staffName: getCurrentStaff()?.name ?? "—",
+    staffName: (await getViewingStaff())?.name ?? "—",
     customerCount: customers.length,
 
     openApproaches: approaches.length,

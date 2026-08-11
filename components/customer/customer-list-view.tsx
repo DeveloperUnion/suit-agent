@@ -20,7 +20,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { listCustomers, listIndustries, listResidencePrefectures } from "@/lib/data/customers";
-import { useMockQuery } from "@/lib/hooks/use-mock-db";
+import { useQuery } from "@/lib/hooks/use-query";
 
 /** 「すべて」を空文字で持つと Select の value と噛み合わないため番兵を置く */
 const ALL = "__all__";
@@ -42,13 +42,13 @@ export function CustomerListView() {
       }),
     [keyword, prefecture, industry],
   );
-  const { data: customers, loading } = useMockQuery(loader, [keyword, prefecture, industry]);
+  const { data: customers, loading } = useQuery(loader, [keyword, prefecture, industry]);
 
   const prefectureLoader = useCallback(() => listResidencePrefectures(), []);
-  const { data: prefectures } = useMockQuery(prefectureLoader, []);
+  const { data: prefectures } = useQuery(prefectureLoader, []);
 
   const industryLoader = useCallback(() => listIndustries(), []);
-  const { data: industries } = useMockQuery(industryLoader, []);
+  const { data: industries } = useQuery(industryLoader, []);
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 p-4 sm:p-6 lg:p-8">

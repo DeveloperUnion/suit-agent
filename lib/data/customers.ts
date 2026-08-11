@@ -1,14 +1,20 @@
-import type { Customer, CustomerAnniversary, IsoDate, MockDatabase, Staff, Uuid } from "@/lib/types";
-import { getDb, mutateDb, newId } from "@/lib/store/mock-db";
-import { getCurrentStaffId } from "@/lib/auth/current-staff";
+import type { Customer, CustomerAnniversary, IsoDate, Staff, Uuid } from "@/lib/types";
+import { supabase } from "@/lib/supabase/client";
+import { bump } from "@/lib/store/revision";
+import { getCurrentStaffId, getViewingStaffId } from "@/lib/auth/current-staff";
 import { INDUSTRIES } from "@/lib/constants/industries";
 import { PREFECTURES } from "@/lib/constants/prefectures";
-import { daysSince } from "@/lib/utils/date";
 
 /**
  * 顧客のデータアクセス。
- * 戻り値をすべて Promise にしてあるのは、DB 実装に差し替えるときに
- * 呼び出し側を書き換えずに済ませるため。
+ *
+ * 担当による絞り込みはここに書かない。RLS が「自分の担当 or 管理者なら閲覧、
+ * 編集は自担当のみ」を持っているので、うっかり書き忘れても他人の顧客は
+ * 出てこない（モックの updateCustomer には実際にその書き忘れがあった）。
+ *
+ * ここで staffId を見るのは 1 箇所だけ — 管理者が画面左上で「表示中のスタッフ」を
+ * 切り替えたときの絞り込み。これは閲覧フィルタであって権限ではない。
+ * 一般スタッフが立てても RLS が天井なので安全側に倒れる。
  */
 
 export type CustomerListItem = Customer & {
@@ -31,62 +37,103 @@ export type CustomerFilter = {
   industry?: string;
 };
 
-type LastDelivery = { orderId: Uuid; deliveredAt: IsoDate };
+/**
+ * 列の別名は select の中で付ける。
+ * 変換関数を別に持つと、列を足したときに片方だけ直す事故が起きる。
+ */
+const CUSTOMER_COLUMNS = `
+  id, name, nameKana:name_kana, birthDate:birth_date, gender, phone, email, address,
+  residencePrefecture:residence_prefecture,
+  embroideryName:embroidery_name,
+  companyName:company_name, department, jobTitle:job_title, industry,
+  familyInfo:family_info, memo, hobbies, preferences, tags, ngNotes:ng_notes,
+  staffId:staff_id, firstVisitDate:first_visit_date,
+  acquisitionChannel:acquisition_channel, referrerId:referrer_id,
+  lastContactedAt:last_contacted_at, createdAt:created_at
+`;
 
-/** 顧客ごとの最終納品。一覧のたびに 1 度だけ組み立て、顧客数×注文数の走査を避ける */
-function lastDeliveredMap(db: MockDatabase): Map<Uuid, LastDelivery> {
-  const map = new Map<Uuid, LastDelivery>();
-  for (const order of db.orders) {
-    if (!order.deliveredAt) continue;
-    const current = map.get(order.customerId);
-    if (!current || order.deliveredAt > current.deliveredAt) {
-      map.set(order.customerId, { orderId: order.id, deliveredAt: order.deliveredAt });
-    }
+const LIST_COLUMNS = `
+  ${CUSTOMER_COLUMNS},
+  lastDeliveredAt:last_delivered_at,
+  lastDeliveredOrderId:last_delivered_order_id,
+  daysSinceDelivery:days_since_delivery
+`;
+
+/** null を undefined に均す。型は省略可能項目を undefined で表している */
+function clean<T extends Record<string, unknown>>(row: T): T {
+  const out = {} as T;
+  for (const [k, v] of Object.entries(row)) {
+    (out as Record<string, unknown>)[k] = v === null && k !== "daysSinceDelivery" ? undefined : v;
   }
-  return map;
+  return out;
 }
 
-function decorate(customer: Customer, delivered: Map<Uuid, LastDelivery>): CustomerListItem {
-  const last = delivered.get(customer.id);
-  return {
-    ...customer,
-    lastDeliveredAt: last?.deliveredAt,
-    lastDeliveredOrderId: last?.orderId,
-    daysSinceDelivery: daysSince(last?.deliveredAt),
-  };
+export async function listCustomers(filter: CustomerFilter = {}): Promise<CustomerListItem[]> {
+  let q = supabase()
+    .from("v_customers")
+    .select(LIST_COLUMNS)
+    .is("archived_at", null);
+
+  // 既定は自分の担当。管理者は RLS 上は全顧客を見られるが、それは
+  // 「切り替えたときに見える」ためのものであって、既定で全員が並ぶと
+  // 自分の顧客を探せなくなる。
+  q = q.eq("staff_id", await viewingStaffId());
+
+  if (filter.residencePrefecture) q = q.eq("residence_prefecture", filter.residencePrefecture);
+  if (filter.industry) q = q.eq("industry", filter.industry);
+
+  const keyword = filter.keyword?.trim();
+  if (keyword) {
+    // 生成列 search_key は氏名・カナ・会社名を app.normalize_ja() で正規化して
+    // 連結したもの。UI とエージェントで別の正規化をすると
+    // 「画面には出るのに AI が見つけられない」が起きるので、入口を 1 つにしてある。
+    //
+    // 3,000 行の seq scan で 1〜3ms。インデックスは張らない
+    // （2ms のために pg_trgm を入れて移植性を捨てる価値がない）。
+    q = q.ilike("search_key", `%${normalizeForSearch(keyword)}%`);
+  }
+
+  const { data, error } = await q;
+  if (error) throw error;
+
+  return (data ?? []).map((r) => clean(r as unknown as CustomerListItem)).sort(byStaleness);
 }
 
 /**
- * 顧客はスタッフごとに分割されている。ログインした人には自分の顧客しか返さない。
- * 絞り込みはこの層で必ず効かせ、画面側の実装漏れで他人の顧客が出ないようにする。
+ * いま「誰のページ」を見ているか。
+ *
+ * 管理者が切り替えていればその人、そうでなければ自分。
+ * これは表示の絞り込みであって権限ではない — 一般スタッフが他人を指しても
+ * RLS が天井なので 0 行になり、安全側に倒れる。
  */
-export async function listCustomers(filter: CustomerFilter = {}): Promise<CustomerListItem[]> {
-  const db = getDb();
-  const staffId = getCurrentStaffId();
-  const keyword = filter.keyword?.trim();
-  const delivered = lastDeliveredMap(db);
-  return db.customers
-    .filter((c) => c.staffId === staffId)
-    .filter((c) => !filter.residencePrefecture || c.residencePrefecture === filter.residencePrefecture)
-    .filter((c) => !filter.industry || c.industry === filter.industry)
-    .filter((c) => {
-      if (!keyword) return true;
-      // 一覧の検索で引きたいのは氏名と会社名だけ。趣味・タグ・メモまで見ると、
-      // 探している人と関係のない顧客が混ざる。趣味は AI アシスタントから引く
-      const haystack = [c.name, c.nameKana, c.companyName ?? ""].join("");
-      return haystack.includes(keyword);
-    })
-    .map((c) => decorate(c, delivered))
-    .sort((a, b) => {
-      // 納品済みの注文が無い顧客は起点が無いので末尾に置く。
-      // 0 日目として扱うと「今日納品した人」と同じ位置に紛れてしまう
-      if (a.daysSinceDelivery === null && b.daysSinceDelivery === null) {
-        return a.nameKana.localeCompare(b.nameKana, "ja");
-      }
-      if (a.daysSinceDelivery === null) return 1;
-      if (b.daysSinceDelivery === null) return -1;
-      return b.daysSinceDelivery - a.daysSinceDelivery;
-    });
+async function viewingStaffId(): Promise<string> {
+  return getViewingStaffId() ?? (await getCurrentStaffId()) ?? "";
+}
+
+/**
+ * app.normalize_ja() のクライアント側。DB と挙動を揃える。
+ * ひらがなをカタカナへ寄せるので「たなか」で「タナカ」を引ける。
+ */
+function normalizeForSearch(value: string): string {
+  return value
+    .replace(/[\s　]/g, "")
+    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/[ぁ-ゖ]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60))
+    .replace(/ｰ/g, "ー")
+    .toLowerCase();
+}
+
+/**
+ * 納品済みの注文が無い顧客は起点が無いので末尾に置く。
+ * 0 日目として扱うと「今日納品した人」と同じ位置に紛れてしまう。
+ */
+function byStaleness(a: CustomerListItem, b: CustomerListItem): number {
+  if (a.daysSinceDelivery === null && b.daysSinceDelivery === null) {
+    return a.nameKana.localeCompare(b.nameKana, "ja");
+  }
+  if (a.daysSinceDelivery === null) return 1;
+  if (b.daysSinceDelivery === null) return -1;
+  return b.daysSinceDelivery - a.daysSinceDelivery;
 }
 
 /**
@@ -96,12 +143,7 @@ export async function listCustomers(filter: CustomerFilter = {}): Promise<Custom
 export async function listResidencePrefectures(): Promise<
   { prefecture: string; count: number }[]
 > {
-  const staffId = getCurrentStaffId();
-  const counts = new Map<string, number>();
-  for (const c of getDb().customers) {
-    if (c.staffId !== staffId || !c.residencePrefecture) continue;
-    counts.set(c.residencePrefecture, (counts.get(c.residencePrefecture) ?? 0) + 1);
-  }
+  const counts = await countBy("residence_prefecture");
   return PREFECTURES.filter((p) => counts.has(p)).map((p) => ({
     prefecture: p,
     count: counts.get(p) as number,
@@ -116,12 +158,7 @@ export async function listResidencePrefectures(): Promise<
  * 定数だけを見て組むと、自分で入れた業種が絞り込みに出てこない。
  */
 export async function listIndustries(): Promise<{ industry: string; count: number }[]> {
-  const staffId = getCurrentStaffId();
-  const counts = new Map<string, number>();
-  for (const c of getDb().customers) {
-    if (c.staffId !== staffId || !c.industry) continue;
-    counts.set(c.industry, (counts.get(c.industry) ?? 0) + 1);
-  }
+  const counts = await countBy("industry");
   const known = INDUSTRIES.filter((i) => counts.has(i)) as readonly string[];
   const free = [...counts.keys()]
     .filter((i) => !known.includes(i))
@@ -129,34 +166,100 @@ export async function listIndustries(): Promise<{ industry: string; count: numbe
   return [...known, ...free].map((i) => ({ industry: i, count: counts.get(i) as number }));
 }
 
-/** 担当外の顧客は null を返す。URL を直接叩かれても開けない */
+/**
+ * 絞り込みの選択肢を数える。
+ * 3,000 行なので集計は素直に全件引いて数える。SQL 側に関数を増やすほどの
+ * 頻度でも件数でもない。
+ */
+async function countBy(column: "residence_prefecture" | "industry"): Promise<Map<string, number>> {
+  const { data, error } = await supabase()
+    .from("customers")
+    .select(column)
+    .is("archived_at", null)
+    .not(column, "is", null)
+    .eq("staff_id", await viewingStaffId());
+  if (error) throw error;
+
+  const counts = new Map<string, number>();
+  for (const row of data ?? []) {
+    const value = (row as Record<string, string>)[column];
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * 担当外の顧客は null を返す。URL を直接叩かれても開けない。
+ *
+ * モックはここで staffId を突き合わせていたが、その分岐は消えた。
+ * RLS が 0 行を返すので maybeSingle() が自然に null になる。
+ */
 export async function getCustomer(id: Uuid): Promise<CustomerListItem | null> {
-  const db = getDb();
-  const customer = db.customers.find((c) => c.id === id);
-  if (!customer || customer.staffId !== getCurrentStaffId()) return null;
-  return decorate(customer, lastDeliveredMap(db));
+  const { data, error } = await supabase()
+    .from("v_customers")
+    .select(LIST_COLUMNS)
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? clean(data as unknown as CustomerListItem) : null;
 }
 
 export async function listAnniversaries(customerId: Uuid): Promise<CustomerAnniversary[]> {
-  return getDb().anniversaries.filter((a) => a.customerId === customerId);
+  const { data, error } = await supabase()
+    .from("customer_anniversaries")
+    .select("id, customerId:customer_id, type, date, label")
+    .eq("customer_id", customerId)
+    .order("date");
+  if (error) throw error;
+  return (data ?? []) as unknown as CustomerAnniversary[];
 }
 
-/** 記念日はまとめて置き換える。行の追加・削除が中心の項目のため */
+/**
+ * 記念日の保存。
+ *
+ * モックは全削除＋全挿入だったが、DB では行単位にする。
+ * 理由が 2 つある:
+ *   1. change_log が毎回「全削除＋全挿入」で埋まり、変更履歴が読めなくなる
+ *   2. 全置換すると id が振り直され、approach_resolutions.trigger_key
+ *      （anniversary:{id}:{年}）が別の記念日を指すようになる。
+ *      スキップした誕生日の判断が、消したあとに結婚記念日へ移る、といった
+ *      無音の誤りが起きる
+ *
+ * 画面からは「今この顧客に何があるか」の全体が渡ってくるので、
+ * 消えたものだけを DELETE し、残りを upsert する。
+ */
 export async function saveAnniversaries(
   customerId: Uuid,
-  entries: Omit<CustomerAnniversary, "id" | "customerId">[],
+  entries: (Omit<CustomerAnniversary, "id" | "customerId"> & { id?: Uuid })[],
 ): Promise<void> {
-  mutateDb((db) => ({
-    ...db,
-    anniversaries: [
-      ...db.anniversaries.filter((a) => a.customerId !== customerId),
-      ...entries.map((entry, i) => ({ ...entry, id: `anv-${customerId}-${i}`, customerId })),
-    ],
+  const keep = entries.map((e) => e.id).filter((id): id is Uuid => Boolean(id));
+
+  let del = supabase().from("customer_anniversaries").delete().eq("customer_id", customerId);
+  if (keep.length > 0) del = del.not("id", "in", `(${keep.join(",")})`);
+  const { error: delError } = await del;
+  if (delError) throw delError;
+
+  const rows = entries.map((e) => ({
+    ...(e.id ? { id: e.id } : {}),
+    customer_id: customerId,
+    type: e.type,
+    date: e.date,
+    label: e.label ?? "",
   }));
+  if (rows.length > 0) {
+    const { error } = await supabase().from("customer_anniversaries").upsert(rows);
+    if (error) throw error;
+  }
+  bump();
 }
 
 export async function listStaff(): Promise<Staff[]> {
-  return getDb().staff;
+  const { data, error } = await supabase()
+    .from("staff")
+    .select("id, name, email, role, isActive:is_active")
+    .order("name");
+  if (error) throw error;
+  return (data ?? []) as unknown as Staff[];
 }
 
 export type SimilarCustomer = CustomerListItem & {
@@ -166,72 +269,129 @@ export type SimilarCustomer = CustomerListItem & {
 
 /**
  * 似た顧客を探す。
- * 顧客1,000名規模だと、再来店の見落としや同姓同名による二重登録が必ず起きるため、
- * 新規登録の入力中に候補を出して気づけるようにする。
  *
- * ここだけは担当の境界を越えて全顧客を見る。他のスタッフが担当している人を
- * 二重に登録してしまうと、データが分裂して後から直せないため。
- * ただし他人の顧客は氏名以外を返さない。
+ * ここだけは担当の境界を越える。他のスタッフが担当している人を二重に登録して
+ * しまうと、データが分裂して後から直せないため。
+ *
+ * 越境は app.find_similar_customers()（SECURITY DEFINER）に閉じてあり、
+ * 他人の顧客は氏名しか返らない。名簿の抜き出しには使えない。
  */
 export async function findSimilarCustomers(input: {
   name?: string;
   nameKana?: string;
   phone?: string;
 }): Promise<SimilarCustomer[]> {
-  const staffId = getCurrentStaffId();
-  const delivered = lastDeliveredMap(getDb());
-  const name = input.name?.replace(/[\s　]/g, "") ?? "";
-  const kana = input.nameKana?.replace(/[\s　]/g, "") ?? "";
-  const phone = input.phone?.replace(/[^0-9]/g, "") ?? "";
-  if (name.length < 2 && kana.length < 2 && phone.length < 6) return [];
+  const { data, error } = await supabase().rpc("find_similar_customers", {
+    p_name: input.name ?? null,
+    p_name_kana: input.nameKana ?? null,
+    p_phone: input.phone ?? null,
+  });
+  if (error) throw error;
 
-  return getDb()
-    .customers.filter((c) => {
-      const cName = c.name.replace(/[\s　]/g, "");
-      const cKana = c.nameKana.replace(/[\s　]/g, "");
-      const cPhone = c.phone?.replace(/[^0-9]/g, "") ?? "";
-      if (name.length >= 2 && cName.includes(name)) return true;
-      if (kana.length >= 2 && cKana.includes(kana)) return true;
-      if (phone.length >= 6 && cPhone.length > 0 && cPhone.includes(phone)) return true;
-      return false;
-    })
-    .slice(0, 5)
-    .map((c) => {
-      const isOtherStaff = c.staffId !== staffId;
-      // 他人の顧客は存在と氏名だけ。会社名・接触状況・納品状況は出さない
-      const safe = isOtherStaff
-        ? ({ ...c, companyName: undefined, phone: undefined, lastContactedAt: undefined } as Customer)
-        : c;
-      return {
-        ...decorate(safe, isOtherStaff ? new Map() : delivered),
-        isOtherStaff,
-      };
-    });
+  type Row = { id: string; name: string; name_kana: string; is_other_staff: boolean };
+  const rows = (data ?? []) as Row[];
+
+  // 自分の担当のぶんは通常の経路で詳細を足す。他人のぶんは氏名のまま。
+  const mine = rows.filter((r) => !r.is_other_staff).map((r) => r.id);
+  const detail = new Map<string, CustomerListItem>();
+  if (mine.length > 0) {
+    const { data: full } = await supabase()
+      .from("v_customers")
+      .select(LIST_COLUMNS)
+      .in("id", mine);
+    for (const c of full ?? []) {
+      const item = clean(c as unknown as CustomerListItem);
+      detail.set(item.id, item);
+    }
+  }
+
+  return rows.map((r) => {
+    const full = detail.get(r.id);
+    if (full) return { ...full, isOtherStaff: false };
+    return {
+      id: r.id,
+      name: r.name,
+      nameKana: r.name_kana,
+      staffId: "",
+      createdAt: "",
+      daysSinceDelivery: null,
+      isOtherStaff: true,
+    } as SimilarCustomer;
+  });
 }
 
+/**
+ * 顧客の更新。
+ *
+ * モックではここに staffId のチェックが無く、id さえ分かれば他人の顧客を
+ * 書き換えられた。RLS にしたので、この関数を 1 行も変えずにその穴が塞がる。
+ * 担当外を指定しても 0 行になるだけで、エラーにもならない。
+ */
 export async function updateCustomer(id: Uuid, patch: Partial<Customer>): Promise<void> {
-  mutateDb((db) => ({
-    ...db,
-    customers: db.customers.map((c) => (c.id === id ? { ...c, ...patch, id: c.id } : c)),
-  }));
+  const { error } = await supabase().from("customers").update(toRow(patch)).eq("id", id);
+  if (error) throw error;
+  bump();
 }
 
+/**
+ * 顧客の登録。
+ *
+ * staffId を渡さない。customers.staff_id の default が
+ * app.current_staff_id() なので「登録した人が担当になる」が DB 側で決まり、
+ * WITH CHECK と合わせて他人名義での登録が構造的に不可能になっている。
+ */
 export async function createCustomer(
   input: Pick<Customer, "name" | "nameKana"> & Partial<Customer>,
 ): Promise<Uuid> {
-  const id = newId("cust");
-  mutateDb((db) => ({
-    ...db,
-    customers: [
-      ...db.customers,
-      {
-        // 登録した人が担当になる
-        staffId: getCurrentStaffId(),
-        createdAt: new Date().toISOString().slice(0, 10),
-        ...input,
-        id,
-      } as Customer,
-    ],
-  }));
-  return id;
+  const { data, error } = await supabase()
+    .from("customers")
+    .insert(toRow(input))
+    .select("id")
+    .single();
+  if (error) throw error;
+  bump();
+  return (data as { id: string }).id;
+}
+
+/** camelCase の patch を列名へ写す。undefined の項目は触らない */
+function toRow(patch: Partial<Customer>): Record<string, unknown> {
+  const map: Record<keyof Customer & string, string> = {
+    id: "id",
+    name: "name",
+    nameKana: "name_kana",
+    birthDate: "birth_date",
+    gender: "gender",
+    phone: "phone",
+    email: "email",
+    address: "address",
+    residencePrefecture: "residence_prefecture",
+    embroideryName: "embroidery_name",
+    companyName: "company_name",
+    department: "department",
+    jobTitle: "job_title",
+    industry: "industry",
+    preferences: "preferences",
+    hobbies: "hobbies",
+    familyInfo: "family_info",
+    ngNotes: "ng_notes",
+    staffId: "staff_id",
+    firstVisitDate: "first_visit_date",
+    acquisitionChannel: "acquisition_channel",
+    referrerId: "referrer_id",
+    lastContactedAt: "last_contacted_at",
+    tags: "tags",
+    memo: "memo",
+    createdAt: "created_at",
+  };
+
+  const row: Record<string, unknown> = {};
+  for (const [key, column] of Object.entries(map)) {
+    const value = (patch as Record<string, unknown>)[key];
+    if (value === undefined) continue;
+    // id と staffId はここでは動かさない。担当の付け替えは
+    // app.deactivate_staff()（引き継ぎ）だけの仕事にしてある。
+    if (key === "id" || key === "staffId") continue;
+    row[column] = value === "" ? null : value;
+  }
+  return row;
 }

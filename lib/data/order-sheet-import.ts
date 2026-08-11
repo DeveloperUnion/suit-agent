@@ -206,7 +206,6 @@ function buildNote(extraction: OrderSheetExtraction, unknownFieldKeys: string[])
 /** 確認後に初めて書く。採寸票1枚と注文1件を作る */
 export async function commitOrderSheetImport(
   plan: ResolvedImportPlan,
-  staffId: Uuid,
 ): Promise<{ sheetId: Uuid; orderId: Uuid }> {
   const sections: MeasurementSection[] = plan.sections.map((section) => ({
     itemTypeId: section.itemTypeId,
@@ -238,7 +237,6 @@ export async function commitOrderSheetImport(
   const sheetId = await createSheetFromImport({
     customerId: plan.customerId,
     measuredAt: plan.measuredAt,
-    staffId,
     sections,
     adjustments,
     note: note || undefined,
@@ -248,7 +246,6 @@ export async function commitOrderSheetImport(
   // ミューテーションが2回に分かれるが、規則を2箇所へ分裂させるよりましだと判断した
   const orderId = await createOrder({
     customerId: plan.customerId,
-    staffId,
     orderedAt: plan.orderedAt,
     dueDate: plan.dueDate,
     purpose: plan.purpose,

@@ -10,11 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-  FABRIC_SEASON_LABEL,
-  ORDER_PURPOSE_LABEL,
-  ORDER_STATUS_LABEL,
-} from "@/lib/constants/labels";
+import { ORDER_PURPOSE_LABEL, ORDER_STATUS_LABEL } from "@/lib/constants/labels";
 import { ITEM_TYPE_MAP } from "@/lib/constants/measurement-fields";
 import {
   clearOrderDelivery,
@@ -43,7 +39,7 @@ export function OrdersTab({ customerId }: { customerId: string }) {
       {summary?.hasOrders && (
         <section className="flex flex-col gap-3 rounded-md border border-border bg-card p-4">
           <SectionTitle>保有アイテム構成</SectionTitle>
-          <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <span className="field-label">アイテム</span>
               <ul className="flex flex-col gap-1">
@@ -54,22 +50,6 @@ export function OrdersTab({ customerId }: { customerId: string }) {
                   </li>
                 ))}
               </ul>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <span className="field-label">色柄の内訳（上衣）</span>
-              {summary.byColorPattern.length === 0 ? (
-                <span className="text-sm text-muted-foreground">—</span>
-              ) : (
-                <ul className="flex flex-col gap-1">
-                  {summary.byColorPattern.map((entry) => (
-                    <li key={entry.label} className="flex items-baseline justify-between gap-2">
-                      <span className="text-sm">{entry.label}</span>
-                      <span className="tnum font-mono text-sm font-medium">{entry.count}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
             </div>
 
             <div className="flex flex-col gap-1.5">
@@ -100,28 +80,38 @@ export function OrdersTab({ customerId }: { customerId: string }) {
         <ul className="flex flex-col gap-3">
           {(orders ?? []).map((order) => (
             <li key={order.id} className="rounded-md border border-border bg-card">
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-border px-4 py-2.5">
-                <span className="tnum font-mono text-sm font-medium">{order.orderNumber}</span>
-                <span className="tnum font-mono text-sm text-muted-foreground">
-                  {formatDateDot(order.orderedAt)}
-                </span>
-                <Badge variant="secondary" className="font-normal">
-                  {ORDER_PURPOSE_LABEL[order.purpose]}
-                </Badge>
-                <Badge variant="outline" className="font-normal">
-                  {ORDER_STATUS_LABEL[order.status]}
-                </Badge>
-                <DeliveryControl
-                  orderId={order.id}
-                  deliveredAt={order.deliveredAt}
-                  isDelivered={order.status === "delivered"}
-                />
-                <span className="ml-auto flex items-center gap-4">
-                  <span className="text-xs text-muted-foreground">受注者 {order.staffName}</span>
-                  <span className="tnum font-mono text-sm font-medium">
-                    ¥{formatAmount(order.totalAmount)}
+              <div className="flex flex-col gap-1 border-b border-border px-4 py-2.5">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                  <span className="tnum font-mono text-sm font-medium">{order.orderNumber}</span>
+                  <span className="tnum font-mono text-sm text-muted-foreground">
+                    {formatDateDot(order.orderedAt)}
                   </span>
-                </span>
+                  <Badge variant="secondary" className="font-normal">
+                    {ORDER_PURPOSE_LABEL[order.purpose]}
+                  </Badge>
+                  <Badge variant="outline" className="font-normal">
+                    {ORDER_STATUS_LABEL[order.status]}
+                  </Badge>
+                  <DeliveryControl
+                    orderId={order.id}
+                    deliveredAt={order.deliveredAt}
+                    isDelivered={order.status === "delivered"}
+                  />
+                  <span className="ml-auto flex items-center gap-4">
+                    <span className="text-xs text-muted-foreground">受注者 {order.staffName}</span>
+                    <span className="tnum font-mono text-sm font-medium">
+                      ¥{formatAmount(order.totalAmount)}
+                    </span>
+                  </span>
+                </div>
+                {/* 内訳は割増か税が載っているときだけ。0 が並ぶと合計が読みにくくなる */}
+                {(order.surchargeAmount > 0 || order.taxAmount > 0) && (
+                  <span className="tnum ml-auto font-mono text-xs text-muted-foreground">
+                    売上 ¥{formatAmount(order.subtotalAmount)}
+                    {order.surchargeAmount > 0 && ` ・割増 ¥${formatAmount(order.surchargeAmount)}`}
+                    {order.taxAmount > 0 && ` ・消費税 ¥${formatAmount(order.taxAmount)}`}
+                  </span>
+                )}
               </div>
 
               <div className="flex flex-col divide-y divide-border/60">
@@ -132,39 +122,33 @@ export function OrdersTab({ customerId }: { customerId: string }) {
                       <ImageOff className="size-4 text-muted-foreground/50" />
                     </div>
 
+                    {/* 生地は発注書に書かれていた値をそのまま出す。マスタは引かない */}
                     <div className="flex min-w-0 flex-1 flex-col gap-2">
                       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                         <span className="font-heading text-sm font-semibold uppercase tracking-[0.1em] text-brand">
                           {ITEM_TYPE_MAP[item.itemTypeId].sheetLabel}
                         </span>
-                        {item.fabric && (
-                          <>
-                            <span className="text-sm">
-                              {item.fabric.brand}{" "}
-                              <span className="tnum font-mono text-xs text-muted-foreground">
-                                {item.fabric.productNumber}
-                              </span>
-                            </span>
-                            <span className="text-sm text-muted-foreground">
-                              {item.fabric.color}
-                            </span>
-                          </>
+                        {item.fabricProductNumber && (
+                          <span className="tnum font-mono text-sm">{item.fabricProductNumber}</span>
+                        )}
+                        {item.fabricColorNumber && (
+                          <span className="tnum font-mono text-xs text-muted-foreground">
+                            色番 {item.fabricColorNumber}
+                          </span>
+                        )}
+                        {item.fabricColorName && (
+                          <span className="text-sm text-muted-foreground">
+                            {item.fabricColorName}
+                          </span>
                         )}
                       </div>
 
-                      {item.fabric && (
-                        <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
-                          <span>{item.fabric.composition}</span>
-                          {item.fabric.yarnCount && <span>{item.fabric.yarnCount}</span>}
-                          <span>{FABRIC_SEASON_LABEL[item.fabric.season]}</span>
+                      {item.fabricComposition && (
+                        <div className="text-xs text-muted-foreground">
+                          {item.fabricComposition}
                         </div>
                       )}
-
                     </div>
-
-                    <span className="tnum shrink-0 self-start font-mono text-sm text-muted-foreground sm:self-center">
-                      ¥{formatAmount(item.amount)}
-                    </span>
                   </div>
                 ))}
               </div>

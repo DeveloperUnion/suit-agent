@@ -2,7 +2,6 @@ import type {
   ApproachTask,
   Customer,
   CustomerAnniversary,
-  Fabric,
   MeasurementSheet,
   MockDatabase,
   Order,
@@ -10,11 +9,12 @@ import type {
   RevenueTarget,
   Staff,
 } from "@/lib/types";
+import type { OrderItemFabric } from "@/lib/data/orders";
 import { addDays, daysAgo, toIsoDate, toIsoMonth } from "@/lib/utils/date";
 import { DEFAULT_SETTINGS } from "@/lib/constants/settings-defaults";
 
 /** 構造を変えたら上げる。localStorage 側が古ければ自動でシードに戻る */
-export const SEED_VERSION = 17;
+export const SEED_VERSION = 18;
 
 /**
  * 決定的な擬似乱数。リセットのたびに同じデータが再現されるようにする
@@ -39,26 +39,30 @@ const STAFF: Staff[] = [
   { id: "staff-3", name: "野﨑 匠", email: "nozaki@example.com", role: "member", isActive: true },
 ];
 
-// ── 生地マスタ ──────────────────────────────────────────
+// ── 生地 ────────────────────────────────────────────────
 
-const FABRICS: Fabric[] = [
-  { id: "fab-01", brand: "CANONICO", productNumber: "CN-2841", color: "ネイビー", colorFamily: "navy", pattern: "solid", composition: "Wool 100%", yarnCount: "Super110's", season: "all_season" },
-  { id: "fab-02", brand: "CANONICO", productNumber: "CN-3305", color: "ミッドナイトネイビー", colorFamily: "navy", pattern: "stripe", composition: "Wool 100%", yarnCount: "Super130's", season: "autumn_winter" },
-  { id: "fab-03", brand: "DRAPERS", productNumber: "DR-7120", color: "チャコールグレー", colorFamily: "charcoal", pattern: "solid", composition: "Wool 100%", yarnCount: "Super120's", season: "all_season" },
-  { id: "fab-04", brand: "DRAPERS", productNumber: "DR-7455", color: "チャコール", colorFamily: "charcoal", pattern: "herringbone", composition: "Wool 100%", yarnCount: "Super100's", season: "autumn_winter" },
-  { id: "fab-05", brand: "LORO PIANA", productNumber: "LP-1180", color: "ネイビー", colorFamily: "navy", pattern: "birdseye", composition: "Wool 100%", yarnCount: "Super150's", season: "all_season" },
-  { id: "fab-06", brand: "LORO PIANA", productNumber: "LP-2260", color: "ライトグレー", colorFamily: "gray", pattern: "solid", composition: "Wool 96% Silk 4%", yarnCount: "Super130's", season: "spring_summer" },
-  { id: "fab-07", brand: "ZEGNA", productNumber: "ZG-4410", color: "ブラック", colorFamily: "black", pattern: "solid", composition: "Wool 100%", yarnCount: "Super120's", season: "all_season" },
-  { id: "fab-08", brand: "ZEGNA", productNumber: "ZG-5502", color: "ブラウン", colorFamily: "brown", pattern: "check", composition: "Wool 90% Cashmere 10%", yarnCount: "Super130's", season: "autumn_winter" },
-  { id: "fab-09", brand: "DORMEUIL", productNumber: "DM-8801", color: "ミディアムグレー", colorFamily: "gray", pattern: "stripe", composition: "Wool 100%", yarnCount: "Super140's", season: "all_season" },
-  { id: "fab-10", brand: "DORMEUIL", productNumber: "DM-9034", color: "ネイビー", colorFamily: "navy", pattern: "check", composition: "Wool 100%", yarnCount: "Super110's", season: "autumn_winter" },
-  { id: "fab-11", brand: "REDA", productNumber: "RD-3312", color: "サックスブルー", colorFamily: "blue", pattern: "solid", composition: "Wool 100%", yarnCount: "Super110's", season: "spring_summer" },
-  { id: "fab-12", brand: "REDA", productNumber: "RD-4028", color: "グレー", colorFamily: "gray", pattern: "birdseye", composition: "Wool 100%", yarnCount: "Super120's", season: "all_season" },
-  { id: "fab-13", brand: "御幸毛織", productNumber: "MY-1105", color: "ネイビー", colorFamily: "navy", pattern: "solid", composition: "Wool 100%", yarnCount: "Super100's", season: "all_season" },
-  { id: "fab-14", brand: "御幸毛織", productNumber: "MY-2208", color: "ブラック", colorFamily: "black", pattern: "solid", composition: "Wool 100%", season: "all_season" },
-  { id: "fab-15", brand: "HARRISONS", productNumber: "HR-6650", color: "ダークブラウン", colorFamily: "brown", pattern: "herringbone", composition: "Wool 100%", yarnCount: "Super120's", season: "autumn_winter" },
-  // 発注書の取り込みで読む原反NO。一致する生地が無いと取り込みが必ず止まる
-  { id: "fab-16", brand: "国内縫製", productNumber: "AC5601", color: "カーキ無地", colorFamily: "other", pattern: "solid", composition: "Nylon 92% Polyurethane 8%", season: "all_season" },
+/**
+ * 生地マスタは持たない。発注書に書かれた原反NO・色番・色名・組成を
+ * 注文明細にそのまま埋めるので、ここにあるのは埋める値の見本にすぎない。
+ */
+const FABRICS: OrderItemFabric[] = [
+  { fabricProductNumber: "CN-2841", fabricColorNumber: "1120", fabricColorName: "ネイビー無地", fabricComposition: "Wool 100% / Super110's" },
+  { fabricProductNumber: "CN-3305", fabricColorNumber: "1145", fabricColorName: "ミッドナイトネイビー ストライプ", fabricComposition: "Wool 100% / Super130's" },
+  { fabricProductNumber: "DR-7120", fabricColorNumber: "2210", fabricColorName: "チャコールグレー無地", fabricComposition: "Wool 100% / Super120's" },
+  { fabricProductNumber: "DR-7455", fabricColorNumber: "2264", fabricColorName: "チャコール ヘリンボーン", fabricComposition: "Wool 100% / Super100's" },
+  { fabricProductNumber: "LP-1180", fabricColorNumber: "3018", fabricColorName: "ネイビー バーズアイ", fabricComposition: "Wool 100% / Super150's" },
+  { fabricProductNumber: "LP-2260", fabricColorNumber: "3072", fabricColorName: "ライトグレー無地", fabricComposition: "Wool 96% Silk 4% / Super130's" },
+  { fabricProductNumber: "ZG-4410", fabricColorNumber: "4401", fabricColorName: "ブラック無地", fabricComposition: "Wool 100% / Super120's" },
+  { fabricProductNumber: "ZG-5502", fabricColorNumber: "4530", fabricColorName: "ブラウン チェック", fabricComposition: "Wool 90% Cashmere 10% / Super130's" },
+  { fabricProductNumber: "DM-8801", fabricColorNumber: "5211", fabricColorName: "ミディアムグレー ストライプ", fabricComposition: "Wool 100% / Super140's" },
+  { fabricProductNumber: "DM-9034", fabricColorNumber: "5288", fabricColorName: "ネイビー チェック", fabricComposition: "Wool 100% / Super110's" },
+  { fabricProductNumber: "RD-3312", fabricColorNumber: "6140", fabricColorName: "サックスブルー無地", fabricComposition: "Wool 100% / Super110's" },
+  { fabricProductNumber: "RD-4028", fabricColorNumber: "6207", fabricColorName: "グレー バーズアイ", fabricComposition: "Wool 100% / Super120's" },
+  { fabricProductNumber: "MY-1105", fabricColorNumber: "7310", fabricColorName: "ネイビー無地", fabricComposition: "Wool 100% / Super100's" },
+  { fabricProductNumber: "MY-2208", fabricColorNumber: "7355", fabricColorName: "ブラック無地", fabricComposition: "Wool 100%" },
+  { fabricProductNumber: "HR-6650", fabricColorNumber: "8140", fabricColorName: "ダークブラウン ヘリンボーン", fabricComposition: "Wool 100% / Super120's" },
+  // 実物の発注書に書かれていた原反
+  { fabricProductNumber: "AC5601", fabricColorNumber: "3330", fabricColorName: "カーキ無地", fabricComposition: "N(ナイロン) 92% / U(ポリウレタン) 8%" },
 ];
 
 // ── 顧客生成用のプール ───────────────────────────────────
@@ -510,6 +514,11 @@ function buildAll(): Built {
       const priceOf = (t: OrderItem["itemTypeId"]) =>
         t === "jacket" ? 95000 : t === "pants" ? 45000 : 30000;
 
+      // 紙の右上と同じ4欄。割増は仕様追加があったときだけ載る
+      const subtotalAmount = itemTypes.reduce((sum, t) => sum + priceOf(t), 0);
+      const surchargeAmount = rand() < 0.3 ? int(1, 6) * 5000 : 0;
+      const taxAmount = Math.floor((subtotalAmount + surchargeAmount) * 0.1);
+
       orders.push({
         id: orderId,
         customerId: id,
@@ -519,8 +528,10 @@ function buildAll(): Built {
         deliveredAt: delivered ? daysAgo(deliveryDays) : undefined,
         status: delivered ? "delivered" : "in_production",
         purpose,
-        // 注文合計はアイテム金額の合計と必ず一致させる
-        totalAmount: itemTypes.reduce((sum, t) => sum + priceOf(t), 0),
+        subtotalAmount,
+        surchargeAmount,
+        taxAmount,
+        totalAmount: subtotalAmount + surchargeAmount + taxAmount,
         staffId,
       });
 
@@ -529,8 +540,7 @@ function buildAll(): Built {
           id: `${orderId}-item-${k + 1}`,
           orderId,
           itemTypeId,
-          fabricId: fabric.id,
-          amount: priceOf(itemTypeId),
+          ...fabric,
         });
       });
     }
@@ -619,7 +629,6 @@ export function createSeedDatabase(): MockDatabase {
     customers: built.customers,
     anniversaries: built.anniversaries,
     measurementSheets: built.sheets,
-    fabrics: FABRICS,
     orders: built.orders,
     orderItems: built.orderItems,
     alterations: [],

@@ -1,4 +1,4 @@
-import type { AppSettings, Fabric, IsoMonth, ItemTypeId, Staff, Uuid } from "@/lib/types";
+import type { AppSettings, IsoMonth, Staff, Uuid } from "@/lib/types";
 import { getDb, mutateDb, newId } from "@/lib/store/mock-db";
 import { getCurrentStaffId } from "@/lib/auth/current-staff";
 import { DEFAULT_SETTINGS } from "@/lib/constants/settings-defaults";
@@ -6,7 +6,7 @@ import { DEFAULT_SETTINGS } from "@/lib/constants/settings-defaults";
 export { DEFAULT_SETTINGS };
 
 /**
- * 設定・スタッフ・生地マスタ。
+ * 設定・スタッフ・売上目標。
  *
  * 店舗が変えられる業務ルールはここが唯一の出どころになる。判定ロジックの中に数値を書かない。
  * 例外は納品後フォローの節目（半年・1年）で、確定した決めごとのため
@@ -75,47 +75,6 @@ export async function activateStaff(id: Uuid): Promise<void> {
     ...db,
     staff: db.staff.map((s) => (s.id === id ? { ...s, isActive: true } : s)),
   }));
-}
-
-// ── 生地マスタ ──────────────────────────────────────────
-
-export type FabricWithUsage = Fabric & { usageCount: number };
-
-export async function listFabricsWithUsage(): Promise<FabricWithUsage[]> {
-  const db = getDb();
-  return db.fabrics.map((fabric) => ({
-    ...fabric,
-    usageCount: db.orderItems.filter((i) => i.fabricId === fabric.id).length,
-  }));
-}
-
-export async function createFabric(input: Omit<Fabric, "id">): Promise<Uuid> {
-  const id = newId("fab");
-  mutateDb((db) => ({ ...db, fabrics: [...db.fabrics, { ...input, id }] }));
-  return id;
-}
-
-export async function updateFabric(id: Uuid, patch: Partial<Omit<Fabric, "id">>): Promise<void> {
-  mutateDb((db) => ({
-    ...db,
-    fabrics: db.fabrics.map((f) => (f.id === id ? { ...f, ...patch, id: f.id } : f)),
-  }));
-}
-
-/**
- * 使用中の生地は消さない。過去の注文から生地が消えると履歴が壊れ、
- * 「何を持っているか」の集計（要件3.1）も狂うため。
- */
-export async function deleteFabric(id: Uuid): Promise<{ ok: boolean; usageCount: number }> {
-  const usageCount = getDb().orderItems.filter((i) => i.fabricId === id).length;
-  if (usageCount > 0) return { ok: false, usageCount };
-  mutateDb((db) => ({ ...db, fabrics: db.fabrics.filter((f) => f.id !== id) }));
-  return { ok: true, usageCount: 0 };
-}
-
-/** 注文登録の初期金額に使う */
-export function getItemPrice(itemTypeId: ItemTypeId): number {
-  return getSettings().itemPrices[itemTypeId] ?? 0;
 }
 
 // ── 売上目標 ────────────────────────────────────────────

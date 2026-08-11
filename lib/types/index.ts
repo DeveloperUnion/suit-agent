@@ -228,31 +228,18 @@ export type SilhouetteCorrection = {
   code: number;
 };
 
-// ── 生地・注文 ──────────────────────────────────────────
-
-export type FabricSeason = "spring_summer" | "autumn_winter" | "all_season";
-
-export type Fabric = {
-  id: Uuid;
-  brand: string;
-  productNumber: string;
-  /** 提案時の重複判定に使うため、表示名と正規化キーを分けて持つ */
-  color: string;
-  colorFamily: ColorFamily;
-  pattern: FabricPattern;
-  composition: string;
-  yarnCount?: string;
-  season: FabricSeason;
-};
-
-export type ColorFamily = "navy" | "charcoal" | "gray" | "brown" | "black" | "blue" | "other";
-
-export type FabricPattern = "solid" | "stripe" | "check" | "herringbone" | "birdseye" | "other";
+// ── 注文 ────────────────────────────────────────────────
 
 export type OrderStatus = "ordered" | "in_production" | "fitting" | "delivered" | "cancelled";
 
 export type OrderPurpose = "business" | "formal" | "wedding" | "casual";
 
+/**
+ * 注文。
+ *
+ * 金額は工場発注書の右上と同じ4欄で持つ。紙を見ながら転記する人が
+ * 目移りしないよう、並びも呼び名も紙に合わせてある。
+ */
 export type Order = {
   id: Uuid;
   customerId: Uuid;
@@ -262,6 +249,13 @@ export type Order = {
   deliveredAt?: IsoDate;
   status: OrderStatus;
   purpose: OrderPurpose;
+  /** 売上金額 */
+  subtotalAmount: number;
+  /** 割増金額 */
+  surchargeAmount: number;
+  /** 消費税 */
+  taxAmount: number;
+  /** 合計金額。3つの和が既定だが、紙の合計欄が正なので手で上書きできる */
   totalAmount: number;
   staffId: Uuid;
 };
@@ -271,14 +265,24 @@ export type Order = {
  *
  * 胸ポケット・ベント・袖釦といった仕様（紙の「指示項目」）は持たない。
  * あれは工場に伝えるためのもので、店側が後から見返す場面がなく、
- * 入力の手間だけが残るため。ここで扱うのは「何が売れていくらだったか」まで。
+ * 入力の手間だけが残るため。
+ *
+ * 生地はマスタを引かず、紙に書かれた値をそのまま持つ。原反NO・色番・色名・組成は
+ * すべて発注書の上にあり、マスタを別に育てる手間に見合う使い道がなかった。
+ * 金額は注文単位（上の4欄）で持つので、明細ごとの金額は持たない。
  */
 export type OrderItem = {
   id: Uuid;
   orderId: Uuid;
   itemTypeId: ItemTypeId;
-  fabricId: Uuid;
-  amount: number;
+  /** 原反NO。例: AC5601 */
+  fabricProductNumber?: string;
+  /** 色番。例: 3330 */
+  fabricColorNumber?: string;
+  /** 色名。例: カーキ無地 */
+  fabricColorName?: string;
+  /** 品質表示の組成。例: N(ナイロン) 92% / U(ポリウレタン) 8% */
+  fabricComposition?: string;
   photoUrls?: string[];
 };
 
@@ -386,12 +390,13 @@ export type AgentMessage = {
  * 紙の帳票と製造側の都合で決まっており、店舗が変えるものではないため。
  * 納品後フォローの節目（半年・1年）も店舗の決めごととして確定しているため、
  * ここではなく lib/constants/approach.ts に固定値で置いている。
+ *
+ * アイテム別の標準価格も持たない。金額は紙の4欄をそのまま転記する運用にしたので、
+ * 初期値を用意しても人が上書きするだけだった。
  */
 export type AppSettings = {
   /** 記念日トリガー: 何日前から出すか */
   anniversaryLeadDays: number;
-  /** アイテム別の標準価格。注文登録の初期値に使う */
-  itemPrices: Record<ItemTypeId, number>;
 };
 
 // ── 売上目標 ────────────────────────────────────────────
@@ -427,7 +432,6 @@ export type MockDatabase = {
   customers: Customer[];
   anniversaries: CustomerAnniversary[];
   measurementSheets: MeasurementSheet[];
-  fabrics: Fabric[];
   orders: Order[];
   orderItems: OrderItem[];
   alterations: Alteration[];

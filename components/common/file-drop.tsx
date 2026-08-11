@@ -2,8 +2,10 @@
 
 import { useRef, useState } from "react";
 import { Upload } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { MAX_UPLOAD_BYTES } from "@/lib/ai/extraction";
 import { cn } from "@/lib/utils";
 
 /**
@@ -11,6 +13,9 @@ import { cn } from "@/lib/utils";
  *
  * accept に capture を添えるのは、店頭の iPad でその場で撮る使い方が主になるため。
  * PC ではドラッグ＆ドロップ、iPad ではカメラ、どちらも同じ入口で受ける。
+ *
+ * 大きすぎるファイルはここで止める。サーバまで運んでから断ると、
+ * 読み取り中の表示を見せたあとで失敗することになり、待たせただけになる。
  */
 export function FileDrop({
   onFile,
@@ -30,6 +35,16 @@ export function FileDrop({
   const inputRef = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
 
+  const accept_ = (file: File) => {
+    if (file.size > MAX_UPLOAD_BYTES) {
+      toast.error("ファイルが大きすぎます", {
+        description: `${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)}MB までにしてください。`,
+      });
+      return;
+    }
+    onFile(file);
+  };
+
   return (
     <div
       onDragOver={(e) => {
@@ -41,7 +56,7 @@ export function FileDrop({
         e.preventDefault();
         setOver(false);
         const file = e.dataTransfer.files[0];
-        if (file && !disabled) onFile(file);
+        if (file && !disabled) accept_(file);
       }}
       className={cn(
         "flex flex-col items-center gap-2 rounded-md border border-dashed p-5 text-center transition-colors",
@@ -70,7 +85,7 @@ export function FileDrop({
           const file = e.target.files?.[0];
           // 同じファイルを続けて選べるよう、毎回クリアする
           e.target.value = "";
-          if (file) onFile(file);
+          if (file) accept_(file);
         }}
       />
     </div>

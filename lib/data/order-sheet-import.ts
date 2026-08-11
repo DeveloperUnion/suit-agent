@@ -1,6 +1,5 @@
 import type {
   AppliedAdjustment,
-  Fabric,
   IsoDate,
   ItemTypeId,
   MeasurementSection,
@@ -13,16 +12,20 @@ import { ADJUSTMENT_MAP, adjustmentLabel } from "@/lib/constants/adjustments";
 import { deriveActual } from "@/lib/constants/measurement-ease";
 import { findField } from "@/lib/constants/measurement-fields";
 import { createSheetFromImport } from "@/lib/data/measurements";
-import { createOrder, markOrderDelivered } from "@/lib/data/orders";
+import {
+  createOrder,
+  markOrderDelivered,
+  type OrderAmounts,
+  type OrderItemFabric,
+} from "@/lib/data/orders";
 import { updateCustomer } from "@/lib/data/customers";
-import { getItemPrice } from "@/lib/data/settings";
 import { formatDateDot } from "@/lib/utils/date";
 
 /**
  * 工場発注書の取り込み。
  *
  * 読み取り結果をそのまま書かず、必ず確認画面を通す。紙は上がり寸しか持たず、
- * 顧客も生地も紙の文字列からの推測になるため、黙って書くと誰も気づけない誤りが残る。
+ * 顧客も文字列からの推測になるため、黙って書くと誰も気づけない誤りが残る。
  *
  * ここは「確認画面がそのまま編集できる形」を組み立てるところまでを受け持ち、
  * 書き込みは commitOrderSheetImport でしか起きない。
@@ -56,9 +59,14 @@ export type ImportPlanAdjustment = {
 };
 
 export type ImportPlan = {
-  customerId: Uuid;
-  /** 紙のお客様名。開いているカルテと違えば確認画面が警告する */
+  /**
+   * 取り込み先の顧客。顧客一覧から始めたときは、確認画面で選ぶまで決まらない。
+   * 決まるまで取り込みボタンは押せない。
+   */
+  customerId?: Uuid;
+  /** 紙のお客様名。顧客を探すときと、開いているカルテとの照合に使う */
   paperCustomerName?: string;
+  paperCustomerNameKana?: string;
   embroideryName?: string;
   updateEmbroideryName: boolean;
   measuredAt: IsoDate;
@@ -66,12 +74,11 @@ export type ImportPlan = {
   dueDate?: IsoDate;
   deliveredAt?: IsoDate;
   purpose: OrderPurpose;
-  fabricId?: Uuid;
-  /** 生地が特定できなかったときに、確認画面の検索へ初期値として渡す */
-  fabricHint?: string;
-  totalAmount: number;
-  /** 合計を紙から読めたか。読めていなければ標準価格の合算だと画面に明示する */
-  totalFromPaper: boolean;
+  /** 生地はマスタを引かず、紙の値をそのまま持つ */
+  fabric: OrderItemFabric;
+  amounts: OrderAmounts;
+  /** 紙の金額欄から1つでも読めたか。読めていなければ確認画面で転記を促す */
+  amountsFromPaper: boolean;
   sections: ImportPlanSection[];
   adjustments: ImportPlanAdjustment[];
   note: string;
@@ -79,10 +86,13 @@ export type ImportPlan = {
   lowConfidenceCount: number;
 };
 
+/** 顧客が決まった取り込み。commit はこの形しか受けない */
+export type ResolvedImportPlan = ImportPlan & { customerId: Uuid };
+
 /** 読み取り結果を、確認画面がそのまま編集できる形へ組み直す（同期・副作用なし） */
 export function buildImportPlan(
   extraction: OrderSheetExtraction,
-  context: { customerId: Uuid; fabrics: Fabric[] },
+  context: { customerId?: Uuid },
 ): ImportPlan {
   const unknownFieldKeys: string[] = [];
   let lowConfidenceCount = 0;
@@ -124,25 +134,21 @@ export function buildImportPlan(
     };
   });
 
-  // 生地は原反NO で照合する。完全一致が取れなければ前方一致まで見る
-  const hint = extraction.fabricProductNumber?.value?.trim();
-  const normalized = hint?.toLowerCase() ?? "";
-  const fabric =
-    normalized === ""
-      ? undefined
-      : (context.fabrics.find((f) => f.productNumber.toLowerCase() === normalized) ??
-        context.fabrics.find((f) => f.productNumber.toLowerCase().startsWith(normalized)));
-
   const orderedAt = extraction.orderedAt?.value ?? new Date().toISOString().slice(0, 10);
 
-  const totalFromPaper = extraction.totalAmount !== undefined;
-  const totalAmount =
-    extraction.totalAmount?.value ??
-    sections.reduce((sum, s) => sum + getItemPrice(s.itemTypeId), 0);
+  const subtotalAmount = extraction.subtotalAmount?.value ?? 0;
+  const surchargeAmount = extraction.surchargeAmount?.value ?? 0;
+  const taxAmount = extraction.taxAmount?.value ?? 0;
+  const amountsFromPaper =
+    extraction.subtotalAmount !== undefined ||
+    extraction.surchargeAmount !== undefined ||
+    extraction.taxAmount !== undefined ||
+    extraction.totalAmount !== undefined;
 
   return {
     customerId: context.customerId,
     paperCustomerName: extraction.customerName?.value,
+    paperCustomerNameKana: extraction.customerNameKana?.value,
     embroideryName: extraction.embroideryName?.value,
     updateEmbroideryName: extraction.embroideryName !== undefined,
     // 紙に採寸日は無い。今日にすると過去の紙が履歴の先頭に来て、前回比が全部壊れる
@@ -151,10 +157,21 @@ export function buildImportPlan(
     dueDate: extraction.factoryDueDate?.value,
     deliveredAt: extraction.handoverDate?.value,
     purpose: "business",
-    fabricId: fabric?.id,
-    fabricHint: hint,
-    totalAmount,
-    totalFromPaper,
+    fabric: {
+      fabricProductNumber: extraction.fabricProductNumber?.value,
+      fabricColorNumber: extraction.fabricColorNumber?.value,
+      fabricColorName: extraction.fabricColorName?.value,
+      fabricComposition: extraction.fabricComposition?.value,
+    },
+    amounts: {
+      subtotalAmount,
+      surchargeAmount,
+      taxAmount,
+      // 合計欄が読めていればそれが正。読めていなければ3段の和を初期値にする
+      totalAmount:
+        extraction.totalAmount?.value ?? subtotalAmount + surchargeAmount + taxAmount,
+    },
+    amountsFromPaper,
     sections,
     adjustments,
     note: buildNote(extraction, unknownFieldKeys),
@@ -165,6 +182,8 @@ export function buildImportPlan(
 /**
  * 備考。モデルに持ち場のない紙の事実を、解釈せず原文のまま1行ずつ残す。
  * ここを削ると「紙にはあったがアプリには無い」情報が完全に消える。
+ *
+ * 原反NO・色番は注文明細が項目として持つようになったので、ここには重ねない。
  */
 function buildNote(extraction: OrderSheetExtraction, unknownFieldKeys: string[]): string {
   const lines: string[] = [];
@@ -172,13 +191,7 @@ function buildNote(extraction: OrderSheetExtraction, unknownFieldKeys: string[])
   const shop = [extraction.shopName?.value, extraction.fitterName?.value].filter(Boolean);
   if (shop.length > 0) lines.push(`販売店 ${shop.join(" / フィッター ")}`);
 
-  const fabric = [
-    extraction.fabricProductNumber && `原反NO ${extraction.fabricProductNumber.value}`,
-    extraction.fabricColorNumber && `色番 ${extraction.fabricColorNumber.value}`,
-    extraction.liningCode && `裏地 ${extraction.liningCode.value}`,
-  ].filter(Boolean);
-  if (fabric.length > 0) lines.push(fabric.join(" "));
-
+  if (extraction.liningCode) lines.push(`裏地 ${extraction.liningCode.value}`);
   if (extraction.factoryDueDate) {
     lines.push(`工場納品日 ${formatDateDot(extraction.factoryDueDate.value)}`);
   }
@@ -192,7 +205,7 @@ function buildNote(extraction: OrderSheetExtraction, unknownFieldKeys: string[])
 
 /** 確認後に初めて書く。採寸票1枚と注文1件を作る */
 export async function commitOrderSheetImport(
-  plan: ImportPlan,
+  plan: ResolvedImportPlan,
   staffId: Uuid,
 ): Promise<{ sheetId: Uuid; orderId: Uuid }> {
   const sections: MeasurementSection[] = plan.sections.map((section) => ({
@@ -240,16 +253,11 @@ export async function commitOrderSheetImport(
     dueDate: plan.dueDate,
     purpose: plan.purpose,
     measurementSheetId: sheetId,
-    totalAmount: plan.totalAmount,
+    fabric: plan.fabric,
+    amounts: plan.amounts,
     // 過去日付の紙を取り込んだだけで「今日連絡した」ことにはしない
     touchLastContact: false,
-    items: plan.sections
-      .filter(() => plan.fabricId !== undefined)
-      .map((section) => ({
-        itemTypeId: section.itemTypeId,
-        fabricId: plan.fabricId!,
-        amount: getItemPrice(section.itemTypeId),
-      })),
+    items: plan.sections.map((section) => ({ itemTypeId: section.itemTypeId })),
   });
 
   if (plan.deliveredAt) await markOrderDelivered(orderId, plan.deliveredAt);

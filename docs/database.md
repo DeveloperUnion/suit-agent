@@ -150,24 +150,41 @@ RLS を採った最大の論拠は「境界を DB が持つので API 層が要�
 
 ## 次にやること
 
-**Phase 2 — 人となりとエージェント基盤**
+### 着手前に決めること（2 つ）
+
+| | 決め方 |
+|---|---|
+| **埋め込みモデル** | `text-embedding-3-small`（1536 を Matryoshka で 512 に切り詰め）か `voyage-3-lite` か。**費用は論点にならない**（初期投入 6.6 万チャンクで $0.04）。日本語の性能と運用のしやすさで選ぶ。`search_chunks.embedding_model` を持たせてあるので後から差し替えられる |
+| **`lib/ai/` の ESLint ルール** | `supabase.from(` を禁止し `supabase.rpc(` だけ許すか。エージェントの読み取りが必ず RLS を通る SQL 関数を経由することの担保。書き込み側は「提案 → 適用」が既に塞いでいるので、これは読み取り側のためのもの |
+
+### Phase 1 との違い
+
+**Phase 2 は画面の作り替えを伴う。**Phase 1 は「画面を 1 行も変えずに DB 化する」が
+目標だったが、こちらは趣味欄が textarea からチップの追加/削除に変わる。
+性質が違うので、1 画面ずつ壁打ちしながら進めるほうがよい。
+
+### Phase 2 — 人となりとエージェント基盤
 
 1. `fact_categories` / `fact_labels` / `fact_aliases` / `customer_facts` / `search_chunks`
 2. `customers.hobbies` / `preferences` / `tags` / `ng_notes` からの移行
    （`source='migration'`。機械的に割るので誤りが混ざる、と後から言えるようにする）
 3. `customer_ng_notes` テーブルと `photo_consent` / `night_contact_ok` への分割
 4. 埋め込みのバックフィル（`app/api/cron/embed`、`worker_role`）
-5. `app.search_customers()` — 確定検索と意味検索を 1 本の関数で両方走らせる
-6. `lib/ai/` の ESLint ルール（`supabase.from(` を禁止し `supabase.rpc(` だけ許す）
+5. `app.search_customers()` — 確定検索と意味検索を 1 本の関数で両方走らせる。
+   **ツールを 2 本に分けて「網羅が要るときは確定検索を使え」とプロンプトで
+   指示する解は採らない**（RLS を採ったのと同じ理由で、作法は必ず破れる）
+6. `lib/ai/` の ESLint ルール
+7. 埋め込みは**二重**にする — 書き込み直後の fire-and-forget と Cron のバックフィル。
+   片方だけだと「その顧客だけ検索に出てこない」が無音で起きる
 
-**Phase 3 — 運用**
+### Phase 3 — 運用
 
 - `app.deactivate_staff()`（退職時の引き継ぎ。いまは無効化だけで引き継ぎは手作業）
 - `app.purge_customer()`（削除請求。`change_log` のマスキングまで）
 - `customer_assignments`（引き継ぎ履歴）
 - `alterations`
 
-**本番へ出すとき**
+### 本番へ出すとき
 
 - Supabase プロジェクトを作り `supabase link` → `supabase db push`
 - **`psql "$DATABASE_URL" -f supabase/masters.sql`**（採寸マスタ。migration では入らない）

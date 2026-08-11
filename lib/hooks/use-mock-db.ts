@@ -1,20 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { getServerVersion, getVersion, resetDb, subscribe } from "@/lib/store/mock-db";
+import { resetDb } from "@/lib/store/mock-db";
+import { getRevision, getServerRevision, subscribeRevision } from "@/lib/store/revision";
 
 /**
  * lib/data/* の非同期 API を購読付きで呼ぶためのフック。
  *
- * localStorage はクライアント専用のため、サーバー描画と初回クライアント描画では
- * 必ず loading（スケルトン）を返す。SSR とクライアントの初期スナップショットを
- * 一致させようとするより、この方が確実で読みやすい。
+ * 購読先は lib/store/revision の 1 本だけ。localStorage を見ている領域も
+ * Supabase へ移した領域も、書き込み後に等しく bump() するので、
+ * 画面はどちらのストアが動いたかを知らなくて済む。
+ *
+ * サーバー描画と初回クライアント描画では必ず loading（スケルトン）を返す。
+ * SSR とクライアントの初期スナップショットを一致させようとするより、
+ * この方が確実で読みやすい。
  */
 export function useMockQuery<T>(
   loader: () => Promise<T>,
   deps: readonly unknown[],
 ): { data: T | undefined; loading: boolean } {
-  const version = useSyncExternalStore(subscribe, getVersion, getServerVersion);
+  const version = useSyncExternalStore(subscribeRevision, getRevision, getServerRevision);
   const [state, setState] = useState<{ data: T | undefined; loading: boolean }>({
     data: undefined,
     loading: true,

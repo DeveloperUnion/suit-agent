@@ -1,5 +1,6 @@
 import type { MockDatabase } from "@/lib/types";
 import { createSeedDatabase, SEED_VERSION } from "@/lib/mock/seed";
+import { bump } from "@/lib/store/revision";
 
 /**
  * localStorage を裏に持つモックストア。
@@ -56,6 +57,9 @@ function write(db: MockDatabase) {
 function emit() {
   version += 1;
   for (const listener of listeners) listener();
+  // DB へ移した領域と購読を共有する。画面は lib/store/revision の
+  // 1 本だけを見ればよく、どちらのストアが動いたかを知らなくて済む。
+  bump();
 }
 
 export function getDb(): MockDatabase {

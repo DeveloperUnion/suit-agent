@@ -60,17 +60,14 @@ export function RevenueChart({ points }: { points: MonthlyRevenuePoint[] }) {
         ))}
       </div>
 
-      {/* 図から読めることは書かない。破線と当月の扱いだけ、図では言えないので注記する */}
-      <footer className="flex flex-col gap-1 border-t border-border pt-3">
-        {closedWithTarget === 0 && (
+      {/* 図から読めることは書かない。破線だけは図では言えないので注記する */}
+      {closedWithTarget === 0 && (
+        <footer className="border-t border-border pt-3">
           <p className="text-sm text-muted-foreground">
             目標を登録すると、各月に破線で表示されます。
           </p>
-        )}
-        <p className="text-xs text-muted-foreground">
-          いちばん右は当月で、まだ途中の数字です。
-        </p>
-      </footer>
+        </footer>
+      )}
     </section>
   );
 }

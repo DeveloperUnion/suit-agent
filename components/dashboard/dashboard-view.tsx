@@ -21,7 +21,7 @@ export function DashboardView() {
   if (loading || !data) {
     return (
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 sm:p-6 lg:p-8">
-        <Skeleton className="h-10 w-56" />
+        <Skeleton className="h-5 w-56" />
         <Skeleton className="h-24 w-full" />
         <Skeleton className="h-64 w-full" />
       </div>
@@ -32,7 +32,6 @@ export function DashboardView() {
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 sm:p-6 lg:p-8">
       <PageHeader
         eyebrow="Dashboard"
-        title="今週の状況"
         actions={
           <span className="text-sm text-muted-foreground">
             {data.staffName} / 担当 {data.customerCount}名

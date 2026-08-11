@@ -11,12 +11,12 @@ import { RevenueChart } from "@/components/dashboard/revenue-chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TRIGGER_LABEL } from "@/lib/constants/labels";
 import { getDashboardSummary } from "@/lib/data/dashboard";
-import { useMockQuery } from "@/lib/hooks/use-mock-db";
+import { useQuery } from "@/lib/hooks/use-query";
 import { cn } from "@/lib/utils";
 
 export function DashboardView() {
   const loader = useCallback(() => getDashboardSummary(), []);
-  const { data, loading } = useMockQuery(loader, []);
+  const { data, loading } = useQuery(loader, []);
 
   if (loading || !data) {
     return (

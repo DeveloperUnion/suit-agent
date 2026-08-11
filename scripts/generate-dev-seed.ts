@@ -15,7 +15,6 @@
 import { createHash } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { createSeedDatabase } from "@/lib/mock/seed";
-import { splitHobbies } from "@/lib/ai/agent-tools";
 import type { MeasurementSheet } from "@/lib/types";
 
 const OUT = new URL("../supabase/dev-seed.sql", import.meta.url);
@@ -142,9 +141,6 @@ if (db.anniversaries.length > 0) {
 // 生地は order_items から orders へ移した（紙が原反ＮＯ を 1 つしか持たないため）。
 // モックのデータは明細ごとに同じ値が入っているので、先頭を代表として採る。
 if (db.orders.length > 0) {
-  const firstItemOf = new Map<string, (typeof db.orderItems)[number]>();
-  for (const it of db.orderItems) if (!firstItemOf.has(it.orderId)) firstItemOf.set(it.orderId, it);
-
   push(`insert into public.orders (`);
   push(`  id, customer_id, order_number, ordered_at, due_date, delivered_at, status, purpose,`);
   push(`  fabric_product_number, fabric_color_number, fabric_color_name, fabric_composition,`);
@@ -152,17 +148,17 @@ if (db.orders.length > 0) {
   push(`) values`);
   push(
     db.orders
-      .map((o) => {
-        const f = firstItemOf.get(o.id);
-        return `  (${[
-          lit(toUuid(o.id)), lit(toUuid(o.customerId)), lit(o.orderNumber), lit(o.orderedAt),
-          lit(o.dueDate), lit(o.deliveredAt), lit(o.status), lit(o.purpose),
-          lit(f?.fabricProductNumber), lit(f?.fabricColorNumber),
-          lit(f?.fabricColorName), lit(f?.fabricComposition),
-          o.subtotalAmount, o.surchargeAmount, o.taxAmount, o.totalAmount,
-          lit(staffId(o.staffId)),
-        ].join(", ")})`;
-      })
+      .map(
+        (o) =>
+          `  (${[
+            lit(toUuid(o.id)), lit(toUuid(o.customerId)), lit(o.orderNumber), lit(o.orderedAt),
+            lit(o.dueDate), lit(o.deliveredAt), lit(o.status), lit(o.purpose),
+            lit(o.fabricProductNumber), lit(o.fabricColorNumber),
+            lit(o.fabricColorName), lit(o.fabricComposition),
+            o.subtotalAmount, o.surchargeAmount, o.taxAmount, o.totalAmount,
+            lit(staffId(o.takenByStaffId)),
+          ].join(", ")})`,
+      )
       .join(",\n"),
   );
   push(`on conflict (id) do nothing;`);
@@ -215,7 +211,7 @@ if (db.measurementSheets.length > 0) {
         `  (${[
           lit(toUuid(s.id)), lit(toUuid(s.customerId)),
           s.orderId ? lit(toUuid(s.orderId)) : "null",
-          lit(s.measuredAt), lit(staffId(s.staffId)), lit(s.inputMethod), lit(s.note),
+          lit(s.measuredAt), lit(staffId(s.recordedByStaffId)), lit(s.inputMethod), lit(s.note),
         ].join(", ")})`,
       )
       .join(",\n"),
@@ -284,10 +280,9 @@ push(``);
 
 writeFileSync(OUT, lines.join("\n"));
 
-const hobbyCount = db.customers.filter((c) => splitHobbies(c.hobbies).length > 0).length;
 console.log(
   `supabase/dev-seed.sql を生成しました:\n` +
-    `  顧客 ${db.customers.length}（うち趣味あり ${hobbyCount}） / 記念日 ${db.anniversaries.length}\n` +
+    `  顧客 ${db.customers.length} / 記念日 ${db.anniversaries.length}\n` +
     `  注文 ${db.orders.length} / 明細 ${db.orderItems.length} / 採寸票 ${db.measurementSheets.length}\n` +
     `  アプローチ解決 ${db.approachTasks.length} / 売上目標 ${db.revenueTargets.length}`,
 );

@@ -3,7 +3,7 @@ import type {
   Customer,
   CustomerAnniversary,
   MeasurementSheet,
-  MockDatabase,
+  DemoDataset,
   Order,
   OrderItem,
   RevenueTarget,
@@ -11,9 +11,16 @@ import type {
 } from "@/lib/types";
 import type { OrderItemFabric } from "@/lib/data/orders";
 import { addDays, daysAgo, toIsoDate, toIsoMonth } from "@/lib/utils/date";
-import { DEFAULT_SETTINGS } from "@/lib/constants/settings-defaults";
 
-/** 構造を変えたら上げる。localStorage 側が古ければ自動でシードに戻る */
+/**
+ * 開発用のデモデータ。
+ *
+ * アプリはこれを読まない。scripts/generate-dev-seed.ts が
+ * supabase/dev-seed.sql を吐くための素として使うだけ。
+ * mulberry32 で決定的なので、生成し直しても同じデータが出る。
+ */
+
+/** 構造を変えたら上げる */
 export const SEED_VERSION = 18;
 
 /**
@@ -181,7 +188,7 @@ function tokiedaSheets(customerId: string): MeasurementSheet[] {
     id,
     customerId,
     measuredAt,
-    staffId,
+    recordedByStaffId: staffId,
     inputMethod: "tablet",
     sections: [
       {
@@ -413,7 +420,7 @@ function buildAll(): Built {
           id: `sheet-${id}-${s + 1}`,
           customerId: id,
           measuredAt,
-          staffId,
+          recordedByStaffId: staffId,
           inputMethod: s === 0 ? "pc" : "tablet",
           sections: [
             {
@@ -532,16 +539,14 @@ function buildAll(): Built {
         surchargeAmount,
         taxAmount,
         totalAmount: subtotalAmount + surchargeAmount + taxAmount,
-        staffId,
+        // 生地は注文単位。紙が原反ＮＯ を 1 つしか持たない
+        ...fabric,
+        takenByStaffId: staffId,
       });
 
+      // 明細は「何を作ったか」だけ。生地も金額も注文単位（Order 側）に持つ
       itemTypes.forEach((itemTypeId, k) => {
-        orderItems.push({
-          id: `${orderId}-item-${k + 1}`,
-          orderId,
-          itemTypeId,
-          ...fabric,
-        });
+        orderItems.push({ id: `${orderId}-item-${k + 1}`, orderId, itemTypeId });
       });
     }
 
@@ -619,11 +624,10 @@ function buildRevenueTargets(
   return targets;
 }
 
-export function createSeedDatabase(): MockDatabase {
+export function createSeedDatabase(): DemoDataset {
   const built = buildAll();
   return {
     version: SEED_VERSION,
-    settings: DEFAULT_SETTINGS,
     session: { staffId: STAFF[0].id },
     staff: STAFF,
     customers: built.customers,

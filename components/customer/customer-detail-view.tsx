@@ -20,7 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getCustomer } from "@/lib/data/customers";
 import { getSilhouetteState } from "@/lib/data/measurements";
-import { useMockQuery } from "@/lib/hooks/use-mock-db";
+import { useQuery } from "@/lib/hooks/use-query";
 import { formatDateDot } from "@/lib/utils/date";
 
 const TABS = [
@@ -48,10 +48,10 @@ export function CustomerDetailView({
   );
 
   const customerLoader = useCallback(() => getCustomer(customerId), [customerId]);
-  const { data: customer, loading } = useMockQuery(customerLoader, [customerId]);
+  const { data: customer, loading } = useQuery(customerLoader, [customerId]);
 
   const silhouetteLoader = useCallback(() => getSilhouetteState(customerId), [customerId]);
-  const { data: silhouette } = useMockQuery(silhouetteLoader, [customerId]);
+  const { data: silhouette } = useQuery(silhouetteLoader, [customerId]);
 
   // AI アシスタントに「いま誰のカルテを見ているか」を伝える。
   // 名前を言わずに「ゴルフが趣味らしい」と話しかけられるようにするため

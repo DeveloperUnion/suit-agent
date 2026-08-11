@@ -28,7 +28,7 @@ import {
 } from "@/lib/ai/extract-business-card";
 import { isLowConfidence } from "@/lib/ai/extraction";
 import { createCustomer, findSimilarCustomers } from "@/lib/data/customers";
-import { useMockQuery } from "@/lib/hooks/use-mock-db";
+import { useQuery } from "@/lib/hooks/use-query";
 import { cn } from "@/lib/utils";
 
 /**
@@ -64,7 +64,7 @@ export function CustomerCreateDialog({
     () => findSimilarCustomers({ name, nameKana, phone }),
     [name, nameKana, phone],
   );
-  const { data: similar } = useMockQuery(similarLoader, [name, nameKana, phone]);
+  const { data: similar } = useQuery(similarLoader, [name, nameKana, phone]);
 
   const hasContact = phone.trim() !== "" || lineDisplayName.trim() !== "";
   const canSubmit = name.trim() !== "" && hasContact;

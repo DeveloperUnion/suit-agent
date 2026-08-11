@@ -14,3 +14,15 @@ export const POST_DELIVERY_MILESTONES = [
 ] as const;
 
 export type PostDeliveryMilestone = (typeof POST_DELIVERY_MILESTONES)[number];
+
+/**
+ * 記念日の何日前から出すか。
+ *
+ * 上の節目と同じ理由で設定画面に出さない。1 週間前から数え始める、というのは
+ * 店舗として確定した決めごとであり、試しに動かして様子を見る数字ではない。
+ * 画面ではカウントダウン（「あと3日」）で見せる。
+ *
+ * これを定数へ移したことで、店舗が変えられる業務ルールが 1 つも無くなり、
+ * 設定テーブル（旧 AppSettings）そのものが不要になった。
+ */
+export const ANNIVERSARY_LEAD_DAYS = 7;

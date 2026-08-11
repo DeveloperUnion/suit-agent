@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { resetDb } from "@/lib/store/mock-db";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { getRevision, getServerRevision, subscribeRevision } from "@/lib/store/revision";
 
 /**
@@ -15,7 +14,7 @@ import { getRevision, getServerRevision, subscribeRevision } from "@/lib/store/r
  * SSR とクライアントの初期スナップショットを一致させようとするより、
  * この方が確実で読みやすい。
  */
-export function useMockQuery<T>(
+export function useQuery<T>(
   loader: () => Promise<T>,
   deps: readonly unknown[],
 ): { data: T | undefined; loading: boolean } {
@@ -38,10 +37,4 @@ export function useMockQuery<T>(
   }, [version, ...deps]);
 
   return state;
-}
-
-export function useResetMockDb(): () => void {
-  return useCallback(() => {
-    resetDb();
-  }, []);
 }

@@ -8,7 +8,7 @@ import { EmptyState } from "@/components/common/field";
 import { Button } from "@/components/ui/button";
 import { APPROACH_STATUS_LABEL, TRIGGER_LABEL } from "@/lib/constants/labels";
 import { getApproachForCustomer, listApproachHistory, resolveApproach } from "@/lib/data/approaches";
-import { useMockQuery } from "@/lib/hooks/use-mock-db";
+import { useQuery } from "@/lib/hooks/use-query";
 import { formatDateTime } from "@/lib/utils/date";
 
 export function ApproachesTab({
@@ -19,10 +19,10 @@ export function ApproachesTab({
   customerName: string;
 }) {
   const currentLoader = useCallback(() => getApproachForCustomer(customerId), [customerId]);
-  const { data: current, loading } = useMockQuery(currentLoader, [customerId]);
+  const { data: current, loading } = useQuery(currentLoader, [customerId]);
 
   const historyLoader = useCallback(() => listApproachHistory(customerId), [customerId]);
-  const { data: history } = useMockQuery(historyLoader, [customerId]);
+  const { data: history } = useQuery(historyLoader, [customerId]);
 
   const handleDone = async () => {
     await resolveApproach(customerId, "done");

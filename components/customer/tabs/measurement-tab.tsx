@@ -8,7 +8,7 @@ import { EmptyState, SectionTitle } from "@/components/common/field";
 import { adjustmentLabel } from "@/lib/constants/adjustments";
 import { INPUT_METHOD_LABEL } from "@/lib/constants/labels";
 import { getSheetView, listSheets } from "@/lib/data/measurements";
-import { useMockQuery } from "@/lib/hooks/use-mock-db";
+import { useQuery } from "@/lib/hooks/use-query";
 import { formatDateDot } from "@/lib/utils/date";
 import { cn } from "@/lib/utils";
 
@@ -21,10 +21,10 @@ export function MeasurementTab({
   onOpenSheet: () => void;
 }) {
   const sheetsLoader = useCallback(() => listSheets(customerId), [customerId]);
-  const { data: sheets, loading } = useMockQuery(sheetsLoader, [customerId]);
+  const { data: sheets, loading } = useQuery(sheetsLoader, [customerId]);
 
   const viewLoader = useCallback(() => getSheetView(customerId), [customerId]);
-  const { data: view } = useMockQuery(viewLoader, [customerId]);
+  const { data: view } = useQuery(viewLoader, [customerId]);
 
   if (!loading && (!sheets || sheets.length === 0)) {
     return <EmptyState>採寸データがまだありません。次回の来店時に採寸してください。</EmptyState>;

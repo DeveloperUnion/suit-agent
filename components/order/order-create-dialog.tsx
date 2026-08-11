@@ -17,12 +17,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { getCurrentStaffId } from "@/lib/auth/current-staff";
 import { ORDER_PURPOSE_LABEL } from "@/lib/constants/labels";
 import { ITEM_TYPE_MAP } from "@/lib/constants/measurement-fields";
 import { listSheets } from "@/lib/data/measurements";
 import { createOrder, type OrderAmounts, type OrderItemFabric } from "@/lib/data/orders";
-import { useMockQuery } from "@/lib/hooks/use-mock-db";
+import { useQuery } from "@/lib/hooks/use-query";
 import type { ItemTypeId, OrderPurpose } from "@/lib/types";
 import { addDays, formatAmount, formatDateDot, toIsoDate } from "@/lib/utils/date";
 import { cn } from "@/lib/utils";
@@ -70,7 +69,7 @@ export function OrderCreateDialog({
   const [saving, setSaving] = useState(false);
 
   const sheetsLoader = useCallback(() => listSheets(customerId), [customerId]);
-  const { data: sheets } = useMockQuery(sheetsLoader, [customerId, open]);
+  const { data: sheets } = useQuery(sheetsLoader, [customerId, open]);
 
   // 開いたときに最新の採寸票をプリセットする。
   // リピートは前回と同じ寸法で作ることが多いため
@@ -100,7 +99,6 @@ export function OrderCreateDialog({
     setSaving(true);
     await createOrder({
       customerId,
-      staffId: getCurrentStaffId(),
       orderedAt,
       dueDate,
       purpose,

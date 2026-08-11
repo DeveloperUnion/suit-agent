@@ -8,26 +8,32 @@ import {
   Check,
   ChevronsUpDown,
   LayoutDashboard,
+  LogOut,
   Menu,
-  RotateCcw,
   Settings,
   UserRound,
   Users,
   Waypoints,
 } from "lucide-react";
-import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { getCurrentStaff, listStaffForSwitcher, switchStaff } from "@/lib/auth/current-staff";
+import {
+  getCurrentStaff,
+  getViewingStaff,
+  listStaffForSwitcher,
+  setViewingStaffId,
+  signOut,
+} from "@/lib/auth/current-staff";
 import { cn } from "@/lib/utils";
-import { useMockQuery, useResetMockDb } from "@/lib/hooks/use-mock-db";
+import { useQuery } from "@/lib/hooks/use-query";
 
 const NAV = [
   { href: "/dashboard", label: "ダッシュボード", icon: LayoutDashboard },
@@ -81,21 +87,31 @@ function Wordmark({ className }: { className?: string }) {
 }
 
 /**
- * ログイン中のスタッフ。顧客はスタッフごとに分割されているため、
- * 誰でログインしているかで見える顧客が変わる。
- * モックでは挙動を確認できるよう切り替えられるようにしてある。
+ * ログイン中のスタッフと、管理者だけの「表示中のスタッフ」切り替え。
+ *
+ * 切り替えは閲覧フィルタであって、なりきりではない。
+ * app.current_staff_id() は常に本人のまま動かないので、他人のページを
+ * 開いている間は編集できず（RLS が 0 行にする）、監査ログにも本人が残る。
+ * 一般スタッフにはこのボタン自体を出さない。
  */
 function StaffSwitcher() {
-  const { data } = useMockQuery(
-    async () => ({ current: getCurrentStaff(), staff: listStaffForSwitcher() }),
+  const { data } = useQuery(
+    async () => ({
+      me: await getCurrentStaff(),
+      viewing: await getViewingStaff(),
+      staff: await listStaffForSwitcher(),
+    }),
     [],
   );
-  if (!data?.current) return null;
+  if (!data?.me) return null;
+
+  const isAdmin = data.me.role === "admin";
+  const viewingOther = data.viewing && data.viewing.id !== data.me.id;
 
   return (
     <div className="flex flex-col gap-1 px-2 pb-2">
       <span className="px-1 font-label text-[0.6875rem] uppercase tracking-[0.14em] text-sidebar-foreground/60">
-        ログイン中
+        {viewingOther ? "表示中" : "ログイン中"}
       </span>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -104,31 +120,39 @@ function StaffSwitcher() {
             className="flex min-h-11 items-center gap-2 rounded-md px-2 text-left text-sm text-sidebar-primary transition-colors hover:bg-sidebar-accent/50"
           >
             <UserRound className="size-4 shrink-0" strokeWidth={1.75} />
-            <span className="flex-1 truncate">{data.current.name}</span>
+            <span className="flex-1 truncate">{data.viewing?.name ?? data.me.name}</span>
             <ChevronsUpDown className="size-3.5 shrink-0 opacity-60" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-52">
-          {data.staff.map((staff) => (
-            <DropdownMenuItem key={staff.id} onClick={() => switchStaff(staff.id)}>
-              <span className="flex-1">{staff.name}</span>
-              {staff.id === data.current?.id && <Check className="size-3.5" />}
-            </DropdownMenuItem>
-          ))}
+          {isAdmin &&
+            data.staff.map((staff) => (
+              <DropdownMenuItem
+                key={staff.id}
+                onClick={() => setViewingStaffId(staff.id === data.me!.id ? null : staff.id)}
+              >
+                <span className="flex-1">{staff.name}</span>
+                {staff.id === (data.viewing?.id ?? data.me!.id) && <Check className="size-3.5" />}
+              </DropdownMenuItem>
+            ))}
+          {isAdmin && <DropdownMenuSeparator />}
+          <DropdownMenuItem onClick={() => void signOut()}>
+            <LogOut className="size-3.5" />
+            <span className="flex-1">サインアウト</span>
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      {viewingOther && (
+        <span className="px-1 text-[0.6875rem] leading-relaxed text-sidebar-foreground/60">
+          閲覧のみ。編集はご自身の担当だけです
+        </span>
+      )}
     </div>
   );
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
-  const reset = useResetMockDb();
-
-  const handleReset = () => {
-    reset();
-    toast.success("モックデータを初期状態に戻しました");
-  };
 
   return (
     <div className="flex min-h-dvh">
@@ -139,17 +163,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <StaffSwitcher />
         <div className="px-2">
           <NavList />
-        </div>
-        <div className="mt-auto p-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleReset}
-            className="w-full justify-start gap-2 text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
-          >
-            <RotateCcw className="size-3.5" />
-            モックデータをリセット
-          </Button>
         </div>
       </aside>
 
@@ -176,17 +189,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <StaffSwitcher />
               <div className="px-2">
                 <NavList onNavigate={() => setOpen(false)} />
-              </div>
-              <div className="mt-auto p-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleReset}
-                  className="w-full justify-start gap-2 text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
-                >
-                  <RotateCcw className="size-3.5" />
-                  モックデータをリセット
-                </Button>
               </div>
             </SheetContent>
           </Sheet>

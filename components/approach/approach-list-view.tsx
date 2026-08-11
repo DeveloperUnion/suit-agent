@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TRIGGER_LABEL } from "@/lib/constants/labels";
 import { listApproaches, resolveApproach, type ApproachItem } from "@/lib/data/approaches";
-import { useMockQuery } from "@/lib/hooks/use-mock-db";
+import { useQuery } from "@/lib/hooks/use-query";
 import type { TriggerType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -28,7 +28,7 @@ export function ApproachListView() {
     () => listApproaches({ triggerType: trigger === "all" ? undefined : trigger }),
     [trigger],
   );
-  const { data: items, loading } = useMockQuery(loader, [trigger]);
+  const { data: items, loading } = useQuery(loader, [trigger]);
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 sm:p-6 lg:p-8">

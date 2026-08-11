@@ -1,28 +1,19 @@
-import type { AppSettings, IsoMonth, Staff, Uuid } from "@/lib/types";
-import { getDb, mutateDb, newId } from "@/lib/store/mock-db";
+import type { IsoMonth, Staff, Uuid } from "@/lib/types";
+import { supabase } from "@/lib/supabase/client";
+import { bump } from "@/lib/store/revision";
 import { getCurrentStaffId } from "@/lib/auth/current-staff";
-import { DEFAULT_SETTINGS } from "@/lib/constants/settings-defaults";
-
-export { DEFAULT_SETTINGS };
 
 /**
- * 設定・スタッフ・売上目標。
+ * スタッフと売上目標。
  *
- * 店舗が変えられる業務ルールはここが唯一の出どころになる。判定ロジックの中に数値を書かない。
- * 例外は納品後フォローの節目（半年・1年）で、確定した決めごとのため
- * lib/constants/approach.ts に固定値で置いている。
+ * 業務ルールの設定はここに無い。店舗が変えられる数値が 1 つも残らなかったため
+ * （記念日の 7 日前も納品後フォローの節目も lib/constants/approach.ts の固定値）。
+ *
+ * スタッフの追加・編集は管理者だけ。RLS の staff_insert / staff_update が
+ * app.is_admin() を見ているので、ここに権限の分岐は書かない。
  */
 
-/** 同期で読む。データ層からはこれを直接呼ぶ */
-export function getSettings(): AppSettings {
-  return getDb().settings ?? DEFAULT_SETTINGS;
-}
-
-export async function updateSettings(patch: Partial<AppSettings>): Promise<void> {
-  mutateDb((db) => ({ ...db, settings: { ...db.settings, ...patch } }));
-}
-
-// ── スタッフ ────────────────────────────────────────────
+const STAFF_COLUMNS = "id, name, email, role, isActive:is_active";
 
 export type StaffWithLoad = Staff & {
   /** 担当している顧客数。無効化するときの引き継ぎ判断に使う */
@@ -32,130 +23,175 @@ export type StaffWithLoad = Staff & {
 };
 
 export async function listAllStaff(): Promise<StaffWithLoad[]> {
-  const db = getDb();
-  const currentId = getCurrentStaffId();
-  return db.staff.map((staff) => ({
-    ...staff,
-    customerCount: db.customers.filter((c) => c.staffId === staff.id).length,
-    isCurrent: staff.id === currentId,
-  }));
+  const [{ data: staff, error }, currentId] = await Promise.all([
+    supabase().from("staff").select(STAFF_COLUMNS).order("name"),
+    getCurrentStaffId(),
+  ]);
+  if (error) throw error;
+
+  // 担当件数は管理者しか正しく数えられない（RLS が他人の顧客を隠すため）。
+  // 一般スタッフには 0 が並ぶが、スタッフ管理画面自体を管理者にしか出さない。
+  const { data: customers } = await supabase()
+    .from("customers")
+    .select("staff_id")
+    .is("archived_at", null);
+
+  const counts = new Map<string, number>();
+  for (const c of customers ?? []) {
+    const id = (c as { staff_id: string }).staff_id;
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+
+  return (staff ?? []).map((s) => {
+    const row = s as unknown as Staff;
+    return { ...row, customerCount: counts.get(row.id) ?? 0, isCurrent: row.id === currentId };
+  });
 }
 
 export async function createStaff(input: Omit<Staff, "id" | "isActive">): Promise<Uuid> {
-  const id = newId("staff");
-  mutateDb((db) => ({ ...db, staff: [...db.staff, { ...input, id, isActive: true }] }));
-  return id;
+  const { data, error } = await supabase()
+    .from("staff")
+    .insert({ name: input.name, email: input.email, role: input.role })
+    .select("id")
+    .single();
+  if (error) throw error;
+  bump();
+  return (data as { id: string }).id;
 }
 
 export async function updateStaff(id: Uuid, patch: Partial<Omit<Staff, "id">>): Promise<void> {
-  mutateDb((db) => ({
-    ...db,
-    staff: db.staff.map((s) => (s.id === id ? { ...s, ...patch, id: s.id } : s)),
-  }));
+  const row: Record<string, unknown> = {};
+  if (patch.name !== undefined) row.name = patch.name;
+  if (patch.email !== undefined) row.email = patch.email;
+  if (patch.role !== undefined) row.role = patch.role;
+  if (patch.isActive !== undefined) row.is_active = patch.isActive;
+
+  const { error } = await supabase().from("staff").update(row).eq("id", id);
+  if (error) throw error;
+  bump();
 }
 
 /**
  * スタッフを無効化し、その人の顧客を引き継ぐ。
  *
- * 顧客はスタッフごとに分割されているため、引き継がずに無効化すると
- * その顧客が誰からも見えなくなる。要件1.2-3「退職時に関係資産が消失する」を
- * 自分で再現してしまうので、無効化と付け替えを同じミューテーションで行う。
+ * 引き継がずに無効化すると、その顧客が誰からも見えなくなる。
+ * 要件1.2-3「退職時に関係資産が消失する」を自分で再現してしまう。
+ *
+ * これは RLS を貫通する唯一の書き込み経路。管理者でも他人の顧客は UPDATE
+ * できないので、通常のクエリでは付け替えられない。
+ * 守るべき条件（自分は無効化できない／引き継ぎ先は有効なスタッフ）は
+ * SECURITY DEFINER 関数の中に置き、他の経路を残さない。
+ *
+ * TODO(Phase 3): app.deactivate_staff() を実装する。
+ * それまでは無効化だけを行い、引き継ぎは手作業になる。
  */
 export async function deactivateStaff(id: Uuid, reassignToId: Uuid): Promise<void> {
-  if (id === getCurrentStaffId()) return;
-  mutateDb((db) => ({
-    ...db,
-    staff: db.staff.map((s) => (s.id === id ? { ...s, isActive: false } : s)),
-    customers: db.customers.map((c) => (c.staffId === id ? { ...c, staffId: reassignToId } : c)),
-  }));
+  if (id === (await getCurrentStaffId())) return;
+  void reassignToId;
+  const { error } = await supabase()
+    .from("staff")
+    .update({ is_active: false, deactivated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+  bump();
 }
 
 export async function activateStaff(id: Uuid): Promise<void> {
-  mutateDb((db) => ({
-    ...db,
-    staff: db.staff.map((s) => (s.id === id ? { ...s, isActive: true } : s)),
-  }));
+  const { error } = await supabase()
+    .from("staff")
+    .update({ is_active: true, deactivated_at: null })
+    .eq("id", id);
+  if (error) throw error;
+  bump();
 }
 
 // ── 売上目標 ────────────────────────────────────────────
 
 export type RevenueTargetRow = { month: IsoMonth; amount: number };
 
-/** 目標の ID は staffId と月から決まる。upsert を素直に書けるようにするため */
-function targetId(staffId: Uuid, month: IsoMonth): Uuid {
-  return `tgt-${staffId}-${month}`;
-}
-
 export async function listRevenueTargets(
   staffId: Uuid,
   year: number,
 ): Promise<RevenueTargetRow[]> {
-  const prefix = `${year}-`;
-  return getDb()
-    .revenueTargets.filter((t) => t.staffId === staffId && t.month.startsWith(prefix))
-    .map((t) => ({ month: t.month, amount: t.amount }))
-    .sort((a, b) => a.month.localeCompare(b.month));
+  const { data, error } = await supabase()
+    .from("revenue_targets")
+    .select("month, amount")
+    .eq("staff_id", staffId)
+    .like("month", `${year}-%`)
+    .order("month");
+  if (error) throw error;
+  return (data ?? []) as RevenueTargetRow[];
 }
 
-/** ダッシュボードの集計から同期で引く。未設定は null（0 とは区別する） */
-export function getRevenueTarget(staffId: Uuid, month: IsoMonth): number | null {
-  const found = getDb().revenueTargets.find(
-    (t) => t.staffId === staffId && t.month === month,
-  );
-  return found?.amount ?? null;
+/** 未設定は null（0 とは区別する。0 を保存すると「目標0円を達成した」になる） */
+export async function getRevenueTarget(staffId: Uuid, month: IsoMonth): Promise<number | null> {
+  const { data } = await supabase()
+    .from("revenue_targets")
+    .select("amount")
+    .eq("staff_id", staffId)
+    .eq("month", month)
+    .maybeSingle();
+  return (data as { amount: number } | null)?.amount ?? null;
 }
 
 /**
  * その年の月別実績。目標の入力欄の隣に置き、額を決める材料にする。
  *
  * 集計の単位は「担当している顧客の注文」で、ダッシュボードと揃える。
- * 受注者（Order.staffId）で数えると、同僚が代わりに受けた注文が
+ * 受注者（orders.taken_by_staff_id）で数えると、同僚が代わりに受けた注文が
  * 自分の実績から抜け落ちてしまうため。
+ *
+ * 金額は税込（total_amount）。紙の合計欄と目で一致することを優先した店舗判断。
  */
 export async function listMonthlyRevenue(
   staffId: Uuid,
   year: number,
 ): Promise<Record<IsoMonth, number>> {
-  const db = getDb();
-  const customerIds = new Set(
-    db.customers.filter((c) => c.staffId === staffId).map((c) => c.id),
-  );
+  const { data, error } = await supabase()
+    .from("orders")
+    .select("ordered_at, total_amount, customers!inner ( staff_id )")
+    .eq("customers.staff_id", staffId)
+    .gte("ordered_at", `${year}-01-01`)
+    .lte("ordered_at", `${year}-12-31`);
+  if (error) throw error;
+
   const result: Record<IsoMonth, number> = {};
-  for (const order of db.orders) {
-    if (!customerIds.has(order.customerId)) continue;
-    if (!order.orderedAt.startsWith(`${year}-`)) continue;
-    const month = order.orderedAt.slice(0, 7);
-    result[month] = (result[month] ?? 0) + order.totalAmount;
+  for (const row of data ?? []) {
+    const o = row as unknown as { ordered_at: string; total_amount: number };
+    const month = o.ordered_at.slice(0, 7);
+    result[month] = (result[month] ?? 0) + o.total_amount;
   }
   return result;
 }
 
 /**
  * 月単位の upsert。
- * 0 以下は行ごと削除して「未設定」に戻す。0 を保存すると
- * 「目標0円を達成した」というグラフになってしまうため。
+ * 0 以下は行ごと削除して「未設定」に戻す。
  */
 export async function saveRevenueTargets(
   staffId: Uuid,
   rows: RevenueTargetRow[],
 ): Promise<void> {
-  mutateDb((db) => {
-    const touched = new Set(rows.map((r) => r.month));
-    return {
-      ...db,
-      revenueTargets: [
-        ...db.revenueTargets.filter(
-          (t) => t.staffId !== staffId || !touched.has(t.month),
-        ),
-        ...rows
-          .filter((r) => r.amount > 0)
-          .map((r) => ({
-            id: targetId(staffId, r.month),
-            staffId,
-            month: r.month,
-            amount: r.amount,
-          })),
-      ],
-    };
-  });
+  const cleared = rows.filter((r) => r.amount <= 0).map((r) => r.month);
+  const kept = rows.filter((r) => r.amount > 0);
+
+  if (cleared.length > 0) {
+    const { error } = await supabase()
+      .from("revenue_targets")
+      .delete()
+      .eq("staff_id", staffId)
+      .in("month", cleared);
+    if (error) throw error;
+  }
+
+  if (kept.length > 0) {
+    const { error } = await supabase()
+      .from("revenue_targets")
+      .upsert(
+        kept.map((r) => ({ staff_id: staffId, month: r.month, amount: r.amount })),
+        { onConflict: "staff_id,month" },
+      );
+    if (error) throw error;
+  }
+  bump();
 }

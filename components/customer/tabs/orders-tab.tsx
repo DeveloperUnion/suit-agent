@@ -18,16 +18,16 @@ import {
   listOrders,
   markOrderDelivered,
 } from "@/lib/data/orders";
-import { useMockQuery } from "@/lib/hooks/use-mock-db";
+import { useQuery } from "@/lib/hooks/use-query";
 import { POST_DELIVERY_MILESTONES } from "@/lib/constants/approach";
 import { formatAmount, formatDateDot, toIsoDate } from "@/lib/utils/date";
 
 export function OrdersTab({ customerId }: { customerId: string }) {
   const ordersLoader = useCallback(() => listOrders(customerId), [customerId]);
-  const { data: orders, loading } = useMockQuery(ordersLoader, [customerId]);
+  const { data: orders, loading } = useQuery(ordersLoader, [customerId]);
 
   const summaryLoader = useCallback(() => getOwnedItemSummary(customerId), [customerId]);
-  const { data: summary } = useMockQuery(summaryLoader, [customerId]);
+  const { data: summary } = useQuery(summaryLoader, [customerId]);
 
   if (!loading && (!orders || orders.length === 0)) {
     return <EmptyState>注文履歴がまだありません。</EmptyState>;
@@ -114,43 +114,48 @@ export function OrdersTab({ customerId }: { customerId: string }) {
                 )}
               </div>
 
-              <div className="flex flex-col divide-y divide-border/60">
-                {order.items.map((item) => (
-                  <div key={item.id} className="flex flex-col gap-2.5 p-4 sm:flex-row sm:gap-4">
-                    {/* 着装写真のプレースホルダ */}
-                    <div className="flex h-24 w-full shrink-0 items-center justify-center rounded-sm border border-dashed border-border bg-muted/40 sm:h-28 sm:w-20">
-                      <ImageOff className="size-4 text-muted-foreground/50" />
-                    </div>
+              {/*
+                生地は注文単位。紙が原反ＮＯ を 1 つしか持たないので、明細ごとに
+                繰り返さず注文の見出しの下に 1 度だけ出す。
+                マスタは引かず、発注書に書かれていた値をそのまま出す。
+              */}
+              <div className="flex flex-col gap-2.5 p-4 sm:flex-row sm:gap-4">
+                {/* 着装写真のプレースホルダ */}
+                <div className="flex h-24 w-full shrink-0 items-center justify-center rounded-sm border border-dashed border-border bg-muted/40 sm:h-28 sm:w-20">
+                  <ImageOff className="size-4 text-muted-foreground/50" />
+                </div>
 
-                    {/* 生地は発注書に書かれていた値をそのまま出す。マスタは引かない */}
-                    <div className="flex min-w-0 flex-1 flex-col gap-2">
-                      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                        <span className="font-heading text-sm font-semibold uppercase tracking-[0.1em] text-brand">
-                          {ITEM_TYPE_MAP[item.itemTypeId].sheetLabel}
-                        </span>
-                        {item.fabricProductNumber && (
-                          <span className="tnum font-mono text-sm">{item.fabricProductNumber}</span>
-                        )}
-                        {item.fabricColorNumber && (
-                          <span className="tnum font-mono text-xs text-muted-foreground">
-                            色番 {item.fabricColorNumber}
-                          </span>
-                        )}
-                        {item.fabricColorName && (
-                          <span className="text-sm text-muted-foreground">
-                            {item.fabricColorName}
-                          </span>
-                        )}
-                      </div>
-
-                      {item.fabricComposition && (
-                        <div className="text-xs text-muted-foreground">
-                          {item.fabricComposition}
-                        </div>
-                      )}
-                    </div>
+                <div className="flex min-w-0 flex-1 flex-col gap-2">
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    {order.items.map((item) => (
+                      <span
+                        key={item.id}
+                        className="font-heading text-sm font-semibold uppercase tracking-[0.1em] text-brand"
+                      >
+                        {ITEM_TYPE_MAP[item.itemTypeId].sheetLabel}
+                      </span>
+                    ))}
+                    {order.fabricProductNumber && (
+                      <span className="tnum font-mono text-sm">{order.fabricProductNumber}</span>
+                    )}
+                    {order.fabricColorNumber && (
+                      <span className="tnum font-mono text-xs text-muted-foreground">
+                        色番 {order.fabricColorNumber}
+                      </span>
+                    )}
+                    {order.fabricColorName && (
+                      <span className="text-sm text-muted-foreground">
+                        {order.fabricColorName}
+                      </span>
+                    )}
                   </div>
-                ))}
+
+                  {order.fabricComposition && (
+                    <div className="text-xs text-muted-foreground">
+                      {order.fabricComposition}
+                    </div>
+                  )}
+                </div>
               </div>
             </li>
           ))}

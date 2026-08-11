@@ -193,8 +193,15 @@ export type MeasurementSheet = {
   /** 採寸だけ先行するケースがあるため任意 */
   orderId?: Uuid;
   measuredAt: IsoDate;
-  staffId: Uuid;
+  /** 誰が測ったか。顧客の担当とは別物で、アクセス制御には使わない */
+  recordedByStaffId: Uuid;
   inputMethod: MeasurementInputMethod;
+  /**
+   * アイテム非依存なので section に入らないが、「3kg痩せた」は
+   * アシスタントが最初に言われること。
+   */
+  heightCm?: number;
+  weightKg?: number;
   sections: MeasurementSection[];
   adjustments: AppliedAdjustment[];
   note?: string;
@@ -249,6 +256,21 @@ export type Order = {
   deliveredAt?: IsoDate;
   status: OrderStatus;
   purpose: OrderPurpose;
+
+  /*
+   * 生地は注文単位。紙が原反NO を 1 つしか持たないため、明細ごとには持たない。
+   * マスタも引かない — 原反NO・色番・色名・組成はすべて発注書の上にあり、
+   * マスタを別に育てる手間に見合う使い道がなかった。
+   */
+  /** 原反NO。例: AC5601 */
+  fabricProductNumber?: string;
+  /** 色番。例: 3330 */
+  fabricColorNumber?: string;
+  /** 色名。例: カーキ無地 */
+  fabricColorName?: string;
+  /** 品質表示の組成。例: N(ナイロン) 92% / U(ポリウレタン) 8% */
+  fabricComposition?: string;
+
   /** 売上金額 */
   subtotalAmount: number;
   /** 割増金額 */
@@ -257,7 +279,13 @@ export type Order = {
   taxAmount: number;
   /** 合計金額。3つの和が既定だが、紙の合計欄が正なので手で上書きできる */
   totalAmount: number;
-  staffId: Uuid;
+
+  /**
+   * 受注した人。顧客の担当（Customer.staffId）とは別物で、こちらは
+   * 「誰が操作したか」の記録。アクセス制御には使わない —
+   * 同僚が代理で受けた注文をそれに使うと、担当者から自分の顧客の注文が消える。
+   */
+  takenByStaffId: Uuid;
 };
 
 /**
@@ -267,23 +295,16 @@ export type Order = {
  * あれは工場に伝えるためのもので、店側が後から見返す場面がなく、
  * 入力の手間だけが残るため。
  *
- * 生地はマスタを引かず、紙に書かれた値をそのまま持つ。原反NO・色番・色名・組成は
- * すべて発注書の上にあり、マスタを別に育てる手間に見合う使い道がなかった。
- * 金額は注文単位（上の4欄）で持つので、明細ごとの金額は持たない。
+ * 生地も金額も注文単位（Order 側）で持つ。紙が原反NO を 1 つしか持たず、
+ * 明細ごとの金額欄も無いため、ここに置くと同じ値が明細の数だけ重複する。
+ *
+ * 着装写真も持たない。画像を一切保存しない判断のため
+ * （削除請求への対応を DB だけで完結させ、保持する個人情報を減らす）。
  */
 export type OrderItem = {
   id: Uuid;
   orderId: Uuid;
   itemTypeId: ItemTypeId;
-  /** 原反NO。例: AC5601 */
-  fabricProductNumber?: string;
-  /** 色番。例: 3330 */
-  fabricColorNumber?: string;
-  /** 色名。例: カーキ無地 */
-  fabricColorName?: string;
-  /** 品質表示の組成。例: N(ナイロン) 92% / U(ポリウレタン) 8% */
-  fabricComposition?: string;
-  photoUrls?: string[];
 };
 
 export type Alteration = {
@@ -379,25 +400,16 @@ export type AgentMessage = {
 };
 
 // ── 設定 ────────────────────────────────────────────────
-
-/**
- * 店舗が変えられる業務ルール。
- *
- * 閾値をコードの定数に埋めておくと「21日前は早いか遅いか」を試せない。
- * アプローチは毎回評価する作りなので、ここを変えれば即座に結果へ反映される。
- *
- * 一方、採寸項目・補正コードの各マスタはここに入れない。
- * 紙の帳票と製造側の都合で決まっており、店舗が変えるものではないため。
- * 納品後フォローの節目（半年・1年）も店舗の決めごととして確定しているため、
- * ここではなく lib/constants/approach.ts に固定値で置いている。
- *
- * アイテム別の標準価格も持たない。金額は紙の4欄をそのまま転記する運用にしたので、
- * 初期値を用意しても人が上書きするだけだった。
- */
-export type AppSettings = {
-  /** 記念日トリガー: 何日前から出すか */
-  anniversaryLeadDays: number;
-};
+//
+// 店舗が変えられる業務ルールのテーブルは持たない。
+//
+// アイテム別の標準価格は、金額を紙の 4 欄そのまま転記する運用にしたので
+// 初期値を用意しても人が上書きするだけだった。
+// 記念日トリガーの日数も 7 日前で確定したため lib/constants/approach.ts へ移した。
+// 納品後フォローの節目（半年・1年）が元からそこにあるので、
+// アプローチのルールが 1 ファイルに集まる。
+//
+// 結果、設定ページに残るのはスタッフ管理（管理者のみ編集）と売上目標だけ。
 
 // ── 売上目標 ────────────────────────────────────────────
 
@@ -418,11 +430,14 @@ export type RevenueTarget = {
   amount: number;
 };
 
-// ── 永続化するデータベース全体 ───────────────────────────
+// ── 開発用のデモデータ ───────────────────────────────────
+//
+// 本番のデータはすべて Supabase にある。ここに残っているのは
+// supabase/dev-seed.sql を生成するための素で、アプリからは読まない
+// （scripts/generate-dev-seed.ts だけが使う）。
 
-export type MockDatabase = {
+export type DemoDataset = {
   version: number;
-  settings: AppSettings;
   /**
    * ログイン中のスタッフ。本来は認証セッションが持つものだが、
    * モックでは切り替えて挙動を確認できるようここに置いている。

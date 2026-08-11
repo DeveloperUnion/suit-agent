@@ -20,7 +20,7 @@ import {
 } from "@/lib/data/agent-chat";
 import { getCustomer } from "@/lib/data/customers";
 import { useIsDesktop } from "@/lib/hooks/use-media-query";
-import { useMockQuery } from "@/lib/hooks/use-mock-db";
+import { useQuery } from "@/lib/hooks/use-query";
 import { useVisualViewport } from "@/lib/hooks/use-visual-viewport";
 import type { AgentCustomerRef, AgentMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -43,7 +43,7 @@ export function AgentPanel() {
 
   // 書き込みは必ず mutateDb を通るので、追記も削除もこの購読だけで反映される
   const loader = useCallback(() => listAgentMessages(), []);
-  const { data: messages } = useMockQuery(loader, []);
+  const { data: messages } = useQuery(loader, []);
 
   // スマホだけ visual viewport の実測を当てる。iOS はキーボードで dvh が変わらない
   const viewport = useVisualViewport(open && !isDesktop);

@@ -8,14 +8,13 @@ import { EditableSection } from "@/components/common/editable-section";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { getCurrentStaffId } from "@/lib/auth/current-staff";
 import {
   listAllStaff,
   listMonthlyRevenue,
   listRevenueTargets,
   saveRevenueTargets,
 } from "@/lib/data/settings";
-import { useMockQuery } from "@/lib/hooks/use-mock-db";
+import { useQuery } from "@/lib/hooks/use-query";
 import { formatAmount, parseAmount } from "@/lib/utils/date";
 
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
@@ -27,23 +26,29 @@ const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
  * 並べて見るものなので、ここでは担当の境界を引かず他のスタッフ分も開ける。
  */
 export function RevenueTargetSettings() {
-  const [staffId, setStaffId] = useState(getCurrentStaffId());
   const [year, setYear] = useState(new Date().getFullYear());
 
   const staffLoader = useCallback(() => listAllStaff(), []);
-  const { data: staff } = useMockQuery(staffLoader, []);
+  const { data: staff } = useQuery(staffLoader, []);
+
+  // 誰の目標を編集するかは画面の選択。既定は自分だが、それは
+  // 読み込み後に決まるので state に同期せず、その場で導出する。
+  // （書き込みの主体は DB の default が決めるので、ここで要るのは表示だけ）
+  const [picked, setPicked] = useState<string | null>(null);
+  const staffId = picked ?? staff?.find((s) => s.isCurrent)?.id ?? "";
+  const setStaffId = setPicked;
 
   const targetsLoader = useCallback(
     () => listRevenueTargets(staffId, year),
     [staffId, year],
   );
-  const { data: targets } = useMockQuery(targetsLoader, [staffId, year]);
+  const { data: targets } = useQuery(targetsLoader, [staffId, year]);
 
   const revenueLoader = useCallback(
     () => listMonthlyRevenue(staffId, year),
     [staffId, year],
   );
-  const { data: revenue } = useMockQuery(revenueLoader, [staffId, year]);
+  const { data: revenue } = useQuery(revenueLoader, [staffId, year]);
 
   const monthKey = (m: number) => `${year}-${String(m).padStart(2, "0")}`;
   const targetOf = (m: number) =>

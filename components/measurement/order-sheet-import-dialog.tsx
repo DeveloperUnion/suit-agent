@@ -20,7 +20,6 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { getCurrentStaffId } from "@/lib/auth/current-staff";
 import { extractOrderSheet } from "@/lib/ai/extract-order-sheet";
 import { CONFIDENCE_WARN } from "@/lib/ai/extraction";
 import { ADJUSTMENT_MAP, MAX_ADJUSTMENTS } from "@/lib/constants/adjustments";
@@ -34,7 +33,7 @@ import {
   type ResolvedImportPlan,
 } from "@/lib/data/order-sheet-import";
 import { createCustomer, findSimilarCustomers } from "@/lib/data/customers";
-import { useMockQuery } from "@/lib/hooks/use-mock-db";
+import { useQuery } from "@/lib/hooks/use-query";
 import type { OrderItemFabric } from "@/lib/data/orders";
 import type { OrderPurpose } from "@/lib/types";
 import { formatDateDot } from "@/lib/utils/date";
@@ -81,7 +80,7 @@ export function OrderSheetImportDialog({
     () => (picking ? findSimilarCustomers({ name: newName, nameKana: newKana }) : Promise.resolve([])),
     [picking, newName, newKana],
   );
-  const { data: candidates } = useMockQuery(candidatesLoader, [picking, newName, newKana]);
+  const { data: candidates } = useQuery(candidatesLoader, [picking, newName, newKana]);
 
   const reset = () => {
     setPhase("select");
@@ -148,7 +147,7 @@ export function OrderSheetImportDialog({
     if (!plan || !canSubmit) return;
     setSaving(true);
     const resolved = plan as ResolvedImportPlan;
-    const { sheetId } = await commitOrderSheetImport(resolved, getCurrentStaffId());
+    const { sheetId } = await commitOrderSheetImport(resolved);
     setSaving(false);
     onOpenChange(false);
     reset();

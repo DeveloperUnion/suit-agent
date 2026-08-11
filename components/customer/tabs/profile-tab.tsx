@@ -20,7 +20,7 @@ import {
   updateCustomer,
   type CustomerListItem,
 } from "@/lib/data/customers";
-import { useMockQuery } from "@/lib/hooks/use-mock-db";
+import { useQuery } from "@/lib/hooks/use-query";
 import type { AnniversaryType } from "@/lib/types";
 import { daysUntilNextAnniversary, formatDateLong } from "@/lib/utils/date";
 
@@ -44,7 +44,7 @@ const fromList = (value?: string[]) => (value ?? []).join("、");
 
 export function ProfileTab({ customer }: { customer: CustomerListItem }) {
   const loader = useCallback(() => listAnniversaries(customer.id), [customer.id]);
-  const { data: anniversaries } = useMockQuery(loader, [customer.id]);
+  const { data: anniversaries } = useQuery(loader, [customer.id]);
 
   const save = async (patch: Parameters<typeof updateCustomer>[1], label: string) => {
     await updateCustomer(customer.id, patch);

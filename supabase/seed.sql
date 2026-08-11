@@ -32,14 +32,21 @@ begin
   loop
     -- ローカルでは email + password でそのままログインできるようにしておく。
     -- 本番は Magic Link（招待メール）なので、この経路は開発中しか使わない。
+    -- トークン列を NULL のままにしない。GoTrue は Go の string で受けるので、
+    -- NULL があるとスキャンに失敗し、ログインが
+    -- 「Database error querying schema」で落ちる。
     insert into auth.users (
       instance_id, id, aud, role, email, encrypted_password,
       email_confirmed_at, created_at, updated_at,
-      raw_app_meta_data, raw_user_meta_data
+      raw_app_meta_data, raw_user_meta_data,
+      confirmation_token, recovery_token, email_change,
+      email_change_token_new, email_change_token_current,
+      phone_change, phone_change_token, reauthentication_token
     ) values (
       v_instance, r.auth_user_id, 'authenticated', 'authenticated', r.email, v_password,
       now(), now(), now(),
-      '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb
+      '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+      '', '', '', '', '', '', '', ''
     ) on conflict (id) do nothing;
 
     -- GoTrue はこの行が無いとパスワードログインを受け付けない

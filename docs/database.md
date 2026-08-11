@@ -1,9 +1,9 @@
 # データベース
 
-Vercel + Supabase。`lib/store/mock-db.ts` の localStorage を置き換えるための本番スキーマ。
+Vercel + Supabase。
 
-現在 **Phase 1 の DB 側まで完了**し、アプリ（`lib/data/*`）はまだモックを見ている。
-両者は並存していて、**アプリは 1 行も壊れていない**（今まで通りモックで動く）。
+**Phase 1 完了。**アプリは全画面が Supabase を見ている。localStorage のモックストアは
+削除した（`lib/mock/seed.ts` だけは `supabase/dev-seed.sql` を生成する素として残る）。
 
 ---
 
@@ -83,9 +83,15 @@ DB はミラーで、DB 側で直したものは次の生成で消える。
 | `..._approach_and_targets` | `approach_resolutions` / `revenue_targets` / `v_approach_inputs` |
 | `..._change_log` | `change_log` とトリガー |
 | `..._agent_messages` | `agent_messages`（`action` jsonb + `applied_at`） |
+| `..._actor_defaults` | 操作者の列に `default app.current_staff_id()` |
+| `..._customer_view` | `v_customers`（顧客 + 最終納品） |
 
 pgTAP 61 件。構造ガード（RLS 付け忘れ・`security_invoker` 忘れ）は
 **わざと違反を作って検出することを確認済み**。
+
+アプリ側は `lib/data/*` 8 ファイルが supabase-js を見る。認証は
+`lib/auth/current-staff.ts`、購読は `lib/store/revision.ts`（書き込み後に
+`bump()` を呼ぶと購読しているクエリが流し直される）。
 
 ---
 
@@ -109,53 +115,65 @@ pgTAP 61 件。構造ガード（RLS 付け忘れ・`security_invoker` 忘れ）
 
 ---
 
+## 「画面は変わらない」はどこまで成り立ったか
+
+RLS を採った最大の論拠は「境界を DB が持つので API 層が要らず、`lib/data/*` の
+中身を差し替えるだけで済む」だった。移行を終えて実測すると:
+
+**保存先の入れ替えそのものを理由とする画面の変更は 0 行。**
+
+変わったところは全部、保存先ではなく**業務上の判断**が理由になっている。
+
+| 画面 | 行数 | 理由 |
+|---|---|---|
+| `settings/trigger-settings.tsx` | −103（削除） | 記念日を 7 日前で固定した |
+| `layout/app-shell.tsx` | 91 | ログインとスタッフ切り替えの導入 |
+| `customer/tabs/orders-tab.tsx` | 75 | 生地を明細から注文へ移した |
+| `app/layout.tsx` | 17 | 認証ゲート |
+| `settings/settings-view.tsx` | 13 | トリガーのタブが消えた |
+| `settings/revenue-target-settings.tsx` | 12 | 「今誰か」が非同期になった |
+| 採寸・注文の 3 ダイアログ | 各 3〜7 | **引数が減った**（操作者は DB の default） |
+| その他 12 ファイル | 各 1〜3 | `useMockQuery` → `useQuery` の改名だけ |
+
+最後の改名は、フックが DB を見るようになった以上その名前が嘘になるため。
+変更行数を小さく見せるために誤った名前を残すのは本末転倒なので直した。
+
+`lib/data/*` の側では、狙いどおり**担当の絞り込みが全部消えた**。
+
+```
+- .filter((c) => c.staffId === staffId)          RLS が担う
+- if (customer.staffId !== getCurrentStaffId()) return null;   RLS が 0 行を返す
+- staffId: getCurrentStaffId(),                   DB の default が入れる
+```
+
+---
+
 ## 次にやること
 
-`lib/data/*` の localStorage → supabase-js 差し替え。**8 ファイルまとめてやる**。
+**Phase 2 — 人となりとエージェント基盤**
 
-### なぜ部分移行できないか
+1. `fact_categories` / `fact_labels` / `fact_aliases` / `customer_facts` / `search_chunks`
+2. `customers.hobbies` / `preferences` / `tags` / `ng_notes` からの移行
+   （`source='migration'`。機械的に割るので誤りが混ざる、と後から言えるようにする）
+3. `customer_ng_notes` テーブルと `photo_consent` / `night_contact_ok` への分割
+4. 埋め込みのバックフィル（`app/api/cron/embed`、`worker_role`）
+5. `app.search_customers()` — 確定検索と意味検索を 1 本の関数で両方走らせる
+6. `lib/ai/` の ESLint ルール（`supabase.from(` を禁止し `supabase.rpc(` だけ許す）
 
-モックは `staff-1` / `cust-xxxx` の文字列 ID、DB は uuid。
-`customers.ts` だけを DB に向けると、返る顧客 ID が uuid になり、
-モックのままの `orders.ts` が `db.orders.filter(o => o.customerId === <uuid>)` で
-0 件を返す。クラッシュはしないが注文タブも採寸タブも空になる。
+**Phase 3 — 運用**
 
-セッションも同じ。`getCurrentStaffId()` は `db.session.staffId`（`"staff-1"`）を
-返し、未移行のモジュールが全部これを見ている。
+- `app.deactivate_staff()`（退職時の引き継ぎ。いまは無効化だけで引き継ぎは手作業）
+- `app.purge_customer()`（削除請求。`change_log` のマスキングまで）
+- `customer_assignments`（引き継ぎ履歴）
+- `alterations`
 
-`supabase/dev-seed.sql` がモックと同じデータを DB に入れてあるので、
-**全モジュールを同時に切り替えれば ID は最初から揃う**。
+**本番へ出すとき**
 
-### 順番
-
-1. **認証**（`lib/auth/current-staff.ts`）
-   - `getCurrentStaff()` は非同期になる。`app-shell.tsx:90` は既に async の中なので
-     `await` を足すだけ
-   - **管理者のスタッフ切り替えは「表示中のスタッフ」= 閲覧フィルタにする。
-     なりきりにしない。**`app.current_staff_id()` は常に本人で、監査ログの主体も本人。
-     モックの `switchStaff()` は `session.staffId` を差し替える実装なので、
-     そのまま持ってくると「白髭さんが採寸した」ことになって監査ログが嘘になる
-2. **`lib/data/*` 8 ファイル**
-   - `.filter(c => c.staffId === staffId)` は**全部消える**（RLS が担う）。
-     消えることの確認がこの移行の主目的
-   - `getCustomer` の「担当外は null」も消える（RLS が 0 行を返す）
-   - `createCustomer` の `staffId: getCurrentStaffId()` も消える
-     （`default app.current_staff_id()`）
-   - `saveAnniversaries` は**全置換をやめて行単位 upsert**。
-     全削除＋全挿入だと `change_log` が毎回ノイズで埋まる
-   - `listApproaches` は `v_approach_inputs` を 1 回引く（今の実装は顧客ごとに
-     `anniversaries.filter()` を回していて、DB 化するとそのまま 300 クエリになる）
-3. **型の変更**
-   - `Order` に生地 4 列を移動（`OrderItem` から）
-   - `OrderItem.photoUrls` 削除（未使用。Storage を使わない）
-   - `AppSettings` 削除（記念日は 7 日固定で `lib/constants/approach.ts` へ）
-   - `CustomerAnniversary.id` を uuid（位置由来 ID は `trigger_key` と衝突する）
-   - `Order.staffId` → `takenByStaffId`、`MeasurementSheet.staffId` → `recordedByStaffId`
-4. **通しの確認** — `components/` の変更行数を数える。
-   「RLS があるので画面は変わらない」という主張の検証そのもの
-
-購読は `lib/store/revision.ts` に切り出し済み。`useMockQuery` の形は変わらないので、
-書き込み後に `bump()` を呼べば画面はそのまま動く。
+- Supabase プロジェクトを作り `supabase link` → `supabase db push`
+- **`psql "$DATABASE_URL" -f supabase/masters.sql`**（採寸マスタ。migration では入らない）
+- 1 人目の管理者を SQL Editor から 1 行入れ、以降は招待画面から
+- Vercel の環境変数は `NEXT_PUBLIC_SUPABASE_URL` と `NEXT_PUBLIC_SUPABASE_ANON_KEY` の 2 つだけ。
+  **`SUPABASE_SERVICE_ROLE_KEY` は置かない**
 
 ---
 
@@ -178,6 +196,11 @@ pgTAP 61 件。構造ガード（RLS 付け忘れ・`security_invoker` 忘れ）
   確認しないと決められない
 - **pgTAP の `throws_ok` は 3 引数だと 3 つ目が期待メッセージ**になる。
   説明を書きたいなら 4 引数（`throws_ok(sql, errcode, null, description)`）
+- **`measurement_values` は票へ直接 FK を持たない**（複合 FK で区画とマスタを指す）。
+  PostgREST の埋め込みは FK を辿るので、票から直接は取れない。区画の下にぶら下げる
+- **`auth.users` のトークン列を NULL のままにしない。**GoTrue は Go の `string` で
+  受けるので、NULL があると `Database error querying schema` でログインが落ちる。
+  `confirmation_token` など 8 列を `''` で埋める
 - テストは `seed.sql` が流れた後の DB で走る。**「テーブルが空」を前提にすると
   seed を足すたびに壊れる**。件数ではなく不変条件を確かめる
 

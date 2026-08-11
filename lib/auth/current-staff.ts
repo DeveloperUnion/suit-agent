@@ -134,16 +134,15 @@ export async function listStaffForSwitcher(): Promise<Staff[]> {
 
 // ── ログイン ────────────────────────────────────────────
 
-export async function signInWithPassword(email: string, password: string): Promise<void> {
-  const { error } = await supabase().auth.signInWithPassword({ email, password });
-  if (error) throw error;
-  cached = undefined;
-  bump();
-}
-
 /**
- * 本番の入り口。メールのリンクを踏んでもらう。
- * 端末は個人持ちなのでセッションは実質切れず、初回だけの操作になる。
+ * 唯一の入り口。メールのリンクを踏んでもらう。
+ *
+ * パスワードは持たない。持てば「忘れた」「使い回した」「退職者がまだ知っている」が
+ * 全部こちらの問題になるが、リンク方式なら**受信箱に届く人だけが入れる**という
+ * 1 つの条件に畳める。端末は個人持ちなのでセッションは実質切れず、
+ * 操作が要るのは初回だけ。
+ *
+ * ローカルでも同じ経路を通る。届いたメールは Inbucket（http://127.0.0.1:54324）で読む。
  */
 export async function signInWithMagicLink(email: string): Promise<void> {
   const { error } = await supabase().auth.signInWithOtp({

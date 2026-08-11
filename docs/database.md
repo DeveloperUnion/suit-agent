@@ -18,20 +18,32 @@ Homebrew の PostgreSQL では代用できない — **`security_invoker` は PG
 open -a Docker            # 起動を待つ
 supabase start            # 初回はイメージの取得で数分
 npm run db:reset          # 全 migration → masters → seed → dev-seed
-npm run db:test           # pgTAP 61 件
+npm run db:test           # pgTAP 71 件
 ```
 
 `db:reset` を毎回通すのが要点。「途中から足した migration」ではなく
 「まっさらから全部流す」ことを常に検証しておかないと、本番でだけ落ちる。
 
-ローカルのログインは `hosokawa@example.com` / `password`（他 2 名も同じ）。
-本番は Magic Link（招待メール）。
+**パスワードは無い。**ローカルも本番も入り口は Magic Link だけで、
+サインイン画面にメールアドレスを入れ、届いたリンクを開く。
+ローカルの宛先は届かないので **Mailpit（http://127.0.0.1:54324）で読む**。
+
+```
+hosokawa@example.com / shirahige@example.com / nozaki@example.com / admin@kensetsu-tech.com
+```
+
+4 人とも管理者。開発だけパスワードで抜けられるようにはしない — その抜け道でしか
+踏まない不具合（リダイレクト先の許可・メールの文面・リンクの期限）が本番の初日に出る。
+
+`emailRedirectTo` はブラウザの origin をそのまま渡すので、`config.toml` の
+`site_url` / `additional_redirect_urls` に**無い宛先は黙って site_url へ向き直る**。
+`localhost:3000` と `127.0.0.1:3000` は別物として扱われるため、両方許してある。
 
 | | |
 |---|---|
 | Studio | http://127.0.0.1:54323 |
 | DB | `postgresql://postgres:postgres@127.0.0.1:54322/postgres` |
-| メール確認 | http://127.0.0.1:54324 （Inbucket） |
+| メール確認 | http://127.0.0.1:54324 （Mailpit。サインインのリンクはここに届く） |
 
 環境変数は `.env.local`（gitignore 済み）。`supabase status -o env` の値を入れる。
 **`SUPABASE_SERVICE_ROLE_KEY` はローカルにも Vercel にも置かない** — `BYPASSRLS`
@@ -80,13 +92,13 @@ DB はミラーで、DB 側で直したものは次の生成で消える。
 | `..._customers` | `customers` / `customer_anniversaries` / `can_read_customer()` / `can_write_customer()` / `find_similar_customers()` |
 | `..._orders` | `orders`（金額4欄・生地4列）/ `order_items` |
 | `..._measurements` | マスタ3表 / 採寸4表（複合 FK） |
-| `..._approach_and_targets` | `approach_resolutions` / `revenue_targets` / `v_approach_inputs` |
+| `..._approach_and_targets` | `app_settings`（1 行）/ `approach_resolutions` / `revenue_targets` / `v_approach_inputs` |
 | `..._change_log` | `change_log` とトリガー |
 | `..._agent_messages` | `agent_messages`（`action` jsonb + `applied_at`） |
 | `..._actor_defaults` | 操作者の列に `default app.current_staff_id()` |
 | `..._customer_view` | `v_customers`（顧客 + 最終納品） |
 
-pgTAP 61 件。構造ガード（RLS 付け忘れ・`security_invoker` 忘れ）は
+pgTAP 71 件。構造ガード（RLS 付け忘れ・`security_invoker` 忘れ）は
 **わざと違反を作って検出することを確認済み**。
 
 アプリ側は `lib/data/*` 8 ファイルが supabase-js を見る。認証は
@@ -137,6 +149,9 @@ RLS を採った最大の論拠は「境界を DB が持つので API 層が要�
 
 最後の改名は、フックが DB を見るようになった以上その名前が嘘になるため。
 変更行数を小さく見せるために誤った名前を残すのは本末転倒なので直した。
+
+（この表は移行時点の記録。トリガーのタブはその後、納品後フォローの節目を
+店舗が変えられるようにしたときに一番右へ戻している。）
 
 `lib/data/*` の側では、狙いどおり**担当の絞り込みが全部消えた**。
 
@@ -189,6 +204,9 @@ RLS を採った最大の論拠は「境界を DB が持つので API 層が要�
 - Supabase プロジェクトを作り `supabase link` → `supabase db push`
 - **`psql "$DATABASE_URL" -f supabase/masters.sql`**（採寸マスタ。migration では入らない）
 - 1 人目の管理者を SQL Editor から 1 行入れ、以降は招待画面から
+- **Authentication の設定を `config.toml` に合わせる**（ローカルの config は本番に
+  反映されない）— セルフサインアップを止め、Site URL と Redirect URLs に本番ドメインを入れる。
+  ここが漏れるとリンクが `localhost` へ向いて、本番の初回ログインだけが通らない
 - Vercel の環境変数は `NEXT_PUBLIC_SUPABASE_URL` と `NEXT_PUBLIC_SUPABASE_ANON_KEY` の 2 つだけ。
   **`SUPABASE_SERVICE_ROLE_KEY` は置かない**
 
@@ -218,6 +236,12 @@ RLS を採った最大の論拠は「境界を DB が持つので API 層が要�
 - **`auth.users` のトークン列を NULL のままにしない。**GoTrue は Go の `string` で
   受けるので、NULL があると `Database error querying schema` でログインが落ちる。
   `confirmation_token` など 8 列を `''` で埋める
+- **`[auth.email] enable_signup = false` はメールのプロバイダごと止める**
+  （`GOTRUE_EXTERNAL_EMAIL_ENABLED` に写る）。既存ユーザーへのリンク送信まで
+  `email_provider_disabled` で落ちるので、新規登録を塞ぐのは `[auth]` 直下の
+  `enable_signup = false` のほう。こちらなら未登録の宛先だけが `otp_disabled` になる
+- **Magic Link の rate limit は既定 2 通/時。**入り口がリンクだけになると
+  開発中に即詰まるので、ローカルの `email_sent` は上げてある
 - テストは `seed.sql` が流れた後の DB で走る。**「テーブルが空」を前提にすると
   seed を足すたびに壊れる**。件数ではなく不変条件を確かめる
 
@@ -229,8 +253,8 @@ RLS を採った最大の論拠は「境界を DB が持つので API 層が要�
    「紙の一部のみ」と明記）。**code 28 / 39 の既定値**も
 2. **項目ごとの現実的な寸法範囲**（股下なら 60〜100 など）。
    持たせれば OCR の「ありえるが間違っている」誤読を DB で止められる
-3. `line_user_id` を Lstep から CSV でエクスポートできるか。
-   できなければこの列は当面 NULL のまま
-4. 個人情報の削除請求への対応手順（`app.purge_customer()` を誰が実行するか）
-5. 退職時の Supabase セッション失効の手順（DB からは実行できない）
-6. `acquisitionChannel` の選択肢。現状は自由記述で、集計するなら固定リストが要る
+3. 個人情報の削除請求への対応手順（`app.purge_customer()` を誰が実行するか）
+4. 退職時の Supabase セッション失効の手順（DB からは実行できない）
+5. `acquisitionChannel` の選択肢。現状は自由記述で、集計するなら固定リストが要る
+6. 納品後フォローの節目を実際に動かしたくなるか。半年・1 年のまま何ヶ月か回して、
+   触られないなら定数に戻して `app_settings` ごと畳んでよい

@@ -164,7 +164,9 @@ enabled = true
 # in emails.
 site_url = "http://127.0.0.1:3000"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+# next dev は localhost で待ち受けるので、そちらも許す。ここに無い宛先を
+# emailRedirectTo に渡すと、リンクは site_url へ黙って向き直る。
+additional_redirect_urls = ["https://127.0.0.1:3000", "http://localhost:3000"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to the local API URL (http://127.0.0.1:<port>/auth/v1).
@@ -177,7 +179,9 @@ enable_refresh_token_rotation = true
 # Requires enable_refresh_token_rotation = true.
 refresh_token_reuse_interval = 10
 # Allow/disallow new user signups to your project.
-enable_signup = true
+# 招待制。アプリ側も shouldCreateUser: false を渡しているが、作法ではなく
+# 構造で塞ぐ（本番は Dashboard の Authentication → Sign In / Up で同じ設定にする）。
+enable_signup = false
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
@@ -200,7 +204,9 @@ password_requirements = ""
 
 [auth.rate_limit]
 # Number of emails that can be sent per hour. Requires auth.email.smtp to be enabled.
-email_sent = 2
+# 既定の 2 通/時はローカルだと即詰まる（入り口がリンクだけになったので、
+# 開発中は 1 日に何度もサインインし直す）。本番は既定のままでよい。
+email_sent = 60
 # Number of SMS messages that can be sent per hour. Requires auth.sms to be enabled.
 sms_sent = 30
 # Number of anonymous sign-ins that can be made per hour per IP address. Requires enable_anonymous_sign_ins = true.
@@ -222,6 +228,9 @@ web3 = 30
 
 [auth.email]
 # Allow/disallow new user signups via email to your project.
+# false にするとメールのプロバイダごと止まり、既存ユーザーへのリンクも送れなくなる
+# （GOTRUE_EXTERNAL_EMAIL_ENABLED に写るため）。新規登録を塞ぐのは上の [auth] の
+# enable_signup = false のほう。
 enable_signup = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.

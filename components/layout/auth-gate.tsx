@@ -6,12 +6,7 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  getCurrentStaff,
-  signInWithMagicLink,
-  signInWithPassword,
-  watchAuth,
-} from "@/lib/auth/current-staff";
+import { getCurrentStaff, signInWithMagicLink, watchAuth } from "@/lib/auth/current-staff";
 import { useQuery } from "@/lib/hooks/use-query";
 
 /**
@@ -42,27 +37,25 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * 入り口はメールのリンクだけ。パスワードの欄は無い。
+ *
+ * ローカルでも同じ経路を通す。開発だけ抜け道を作ると、そこでしか踏まない
+ * 不具合（リダイレクト先の許可、メールの文面、リンクの有効期限）が
+ * 本番の初日に出る。届いたメールは Inbucket で読む。
+ */
 function SignIn() {
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [pending, setPending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ローカル開発ではメールを開くのが手間なので、パスワードでも入れるようにしてある。
-  // 本番の入り口は Magic Link 一本。
-  const allowPassword = process.env.NODE_ENV !== "production";
-
-  const submit = async (mode: "magic" | "password") => {
+  const submit = async () => {
     setPending(true);
     setError(null);
     try {
-      if (mode === "password") {
-        await signInWithPassword(email, password);
-      } else {
-        await signInWithMagicLink(email);
-        setSent(true);
-      }
+      await signInWithMagicLink(email);
+      setSent(true);
     } catch {
       // 「このメールは登録されていません」とは出さない。
       // 招待制なので、当たっているかどうかを外から確かめられる必要がない。
@@ -90,7 +83,7 @@ function SignIn() {
             className="flex flex-col gap-4"
             onSubmit={(e) => {
               e.preventDefault();
-              void submit(allowPassword && password ? "password" : "magic");
+              void submit();
             }}
           >
             <h1 className="font-heading text-base font-medium">サインイン</h1>
@@ -107,29 +100,14 @@ function SignIn() {
               />
             </div>
 
-            {allowPassword && (
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="password">パスワード（開発用）</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-                <span className="text-xs text-muted-foreground">
-                  空のまま送るとメールのリンクを送ります
-                </span>
-              </div>
-            )}
-
             {error && <p className="text-sm text-destructive">{error}</p>}
 
             <Button type="submit" disabled={pending || !email}>
-              {pending ? "送信中…" : allowPassword && password ? "サインイン" : "リンクを送る"}
+              {pending ? "送信中…" : "リンクを送る"}
             </Button>
 
             <p className="text-xs leading-relaxed text-muted-foreground">
+              パスワードはありません。届いたリンクを開くとサインインできます。
               アカウントは管理者が招待します。ご自身では作成できません。
             </p>
           </form>

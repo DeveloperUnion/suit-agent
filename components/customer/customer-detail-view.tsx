@@ -115,9 +115,9 @@ export function CustomerDetailView({
                   {customer.jobTitle && <span className="text-muted-foreground"> {customer.jobTitle}</span>}
                 </span>
               )}
-              <span className="text-muted-foreground">
-                LINE {customer.lineUserId ? "連携済" : "未連携"}
-              </span>
+              {customer.industry && (
+                <span className="text-muted-foreground">{customer.industry}</span>
+              )}
             </div>
           </div>
 

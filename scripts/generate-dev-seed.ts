@@ -83,7 +83,7 @@ push(``);
 // ── 顧客 ──
 push(`insert into public.customers (`);
 push(`  id, name, name_kana, birth_date, gender, phone, email, address,`);
-push(`  residence_prefecture, line_user_id, line_display_name, embroidery_name,`);
+push(`  residence_prefecture, embroidery_name,`);
 push(`  company_name, department, job_title, industry,`);
 push(`  family_info, memo, hobbies, preferences, tags, ng_notes,`);
 push(`  staff_id, first_visit_date, acquisition_channel, last_contacted_at, created_at`);
@@ -94,7 +94,7 @@ push(
       `  (${[
         lit(toUuid(c.id)), lit(c.name), lit(c.nameKana), lit(c.birthDate), lit(c.gender),
         lit(c.phone), lit(c.email), lit(c.address), lit(c.residencePrefecture),
-        lit(c.lineUserId), lit(c.lineDisplayName), lit(c.embroideryName),
+        lit(c.embroideryName),
         lit(c.companyName), lit(c.department), lit(c.jobTitle), lit(c.industry),
         lit(c.familyInfo), lit(c.memo), lit(c.hobbies), jsonb(c.preferences),
         arr(c.tags), lit(c.ngNotes),

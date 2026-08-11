@@ -1,5 +1,82 @@
 -- Phase 1: アプローチと売上目標
 
+-- ── 店舗共通の業務ルール ────────────────────────────────
+--
+-- 置くのは「店舗が変えたくなりうる数字」だけ。いまは納品後フォローの節目 1 つ。
+-- 記念日の 7 日前は確定した決めごとなので lib/constants/approach.ts の固定値のまま。
+--
+-- 行は 1 つだけ。boolean の主キーに check (id) を張ると、true 以外を入れられず
+-- 主キーで重複も弾かれるので、2 行目が原理的に作れない。
+--
+-- 書き込みポリシーで app.is_admin() を呼ぶのはこのテーブルだけ。
+-- 「管理者は閲覧のみ」は顧客データの原則であって、店舗共通のルールには効かない
+-- （1 つの値が全スタッフの画面の出方を変えるので、むしろ絞るほうが正しい）。
+
+-- CHECK に副問い合わせは書けないので immutable 関数に出す。
+create function app.valid_post_delivery_months(m integer[]) returns boolean
+language sql immutable as $$
+  select array_length(m, 1) between 1 and 3
+     and not exists (
+       select 1
+         from unnest(m) with ordinality as t(v, i)
+        where v < 1 or v > 60 or (i > 1 and v <= m[i - 1])
+     );
+$$;
+
+comment on function app.valid_post_delivery_months(integer[]) is
+  '節目は 1〜3 個・各 1〜60 ヶ月・昇順で重複なし。降順や重複を許すと「過ぎている節目のうち最も後のもの」の判定が壊れる。';
+
+create table public.app_settings (
+  id boolean primary key default true check (id),   -- 行は 1 つだけ
+
+  -- 最終納品から何ヶ月後に声をかけるか。日数ではなく月で数える
+  -- （半年は 180 日ではなく納品日の半年後であり、顧客にとっても暦の区切りだから）。
+  post_delivery_months integer[] not null default '{6,12}'
+    check (app.valid_post_delivery_months(post_delivery_months)),
+
+  updated_at timestamptz not null default now(),
+
+  -- 誰が変えたか。他のテーブルは列の default で操作者を入れているが、
+  -- ここは UPDATE しか起きないので default は一度も発火しない。トリガーで入れる。
+  updated_by_staff_id uuid references public.staff (id)
+);
+
+comment on table public.app_settings is
+  '店舗共通の業務ルール。1 行しか存在しない。閲覧は全員、更新は管理者のみ。';
+
+-- RLS を有効にする前に入れる。後ろに置くと INSERT ポリシーが要り、
+-- 「1 行だけ」をアプリ側の作法に頼ることになる。
+insert into public.app_settings (id) values (true);
+
+create function app.touch_app_settings() returns trigger
+  language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  new.updated_by_staff_id = app.current_staff_id();
+  return new;
+end
+$$;
+
+create trigger app_settings_touch
+  before update on public.app_settings
+  for each row execute function app.touch_app_settings();
+
+alter table public.app_settings enable row level security;
+alter table public.app_settings force row level security;
+
+create policy app_settings_select on public.app_settings
+  for select to authenticated using (true);
+
+create policy app_settings_update on public.app_settings
+  for update to authenticated
+  using      (app.is_admin())
+  with check (app.is_admin());
+
+revoke insert, delete on public.app_settings from authenticated, anon;
+grant select, update on public.app_settings to authenticated;
+
+
 -- ── アプローチの解決 ────────────────────────────────────
 --
 -- 上流の trigger_key 設計をそのまま採る。当初 approach_states +

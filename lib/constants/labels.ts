@@ -54,8 +54,7 @@ export const INPUT_METHOD_LABEL: Record<MeasurementInputMethod, string> = {
 };
 
 /*
- * 記念日の予告日数とアイテム価格は、設定として店舗が変えられるようにしたため
- * ここには置かない。既定値は lib/constants/settings-defaults.ts、
- * 実際に効く値は lib/data/settings.ts の getSettings() から読む。
- * 納品後フォローの節目は確定しているので lib/constants/approach.ts にある。
+ * アプローチのルール（記念日の予告日数・納品後フォローの節目）はここに置かない。
+ * lib/constants/approach.ts にまとめてある。節目だけは店舗が変えられるので、
+ * 実際に効く値は lib/data/settings.ts の getAppSettings() から読む。
  */

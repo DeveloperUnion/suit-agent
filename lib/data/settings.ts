@@ -1,17 +1,66 @@
-import type { IsoMonth, Staff, Uuid } from "@/lib/types";
+import type { AppSettings, IsoMonth, Staff, Uuid } from "@/lib/types";
 import { supabase } from "@/lib/supabase/client";
 import { bump } from "@/lib/store/revision";
 import { getCurrentStaffId } from "@/lib/auth/current-staff";
+import { DEFAULT_POST_DELIVERY_MONTHS } from "@/lib/constants/approach";
 
 /**
- * スタッフと売上目標。
+ * 店舗共通の設定・スタッフ・売上目標。
  *
- * 業務ルールの設定はここに無い。店舗が変えられる数値が 1 つも残らなかったため
- * （記念日の 7 日前も納品後フォローの節目も lib/constants/approach.ts の固定値）。
+ * 店舗が変えられる業務ルールは app_settings の 1 行だけ（納品後フォローの節目）。
+ * 記念日の 7 日前は lib/constants/approach.ts の固定値のまま。
  *
- * スタッフの追加・編集は管理者だけ。RLS の staff_insert / staff_update が
- * app.is_admin() を見ているので、ここに権限の分岐は書かない。
+ * 設定もスタッフも、編集できるのは管理者だけ。RLS が app.is_admin() を見ているので、
+ * ここに権限の分岐は書かない。
  */
+
+// ── 店舗共通の設定 ──────────────────────────────────────
+
+export const DEFAULT_APP_SETTINGS: AppSettings = {
+  postDeliveryMonths: DEFAULT_POST_DELIVERY_MONTHS,
+};
+
+/**
+ * アプローチの評価は画面を開くたびに走るので、そのたびに設定を引くと
+ * 1 画面で何度も同じ 1 行を取りに行く。プロセス内にキャッシュする。
+ * 書き込み後は updateAppSettings が捨て、bump() が画面を引き直させる。
+ */
+let cachedSettings: AppSettings | undefined;
+
+export async function getAppSettings(): Promise<AppSettings> {
+  if (cachedSettings) return cachedSettings;
+
+  const { data, error } = await supabase()
+    .from("app_settings")
+    .select("postDeliveryMonths:post_delivery_months")
+    .maybeSingle();
+  if (error) throw error;
+
+  // 未ログインなど、行が引けないときは既定値。設定が読めないことを理由に
+  // 画面が真っ白になるより、既定の半年・1年で動いているほうが害が小さい。
+  cachedSettings = (data as AppSettings | null) ?? DEFAULT_APP_SETTINGS;
+  return cachedSettings;
+}
+
+export async function updateAppSettings(patch: Partial<AppSettings>): Promise<void> {
+  const row: Record<string, unknown> = {};
+  if (patch.postDeliveryMonths) row.post_delivery_months = patch.postDeliveryMonths;
+
+  // 管理者でなければ RLS が 0 行にする。エラーにならないので、
+  // 「保存しました」と嘘のトーストを出さないよう返り行数で確かめる。
+  const { data, error } = await supabase()
+    .from("app_settings")
+    .update(row)
+    .eq("id", true)
+    .select("id");
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error("設定を変更できるのは管理者だけです");
+
+  cachedSettings = undefined;
+  bump();
+}
+
+// ── スタッフ ────────────────────────────────────────────
 
 const STAFF_COLUMNS = "id, name, email, role, isActive:is_active";
 

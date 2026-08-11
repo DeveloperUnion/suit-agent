@@ -19,10 +19,12 @@ import {
   markOrderDelivered,
 } from "@/lib/data/orders";
 import { useQuery } from "@/lib/hooks/use-query";
-import { POST_DELIVERY_MILESTONES } from "@/lib/constants/approach";
+import { usePostDeliveryMilestones } from "@/lib/hooks/use-settings";
 import { formatAmount, formatDateDot, toIsoDate } from "@/lib/utils/date";
 
 export function OrdersTab({ customerId }: { customerId: string }) {
+  const milestones = usePostDeliveryMilestones();
+
   const ordersLoader = useCallback(() => listOrders(customerId), [customerId]);
   const { data: orders, loading } = useQuery(ordersLoader, [customerId]);
 
@@ -75,7 +77,7 @@ export function OrdersTab({ customerId }: { customerId: string }) {
         <SectionTitle>注文履歴</SectionTitle>
         {/* 納品ボタンの意味を先に言う。言わないと誰も押さず、トリガーが壊れて見える */}
         <p className="text-xs text-muted-foreground">
-          納品日を記録すると、その{POST_DELIVERY_MILESTONES.map((m) => m.label).join("後・")}後に「着心地確認」のアプローチが立ちます。
+          納品日を記録すると、その{milestones.map((m) => m.label).join("後・")}後に「着心地確認」のアプローチが立ちます。
         </p>
         <ul className="flex flex-col gap-3">
           {(orders ?? []).map((order) => (

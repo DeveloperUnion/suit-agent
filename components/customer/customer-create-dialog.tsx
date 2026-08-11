@@ -51,7 +51,6 @@ export function CustomerCreateDialog({
   const [name, setName] = useState("");
   const [nameKana, setNameKana] = useState("");
   const [phone, setPhone] = useState("");
-  const [lineDisplayName, setLineDisplayName] = useState("");
   const [saving, setSaving] = useState(false);
 
   // 名刺の読み取り
@@ -66,14 +65,14 @@ export function CustomerCreateDialog({
   );
   const { data: similar } = useQuery(similarLoader, [name, nameKana, phone]);
 
-  const hasContact = phone.trim() !== "" || lineDisplayName.trim() !== "";
-  const canSubmit = name.trim() !== "" && hasContact;
+  // 連絡手段は必須にしない。出張採寸で名前しか分からないまま帰る場面があり、
+  // その場で登録できないと結局どこにも残らない。
+  const canSubmit = name.trim() !== "";
 
   const reset = () => {
     setName("");
     setNameKana("");
     setPhone("");
-    setLineDisplayName("");
     setCard(null);
     setExtra({});
     setReading(false);
@@ -125,7 +124,6 @@ export function CustomerCreateDialog({
       name: name.trim(),
       nameKana: nameKana.trim(),
       phone: phone.trim() || undefined,
-      lineDisplayName: lineDisplayName.trim() || undefined,
       // 名刺から読めた項目。createCustomer は Partial<Customer> を受けるのでそのまま渡せる
       ...Object.fromEntries(
         Object.entries(extra).filter(([, v]) => v !== undefined && v.trim() !== ""),
@@ -151,7 +149,7 @@ export function CustomerCreateDialog({
         <DialogHeader>
           <DialogTitle className="font-heading text-lg font-medium">顧客を登録</DialogTitle>
           <DialogDescription>
-            氏名と連絡手段だけで登録できます。会社名や好みは、あとからカルテで足してください。
+            氏名だけで登録できます。連絡先や会社名、好みは、あとからカルテで足してください。
           </DialogDescription>
         </DialogHeader>
 
@@ -229,16 +227,6 @@ export function CustomerCreateDialog({
               />
               {isLowConfidence(card?.fields.phone) && <WarnHint />}
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="new-line">LINE表示名</Label>
-              <Input
-                id="new-line"
-                value={lineDisplayName}
-                onChange={(e) => setLineDisplayName(e.target.value)}
-                placeholder="Tadashi"
-                className="h-11 bg-card"
-              />
-            </div>
           </div>
 
           {/* 名刺から読めた分。打つ手間がゼロなのでカルテに入れておく */}
@@ -296,12 +284,6 @@ export function CustomerCreateDialog({
                 </div>
               )}
             </div>
-          )}
-
-          {!hasContact && name.trim() !== "" && (
-            <p className="text-xs text-muted-foreground">
-              電話か LINE のどちらかを入れてください。連絡手段がないとアプローチできません。
-            </p>
           )}
 
           {/* 顧客1,000名規模では再来店の見落としと同姓同名が必ず起きる */}

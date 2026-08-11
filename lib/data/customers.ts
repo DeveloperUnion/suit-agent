@@ -44,7 +44,6 @@ export type CustomerFilter = {
 const CUSTOMER_COLUMNS = `
   id, name, nameKana:name_kana, birthDate:birth_date, gender, phone, email, address,
   residencePrefecture:residence_prefecture,
-  lineUserId:line_user_id, lineDisplayName:line_display_name,
   embroideryName:embroidery_name,
   companyName:company_name, department, jobTitle:job_title, industry,
   familyInfo:family_info, memo, hobbies, preferences, tags, ngNotes:ng_notes,
@@ -366,8 +365,6 @@ function toRow(patch: Partial<Customer>): Record<string, unknown> {
     email: "email",
     address: "address",
     residencePrefecture: "residence_prefecture",
-    lineUserId: "line_user_id",
-    lineDisplayName: "line_display_name",
     embroideryName: "embroidery_name",
     companyName: "company_name",
     department: "department",

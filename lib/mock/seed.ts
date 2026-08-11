@@ -320,8 +320,6 @@ function buildAll(): Built {
         ? `${residencePrefecture}${pick(CITIES[residencePrefecture])}${int(1, 5)}-${int(1, 30)}-${int(1, 20)}`
         : undefined,
       residencePrefecture,
-      lineUserId: minimal || rand() < 0.25 ? undefined : `U${Math.floor(rand() * 1e15).toString(16)}`,
-      lineDisplayName: minimal ? undefined : gn,
       companyName: minimal ? undefined : companyName,
       department: minimal ? undefined : pick(DEPARTMENTS) || undefined,
       jobTitle: minimal ? undefined : pick(JOB_TITLES) || undefined,
@@ -372,8 +370,6 @@ function buildAll(): Built {
       customer.lastContactedAt = daysAgo(lastContactDays);
       customer.tags = ["紹介元", "出張多い"];
       customer.memo = "紹介経由の来店。ご子息の成人式スーツの相談を受けている（2027年予定）。";
-      customer.lineUserId = "Ua3f91c02be77";
-      customer.lineDisplayName = "Tadashi";
     }
 
     customers.push(customer);

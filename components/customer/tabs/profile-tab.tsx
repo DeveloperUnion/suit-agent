@@ -72,7 +72,6 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
             phone: customer.phone ?? "",
             email: customer.email ?? "",
             birthDate: customer.birthDate ?? "",
-            lineDisplayName: customer.lineDisplayName ?? "",
             residencePrefecture: customer.residencePrefecture ?? NO_PREFECTURE,
             address: customer.address ?? "",
           })}
@@ -82,7 +81,6 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
                 phone: v.phone || undefined,
                 email: v.email || undefined,
                 birthDate: v.birthDate || undefined,
-                lineDisplayName: v.lineDisplayName || undefined,
                 residencePrefecture:
                   v.residencePrefecture === NO_PREFECTURE ? undefined : v.residencePrefecture,
                 address: v.address || undefined,
@@ -95,19 +93,6 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
               <Field label="電話" value={customer.phone} mono />
               <Field label="メール" value={customer.email} />
               <Field label="生年月日" value={formatDateLong(customer.birthDate)} />
-              <Field
-                label="LINE"
-                value={
-                  customer.lineUserId ? (
-                    <span className="flex items-center gap-1.5">
-                      連携済
-                      <span className="text-muted-foreground">{customer.lineDisplayName}</span>
-                    </span>
-                  ) : (
-                    "未連携"
-                  )
-                }
-              />
               <Field label="居住地" value={customer.residencePrefecture} />
               <Field label="住所" value={customer.address} className="sm:col-span-2" />
             </div>
@@ -136,13 +121,6 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
                   value={v.birthDate}
                   onChange={(e) => set({ birthDate: e.target.value })}
                   className={`${INPUT} font-mono`}
-                />
-              </FormField>
-              <FormField label="LINE表示名">
-                <Input
-                  value={v.lineDisplayName}
-                  onChange={(e) => set({ lineDisplayName: e.target.value })}
-                  className={INPUT}
                 />
               </FormField>
               {/* 災害時にこの地域の顧客をまとめて拾えるよう、住所とは別に県だけ持つ */}

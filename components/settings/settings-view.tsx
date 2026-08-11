@@ -3,22 +3,24 @@
 import { PageHeader } from "@/components/common/page-header";
 import { RevenueTargetSettings } from "@/components/settings/revenue-target-settings";
 import { StaffSettings } from "@/components/settings/staff-settings";
+import { TriggerSettings } from "@/components/settings/trigger-settings";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 /**
- * 残ったのは 2 つだけ。
+ * 並びは開く頻度の順。
+ *
+ * トリガーが一番右にあるのは、いちど決めたら滅多に触らないため。
+ * 変えられるのも納品後フォローの節目だけで、記念日の 7 日前は
+ * lib/constants/approach.ts の固定値のまま表示だけしている。
  *
  * マスタのタブは無い。生地は発注書に書かれた値をそのまま保存し、
  * 価格は注文ごとに紙から転記するので、店舗が育てるマスタが残らなかった。
- *
- * トリガーのタブも無い。記念日は 1 週間前から出す、というのは店舗として
- * 確定した決めごとで、試しに動かして様子を見る数字ではないため
- * lib/constants/approach.ts へ移した（納品後フォローの節目と同じ扱い）。
  */
 const TABS = [
   { value: "targets", label: "売上目標" },
   { value: "staff", label: "スタッフ" },
+  { value: "triggers", label: "トリガー" },
 ];
 
 export function SettingsView({ initialTab }: { initialTab?: string }) {
@@ -45,6 +47,9 @@ export function SettingsView({ initialTab }: { initialTab?: string }) {
         </TabsContent>
         <TabsContent value="staff">
           <StaffSettings />
+        </TabsContent>
+        <TabsContent value="triggers">
+          <TriggerSettings />
         </TabsContent>
       </Tabs>
     </div>

@@ -26,13 +26,6 @@ create table public.customers (
   -- 災害時にその地域の顧客をまとめて拾えるようキーだけ切り出している。
   residence_prefecture text,
 
-  -- 公式アカウントの配信そのものは Lstep が担うため、このシステムは LINE へ
-  -- 送らない。それでも ID を持つのは、将来 Lstep 側の友だちと突き合わせる
-  -- ときの鍵になるため。表示名は個人 LINE のトーク一覧で見分けるのに使う。
-  -- ※ 現状これを埋める経路が無い（Webhook が無い）。当面 NULL のまま。
-  line_user_id     text,
-  line_display_name text,
-
   -- ネーム刺繍。注文ごとに変わるものではなく毎回同じものを入れるため、
   -- 票や注文ではなく人に持たせる。
   embroidery_name text,

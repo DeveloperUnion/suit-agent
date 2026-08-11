@@ -10,8 +10,13 @@ import { supabase } from "@/lib/supabase/client";
 import { bump } from "@/lib/store/revision";
 import { getCurrentStaffId, getViewingStaffId } from "@/lib/auth/current-staff";
 import { ANNIVERSARY_LABEL } from "@/lib/constants/labels";
-import { ANNIVERSARY_LEAD_DAYS, POST_DELIVERY_MILESTONES } from "@/lib/constants/approach";
+import {
+  ANNIVERSARY_LEAD_DAYS,
+  postDeliveryMilestones,
+  type PostDeliveryMilestone,
+} from "@/lib/constants/approach";
 import { type CustomerListItem } from "@/lib/data/customers";
+import { getAppSettings } from "@/lib/data/settings";
 import {
   addMonths,
   daysSince,
@@ -27,9 +32,8 @@ import {
  * 閾値を変えたら即座に結果へ反映されるべきだから。
  * 保存するのは、その結果に人が下した判断（連絡した／スキップした）だけ。
  *
- * このシステムはメッセージを送らない。送るのは店主が個人 LINE から手で行い、
- * ここで出すのはその「気づき」まで。春夏・秋冬の新作案内は公式 LINE から
- * 一斉に送るもので、配信は Lstep が担うため、ここでは扱わない。
+ * このシステムはメッセージを送らない。連絡は担当者が普段の連絡手段で手で行い、
+ * ここで出すのはその「気づき」まで。
  */
 
 /** 1 トリガー分の発火 */
@@ -66,20 +70,25 @@ function approachIdFor(customerId: Uuid): Uuid {
 /**
  * 納品後フォロー。
  *
- * 納品の半年後と 1 年後に声をかける。起点は最新の納品で、注文ごとには立てない
+ * 既定では納品の半年後と 1 年後に声をかける（節目は app_settings で変えられる）。
+ * 起点は最新の納品で、注文ごとには立てない
  * （新しく納品があれば、古い納品のフォローはもう意味を持たないため）。
  *
  * 半年を逃したまま 1 年が来たら、出すのは 1 年のほうだけ。そのとき言うべきことは
  * 「1 年経ちました」であって「半年経ちました」ではないから。
  */
-function evaluatePostDelivery(customer: CustomerListItem, now: Date): TriggerHit | null {
+function evaluatePostDelivery(
+  customer: CustomerListItem,
+  now: Date,
+  milestones: PostDeliveryMilestone[],
+): TriggerHit | null {
   const { lastDeliveredAt, lastDeliveredOrderId } = customer;
   if (!lastDeliveredAt || !lastDeliveredOrderId) return null;
 
   const delivered = new Date(`${lastDeliveredAt}T00:00:00`);
 
   // 過ぎている節目のうち最も後のものを採る
-  for (const milestone of [...POST_DELIVERY_MILESTONES].reverse()) {
+  for (const milestone of [...milestones].reverse()) {
     const dueDate = toIsoDate(addMonths(delivered, milestone.months));
     if (dueDate > toIsoDate(now)) continue;
 
@@ -163,11 +172,14 @@ export async function listApproaches(filter: ApproachFilter = {}): Promise<Appro
   // 既定は自分の担当。管理者が切り替えていればその人の分だけ。
   q = q.eq("staff_id", getViewingStaffId() ?? (await getCurrentStaffId()) ?? "");
 
-  const [{ data, error }, { data: done }] = await Promise.all([
+  const [{ data, error }, { data: done }, settings] = await Promise.all([
     q,
     supabase().from("approach_resolutions").select("trigger_key"),
+    getAppSettings(),
   ]);
   if (error) throw error;
+
+  const milestones = postDeliveryMilestones(settings.postDeliveryMonths);
 
   const resolved = new Set(
     (done ?? []).map((r) => (r as { trigger_key: string }).trigger_key),
@@ -186,7 +198,7 @@ export async function listApproaches(filter: ApproachFilter = {}): Promise<Appro
     } as unknown as CustomerListItem;
 
     const hits = [
-      evaluatePostDelivery(customer, now),
+      evaluatePostDelivery(customer, now, milestones),
       evaluateAnniversary(row.anniversaries ?? [], now),
     ].filter((hit): hit is TriggerHit => hit !== null && !resolved.has(hit.key));
 

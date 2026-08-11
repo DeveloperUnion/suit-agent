@@ -68,14 +68,13 @@ export async function addHobbies(customerId: Uuid, incoming: string[]): Promise<
 
 /**
  * 趣味から顧客を引く。
- * listCustomers の keyword は趣味・タグ・メモまで見るので、
- * まずそれで絞ってから趣味に当たったものだけを残す
- * （会社名にたまたま同じ語が入っている顧客を混ぜないため）。
+ * listCustomers の keyword は氏名と会社名しか見ないので、ここでは絞らずに全件取り、
+ * 趣味に当たったものだけを残す（趣味を引けるのはこの経路だけ）。
  */
 export async function searchByHobby(keyword: string): Promise<AgentCustomerRef[]> {
   const trimmed = keyword.trim();
   if (!trimmed) return [];
-  const customers = await listCustomers({ keyword: trimmed });
+  const customers = await listCustomers();
   return customers
     .filter((c) => splitHobbies(c.hobbies).some((h) => h.includes(trimmed)))
     .map(toCustomerRef);

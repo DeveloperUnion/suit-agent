@@ -71,16 +71,9 @@ export async function listCustomers(filter: CustomerFilter = {}): Promise<Custom
     .filter((c) => !filter.industry || c.industry === filter.industry)
     .filter((c) => {
       if (!keyword) return true;
-      // 「ゴルフが趣味なのは誰だったか」を引けるようにする。
-      // 名前と会社名しか見ていないと、聞き取ってカルテに残した内容へ二度と辿り着けない
-      const haystack = [
-        c.name,
-        c.nameKana,
-        c.companyName ?? "",
-        c.hobbies ?? "",
-        (c.tags ?? []).join(""),
-        c.memo ?? "",
-      ].join("");
+      // 一覧の検索で引きたいのは氏名と会社名だけ。趣味・タグ・メモまで見ると、
+      // 探している人と関係のない顧客が混ざる。趣味は AI アシスタントから引く
+      const haystack = [c.name, c.nameKana, c.companyName ?? ""].join("");
       return haystack.includes(keyword);
     })
     .map((c) => decorate(c, delivered))

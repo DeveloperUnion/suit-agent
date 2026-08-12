@@ -12,14 +12,9 @@ import { ADJUSTMENT_MAP, adjustmentLabel } from "@/lib/constants/adjustments";
 import { deriveActual } from "@/lib/constants/measurement-ease";
 import { findField } from "@/lib/constants/measurement-fields";
 import { createSheetFromImport } from "@/lib/data/measurements";
-import {
-  createOrder,
-  markOrderDelivered,
-  type OrderAmounts,
-  type OrderItemFabric,
-} from "@/lib/data/orders";
+import { createOrder, type OrderAmounts, type OrderItemFabric } from "@/lib/data/orders";
+import { uploadOrderPhoto } from "@/lib/data/order-photos";
 import { updateCustomer } from "@/lib/data/customers";
-import { formatDateDot } from "@/lib/utils/date";
 
 /**
  * 工場発注書の取り込み。
@@ -71,9 +66,19 @@ export type ImportPlan = {
   updateEmbroideryName: boolean;
   measuredAt: IsoDate;
   orderedAt: IsoDate;
+  /** 納品日（工場→店）。紙の 2 段目 */
   dueDate?: IsoDate;
+  /**
+   * お渡し日（店→客）。紙の上段。
+   * お客様の都合でずれるので、紙の時点では空のこともある。
+   */
   deliveredAt?: IsoDate;
   purpose: OrderPurpose;
+  /**
+   * 着装写真。ここではまだ注文が無いので File のまま持ち、
+   * commitOrderSheetImport が注文を作った直後に上げる。
+   */
+  photos: File[];
   /** 生地はマスタを引かず、紙の値をそのまま持つ */
   fabric: OrderItemFabric;
   amounts: OrderAmounts;
@@ -172,6 +177,7 @@ export function buildImportPlan(
         extraction.totalAmount?.value ?? subtotalAmount + surchargeAmount + taxAmount,
     },
     amountsFromPaper,
+    photos: [],
     sections,
     adjustments,
     note: buildNote(extraction, unknownFieldKeys),
@@ -184,6 +190,7 @@ export function buildImportPlan(
  * ここを削ると「紙にはあったがアプリには無い」情報が完全に消える。
  *
  * 原反NO・色番は注文明細が項目として持つようになったので、ここには重ねない。
+ * 工場納品日も同じ理由で外した — 注文が due_date として持つようになった。
  */
 function buildNote(extraction: OrderSheetExtraction, unknownFieldKeys: string[]): string {
   const lines: string[] = [];
@@ -192,9 +199,6 @@ function buildNote(extraction: OrderSheetExtraction, unknownFieldKeys: string[])
   if (shop.length > 0) lines.push(`販売店 ${shop.join(" / フィッター ")}`);
 
   if (extraction.liningCode) lines.push(`裏地 ${extraction.liningCode.value}`);
-  if (extraction.factoryDueDate) {
-    lines.push(`工場納品日 ${formatDateDot(extraction.factoryDueDate.value)}`);
-  }
   if (unknownFieldKeys.length > 0) {
     lines.push(`採寸項目に無い記入: ${unknownFieldKeys.join(", ")}`);
   }
@@ -206,7 +210,7 @@ function buildNote(extraction: OrderSheetExtraction, unknownFieldKeys: string[])
 /** 確認後に初めて書く。採寸票1枚と注文1件を作る */
 export async function commitOrderSheetImport(
   plan: ResolvedImportPlan,
-): Promise<{ sheetId: Uuid; orderId: Uuid }> {
+): Promise<{ sheetId: Uuid; orderId: Uuid; photoFailures: number }> {
   const sections: MeasurementSection[] = plan.sections.map((section) => ({
     itemTypeId: section.itemTypeId,
     silhouette: section.silhouette,
@@ -248,6 +252,7 @@ export async function commitOrderSheetImport(
     customerId: plan.customerId,
     orderedAt: plan.orderedAt,
     dueDate: plan.dueDate,
+    deliveredAt: plan.deliveredAt,
     purpose: plan.purpose,
     measurementSheetId: sheetId,
     fabric: plan.fabric,
@@ -255,10 +260,21 @@ export async function commitOrderSheetImport(
     items: plan.sections.map((section) => ({ itemTypeId: section.itemTypeId })),
   });
 
-  if (plan.deliveredAt) await markOrderDelivered(orderId, plan.deliveredAt);
   if (plan.updateEmbroideryName && plan.embroideryName) {
     await updateCustomer(plan.customerId, { embroideryName: plan.embroideryName });
   }
 
-  return { sheetId, orderId };
+  // 写真は最後。ここで落ちても throw しない — 紙 1 枚ぶんの転記が終わったあとに
+  // 写真のアップロード失敗で全体を失敗として見せると、注文が入ったのか分からなくなる。
+  // 何枚落ちたかだけ返し、呼び出し側が toast で知らせる（後から編集で足せる）。
+  let photoFailures = 0;
+  for (const file of plan.photos) {
+    try {
+      await uploadOrderPhoto({ id: orderId, customerId: plan.customerId }, file);
+    } catch {
+      photoFailures += 1;
+    }
+  }
+
+  return { sheetId, orderId, photoFailures };
 }

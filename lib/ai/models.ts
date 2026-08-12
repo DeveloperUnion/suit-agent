@@ -19,7 +19,7 @@ export const MODELS = {
   /** 接客の合間の会話。Phase 2 で lib/ai/agent.ts のパターン照合と入れ替える */
   chat: "gpt5.6luna",
 
-  /** 人となりの意味検索。Matryoshka で EMBEDDING_DIMENSIONS まで切り詰めて使う */
+  /** パーソナルの意味検索。Matryoshka で EMBEDDING_DIMENSIONS まで切り詰めて使う */
   embedding: "gemini-embedding-001",
 } as const;
 

@@ -35,7 +35,7 @@ export function AgentActionCard({
     return (
       <div className="flex flex-col gap-3 rounded-md border border-brand/25 bg-accent/40 p-3">
         <div className="flex flex-col gap-1">
-          <span className="field-label">人となりに追加</span>
+          <span className="field-label">パーソナルに追加</span>
           <span className="text-sm font-medium">{action.customer.name} 様</span>
         </div>
 

@@ -1,4 +1,4 @@
--- 人となりの権限マトリクスと、追記のみの担保。
+-- パーソナルの権限マトリクスと、追記のみの担保。
 --
 -- 確かめたいのは 3 つ。
 --   1. 顧客と同じ境界が効くこと（管理者は読めるが書けない）
@@ -150,14 +150,14 @@ select throws_ok(
 select pg_temp.login_as(:'b_uid');
 select is_empty(
   format($$ select 1 from public.customer_facts where customer_id = %L $$, :'cust_a'),
-  'B から A の顧客の人となりは存在ごと見えない'
+  'B から A の顧客のパーソナルは存在ごと見えない'
 );
 
 -- 管理者は読めるが書けない。FOR ALL で書くと崩れる非対称。
 select pg_temp.login_as(:'admin_uid');
 select isnt_empty(
   format($$ select 1 from public.customer_facts where customer_id = %L $$, :'cust_a'),
-  '管理者は他スタッフの顧客の人となりを読める'
+  '管理者は他スタッフの顧客のパーソナルを読める'
 );
 select throws_ok(
   format(

@@ -68,7 +68,7 @@ export function AgentPanel() {
       return;
     }
     await markAgentActionApplied(message.id);
-    toast.success("人となりを更新しました", { description: action.customer.name });
+    toast.success("パーソナルを更新しました", { description: action.customer.name });
   }, []);
 
   /** 同姓の候補から選ばれたとき。改めて提案を作り直す */

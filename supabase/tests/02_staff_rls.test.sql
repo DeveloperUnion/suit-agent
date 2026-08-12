@@ -7,7 +7,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(12);
+select plan(15);
 
 
 -- ── 道具 ────────────────────────────────────────────────
@@ -45,12 +45,18 @@ create or replace function pg_temp.make_staff(
   language plpgsql as $$
 declare v_id uuid;
 begin
+  -- staff が先。auth.users のトリガーが staff を見るので、逆順だと弾かれる。
+  -- 無効なスタッフは門番に弾かれるので、いったん有効で作ってから落とす
+  -- （実際の退職もその順に起きる）。
+  insert into public.staff (name, email, role)
+  values (p_name, p_email, p_role)
+  returning id into v_id;
   insert into auth.users (id, instance_id, aud, role, email, created_at, updated_at)
   values (p_auth_user_id, '00000000-0000-0000-0000-000000000000',
           'authenticated', 'authenticated', p_email, now(), now());
-  insert into public.staff (auth_user_id, name, email, role, is_active)
-  values (p_auth_user_id, p_name, p_email, p_role, p_is_active)
-  returning id into v_id;
+  if not p_is_active then
+    update public.staff set is_active = false where id = v_id;
+  end if;
   return v_id;
 end $$;
 
@@ -133,6 +139,43 @@ select is(
   (select is_active from public.staff where email = 'member@example.com'),
   false,
   '管理者はスタッフを無効化できる'
+);
+
+
+-- ── 招待の門番 ──────────────────────────────────────────
+--
+-- セルフサインアップを止めているのは GoTrue の設定フラグではなく、この 2 本。
+-- フラグは Dashboard から戻せてしまうが、これは DB の中にある。
+
+select pg_temp.as_postgres();
+
+select throws_ok(
+  $$ insert into auth.users (id, instance_id, aud, role, email, created_at, updated_at)
+     values (gen_random_uuid(), '00000000-0000-0000-0000-000000000000',
+             'authenticated', 'authenticated', 'stranger@example.com', now(), now()) $$,
+  '42501', null,
+  'staff に無いメールでは認証ユーザーを作れない（セルフサインアップの実体はここ）'
+);
+
+-- 退職者のアドレスでも作り直せない。is_active を見ている。
+select throws_ok(
+  $$ insert into auth.users (id, instance_id, aud, role, email, created_at, updated_at)
+     values (gen_random_uuid(), '00000000-0000-0000-0000-000000000000',
+             'authenticated', 'authenticated', 'retired@example.com', now(), now()) $$,
+  '42501', null,
+  '無効化されたスタッフのメールでも作れない'
+);
+
+-- 管理者が画面から足した人（newbie）は、自分でサインインすれば入れる。
+-- 招待 API も service_role キーも要らないのがこの設計の眼目。
+insert into auth.users (id, instance_id, aud, role, email, created_at, updated_at)
+values ('44444444-4444-4444-4444-444444444444', '00000000-0000-0000-0000-000000000000',
+        'authenticated', 'authenticated', 'newbie@example.com', now(), now());
+
+select is(
+  (select auth_user_id from public.staff where email = 'newbie@example.com'),
+  '44444444-4444-4444-4444-444444444444'::uuid,
+  '設定画面で足したスタッフは、初回サインインで auth_user_id が自動で埋まる'
 );
 
 

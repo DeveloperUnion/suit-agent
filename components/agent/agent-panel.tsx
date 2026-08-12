@@ -10,15 +10,14 @@ import { Button } from "@/components/ui/button";
 import { AgentComposer } from "@/components/agent/agent-composer";
 import { AgentMessageList } from "@/components/agent/agent-message-list";
 import { useAgent } from "@/components/agent/agent-provider";
-import { interpret } from "@/lib/ai/agent";
-import { addHobbies, planHobbyMerge, toCustomerRef } from "@/lib/ai/agent-tools";
+import { interpret, proposeFact } from "@/lib/ai/agent";
+import { applyFactAdd } from "@/lib/ai/agent-tools";
 import {
   appendAgentMessage,
   clearAgentMessages,
   listAgentMessages,
   markAgentActionApplied,
 } from "@/lib/data/agent-chat";
-import { getCustomer } from "@/lib/data/customers";
 import { useIsDesktop } from "@/lib/hooks/use-media-query";
 import { useQuery } from "@/lib/hooks/use-query";
 import { useVisualViewport } from "@/lib/hooks/use-visual-viewport";
@@ -60,43 +59,26 @@ export function AgentPanel() {
   );
 
   const apply = useCallback(async (message: AgentMessage) => {
-    if (message.action?.kind !== "add_hobby") return;
-    const merge = await addHobbies(message.action.customer.id, message.action.added);
-    if (!merge) {
-      toast.error("カルテを開けませんでした");
+    const action = message.action;
+    if (action?.kind !== "add_fact") return;
+    try {
+      await applyFactAdd(action.customer.id, action.labelNames, action.categoryKey, action.body);
+    } catch {
+      toast.error("カルテに残せませんでした");
       return;
     }
     await markAgentActionApplied(message.id);
-    toast.success("趣味を更新しました", { description: message.action.customer.name });
+    toast.success("人となりを更新しました", { description: action.customer.name });
   }, []);
 
   /** 同姓の候補から選ばれたとき。改めて提案を作り直す */
-  const pickCustomer = useCallback(async (customer: AgentCustomerRef, hobbies: string[]) => {
-    const found = await getCustomer(customer.id);
-    if (!found) {
-      toast.error("カルテを開けませんでした");
-      return;
-    }
-    const merge = planHobbyMerge(found.hobbies, hobbies);
-    if (merge.added.length === 0) {
-      await appendAgentMessage({
-        role: "assistant",
-        body: `${found.name} 様の趣味には、すでに${hobbies.join("・")}が入っています。`,
-      });
-      return;
-    }
-    await appendAgentMessage({
-      role: "assistant",
-      body: `${found.name} 様の趣味に${merge.added.join("・")}を足します。`,
-      action: {
-        kind: "add_hobby",
-        customer: toCustomerRef(found),
-        before: merge.before,
-        after: merge.after,
-        added: merge.added,
-      },
-    });
-  }, []);
+  const pickCustomer = useCallback(
+    async (customer: AgentCustomerRef, labels: string[], body: string) => {
+      const { reply, action } = await proposeFact(customer.id, labels, body);
+      await appendAgentMessage({ role: "assistant", body: reply, action });
+    },
+    [],
+  );
 
   /**
    * カルテへ移る。

@@ -2,7 +2,6 @@ import type { IsoDate, ItemTypeId, Order, OrderItem, OrderPurpose, Uuid } from "
 import { supabase } from "@/lib/supabase/client";
 import { bump } from "@/lib/store/revision";
 import { ITEM_TYPE_MAP } from "@/lib/constants/measurement-fields";
-import { toIsoDate } from "@/lib/utils/date";
 
 /**
  * 注文のデータアクセス。
@@ -136,12 +135,6 @@ export type CreateOrderInput = {
   items: { itemTypeId: ItemTypeId }[];
   fabric: OrderItemFabric;
   amounts: OrderAmounts;
-  /**
-   * 最終接触日を今日に更新するか。過去日付の紙を取り込むときは false。
-   * 取り込みは来店ではないうえ、今日に更新すると
-   * 「連絡済みなら出さない」判定まで誤って抑止してしまう
-   */
-  touchLastContact?: boolean;
 };
 
 /**
@@ -192,17 +185,6 @@ export async function createOrder(input: CreateOrderInput): Promise<Uuid> {
       .update({ order_id: orderId })
       .eq("id", input.measurementSheetId);
     if (sheetError) throw sheetError;
-  }
-
-  // 注文＝来店なので最終接触日も動く。放置リストに残り続けるのを防ぐ。
-  // トリガーにしない — 更新経路が「連絡した」とここの 2 つしかなく、
-  // 型定義にも「トリガーの判定には使わない」と明記されている。
-  if (input.touchLastContact ?? true) {
-    const { error: touchError } = await supabase()
-      .from("customers")
-      .update({ last_contacted_at: toIsoDate(new Date()) })
-      .eq("id", input.customerId);
-    if (touchError) throw touchError;
   }
 
   bump();

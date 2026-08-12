@@ -1,5 +1,5 @@
 -- 自動生成。直接編集しない。
--- 正は lib/constants/measurement-fields.ts と lib/constants/adjustments.ts。
+-- 正は lib/constants/ の measurement-fields.ts / adjustments.ts / facts.ts。
 -- 直すときはそちらを編集して `npm run db:masters` を実行する。
 --
 -- 冪等なので何度流してもよい。delete は書かない — 使われている項目を
@@ -93,5 +93,17 @@ on conflict (code) do update set
   strength = excluded.strength,
   default_value = excluded.default_value,
   body_part = excluded.body_part;
+
+insert into public.fact_categories (key, label, sort_order)
+values
+  ('hobby', '趣味', 1),
+  ('preference', '好み', 2),
+  ('scene', '着用シーン', 3),
+  ('work', '仕事', 4),
+  ('lifestyle', '暮らし', 5),
+  ('other', 'その他', 6)
+on conflict (key) do update set
+  label = excluded.label,
+  sort_order = excluded.sort_order;
 
 commit;

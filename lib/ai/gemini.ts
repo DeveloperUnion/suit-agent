@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 
 import { MAX_UPLOAD_BYTES } from "@/lib/ai/extraction";
+import { MODELS } from "@/lib/ai/models";
 
 /**
  * Gemini への読み取り依頼。
@@ -28,8 +29,8 @@ export const OMIT_RULE = `
 推測で埋めたり、空文字や 0 で埋めたりしないでください。
 `.trim();
 
-/** 紙の画像・PDF を読める現行モデル */
-const MODEL = "gemini-3.6-flash";
+/** 紙の画像・PDF を読める現行モデル。名前の正は lib/ai/models.ts */
+const MODEL = MODELS.extraction;
 
 export class ExtractionError extends Error {
   constructor(

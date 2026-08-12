@@ -35,12 +35,14 @@ create or replace function pg_temp.make_staff(
   language plpgsql as $$
 declare v_id uuid;
 begin
+  -- staff が先。auth.users のトリガーが staff を見るので、逆順だと弾かれる。
+  -- auth_user_id は AFTER トリガーが埋める（本番と同じ経路を通す）。
+  insert into public.staff (name, email, role)
+  values (p_name, p_email, p_role)
+  returning id into v_id;
   insert into auth.users (id, instance_id, aud, role, email, created_at, updated_at)
   values (p_auth_user_id, '00000000-0000-0000-0000-000000000000',
           'authenticated', 'authenticated', p_email, now(), now());
-  insert into public.staff (auth_user_id, name, email, role)
-  values (p_auth_user_id, p_name, p_email, p_role)
-  returning id into v_id;
   return v_id;
 end $$;
 
@@ -94,28 +96,28 @@ select is(
 -- 「エラーが出ないから通った」と読み違えないよう、値そのものを確かめる。
 
 select pg_temp.login_as(:'admin_uid');
-update public.customers set memo = '管理者が書き換えた' where id = 'c1111111-1111-4111-8111-111111111111';
+update public.customers set family_info = '管理者が書き換えた' where id = 'c1111111-1111-4111-8111-111111111111';
 select pg_temp.as_postgres();
 select is(
-  (select memo from public.customers where id = 'c1111111-1111-4111-8111-111111111111'),
+  (select family_info from public.customers where id = 'c1111111-1111-4111-8111-111111111111'),
   null,
   '★ 管理者でも他人の担当顧客は編集できない（閲覧と編集の非対称性）'
 );
 
 select pg_temp.login_as(:'b_uid');
-update public.customers set memo = 'B が書き換えた' where id = 'c1111111-1111-4111-8111-111111111111';
+update public.customers set family_info = 'B が書き換えた' where id = 'c1111111-1111-4111-8111-111111111111';
 select pg_temp.as_postgres();
 select is(
-  (select memo from public.customers where id = 'c1111111-1111-4111-8111-111111111111'),
+  (select family_info from public.customers where id = 'c1111111-1111-4111-8111-111111111111'),
   null,
   '一般スタッフも他人の担当顧客は編集できない'
 );
 
 select pg_temp.login_as(:'a_uid');
-update public.customers set memo = 'A が書いた' where id = 'c1111111-1111-4111-8111-111111111111';
+update public.customers set family_info = 'A が書いた' where id = 'c1111111-1111-4111-8111-111111111111';
 select pg_temp.as_postgres();
 select is(
-  (select memo from public.customers where id = 'c1111111-1111-4111-8111-111111111111'),
+  (select family_info from public.customers where id = 'c1111111-1111-4111-8111-111111111111'),
   'A が書いた',
   '自分の担当顧客は編集できる'
 );

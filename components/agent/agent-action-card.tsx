@@ -6,7 +6,6 @@ import { ArrowRight, Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { AgentAction, AgentCustomerRef } from "@/lib/types";
-import { splitHobbies } from "@/lib/ai/agent-tools";
 import { cn } from "@/lib/utils";
 
 /**
@@ -26,34 +25,40 @@ export function AgentActionCard({
   action: AgentAction;
   applied: boolean;
   onApply: () => Promise<void> | void;
-  onPickCustomer: (customer: AgentCustomerRef, hobbies: string[]) => void;
+  onPickCustomer: (customer: AgentCustomerRef, labels: string[], body: string) => void;
   /** カルテへ移る。スマホは全画面なので、閉じてから進む順序をパネル側が握る */
   onNavigate: (href: string) => void;
 }) {
   const [applying, setApplying] = useState(false);
 
-  if (action.kind === "add_hobby") {
-    const before = splitHobbies(action.before);
+  if (action.kind === "add_fact") {
     return (
       <div className="flex flex-col gap-3 rounded-md border border-brand/25 bg-accent/40 p-3">
         <div className="flex flex-col gap-1">
-          <span className="field-label">趣味に追加</span>
+          <span className="field-label">人となりに追加</span>
           <span className="text-sm font-medium">{action.customer.name} 様</span>
         </div>
 
         <div className="flex flex-wrap gap-1">
-          {before.map((hobby) => (
-            <Badge key={hobby} variant="secondary" className="font-normal">
-              {hobby}
+          {action.customer.labels.map((label) => (
+            <Badge key={label} variant="secondary" className="font-normal">
+              {label}
             </Badge>
           ))}
-          {action.added.map((hobby) => (
+          {action.labelNames.map((label) => (
             // 増える分だけ塗る。どこが変わるのかを見た瞬間に分かるように
-            <Badge key={hobby} className="bg-brand-fill font-normal text-primary-foreground">
-              ＋{hobby}
+            <Badge key={label} className="bg-brand-fill font-normal text-primary-foreground">
+              ＋{label}
             </Badge>
           ))}
         </div>
+
+        {/* 新しい語は店舗の語彙が 1 つ増えるということなので、そこだけ明示する */}
+        {action.newLabelNames.length > 0 && (
+          <span className="text-xs text-muted-foreground">
+            {action.newLabelNames.join("・")} は新しい語です。適用すると店舗の一覧に加わります。
+          </span>
+        )}
 
         {applied ? (
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -107,7 +112,7 @@ export function AgentActionCard({
           <li key={customer.id}>
             <button
               type="button"
-              onClick={() => onPickCustomer(customer, action.pendingHobbies)}
+              onClick={() => onPickCustomer(customer, action.pendingLabels, action.body)}
               className="flex min-h-11 w-full items-center gap-3 rounded-md border border-border bg-card p-3 text-left transition-colors hover:border-brand/40 active:bg-accent/40"
             >
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -137,7 +142,6 @@ function CustomerRow({
   highlight: string;
   onNavigate: (href: string) => void;
 }) {
-  const hobbies = splitHobbies(customer.hobbies);
   return (
     <button
       type="button"
@@ -147,17 +151,17 @@ function CustomerRow({
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="truncate text-sm font-medium">{customer.name}</span>
         <span className="flex flex-wrap gap-1">
-          {hobbies.map((hobby) => (
-            // 引いた理由になった趣味だけ塗る。並べただけでは何が当たったか分からない
+          {customer.labels.map((label) => (
+            // 引いた理由になった語だけ塗る。並べただけでは何が当たったか分からない
             <Badge
-              key={hobby}
+              key={label}
               variant="secondary"
               className={cn(
                 "font-normal",
-                hobby.includes(highlight) && "bg-brand-fill text-primary-foreground",
+                label.includes(highlight) && "bg-brand-fill text-primary-foreground",
               )}
             >
-              {hobby}
+              {label}
             </Badge>
           ))}
         </span>

@@ -36,12 +36,14 @@ create or replace function pg_temp.make_staff(
   language plpgsql as $$
 declare v_id uuid;
 begin
+  -- staff が先。auth.users のトリガーが staff を見るので、逆順だと弾かれる。
+  -- auth_user_id は AFTER トリガーが埋める（本番と同じ経路を通す）。
+  insert into public.staff (name, email, role)
+  values (p_name, p_email, p_role)
+  returning id into v_id;
   insert into auth.users (id, instance_id, aud, role, email, created_at, updated_at)
   values (p_auth_user_id, '00000000-0000-0000-0000-000000000000',
           'authenticated', 'authenticated', p_email, now(), now());
-  insert into public.staff (auth_user_id, name, email, role)
-  values (p_auth_user_id, p_name, p_email, p_role)
-  returning id into v_id;
   return v_id;
 end $$;
 

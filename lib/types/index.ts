@@ -40,14 +40,58 @@ export type CustomerAnniversary = {
   label: string;
 };
 
-export type CustomerPreferences = {
-  /** 好みの色・柄 */
-  colors?: string[];
-  patterns?: string[];
-  /** 好みのシルエット */
-  silhouette?: string;
-  /** 主な着用シーン */
-  scenes?: string[];
+// ── 人となりと記録 ──────────────────────────────────────
+//
+// 「ゴルフが趣味な人を全員」引くために正規化してある。文字列 1 本のままだと
+// 表記の揺れで取りこぼし、しかも誰も気づけない。
+//
+// **メモと事実は、ラベルが付いているかどうかしか違わない。**分けて持つと
+// スタッフに「これは趣味欄か、メモか」を毎回選ばせることになり、速いほうへ
+// 情報が逃げる。1 つにして、入力は「1 行書く」だけにしてある。
+
+/** 人となりの見出し。表示にしか使わない — 検索の絞り込みには絶対に使わない */
+export type FactCategory = {
+  key: string;
+  label: string;
+  sortOrder: number;
+};
+
+/**
+ * 語彙。「ゴルフ」は誰にとってもゴルフなので、分類は発話ごとではなく
+ * ここに 1 回だけ持たせる。直せば全顧客へ一斉に反映される。
+ */
+export type FactLabel = {
+  id: Uuid;
+  name: string;
+  categoryKey: string;
+};
+
+/** どこから来た記録か。migration は「機械的に割ったので誤りが混ざりうる」印 */
+export type FactSource = "agent" | "manual" | "migration";
+
+export type CustomerFact = {
+  id: Uuid;
+  customerId: Uuid;
+  /** null なら、まだラベルの付いていない走り書き */
+  label?: FactLabel;
+  /** 原文。ラベルだけだと文脈が落ちるので、カルテには必ずこちらを出す */
+  body: string;
+  source: FactSource;
+  createdAt: IsoDateTime;
+};
+
+/**
+ * NG 事項。
+ *
+ * facts に入れない。facts は類似検索で「引っ張り出す」もので、こちらは
+ * 当該顧客に触れた瞬間に無条件で全件読むもの。取りこぼしが許される情報と
+ * 許されない情報を、同じ機構に載せない。
+ */
+export type CustomerNgNote = {
+  id: Uuid;
+  customerId: Uuid;
+  body: string;
+  createdAt: IsoDateTime;
 };
 
 export type Customer = {
@@ -82,11 +126,26 @@ export type Customer = {
   jobTitle?: string;
   industry?: string;
 
-  preferences?: CustomerPreferences;
-  hobbies?: string;
+  /**
+   * 接客直前に一文で読むもの。分解しない — 「長男がいる人」を全員引く場面が
+   * 無いうえ、年齢は時間で古びる。日付が絡むもの（入学・受験）は
+   * customer_anniversaries の担当。
+   */
   familyInfo?: string;
-  /** NG 事項。事故防止情報のため画面上でも視覚的に分離する */
-  ngNotes?: string;
+
+  /*
+   * 趣味・好み・タグ・メモ・NG は列として持たない。
+   * customer_facts（ラベルの有無で人となりと走り書きを兼ねる）と
+   * customer_ng_notes へ移した。
+   */
+
+  /**
+   * 同意。既定はどちらも false で、「まだ許可を得ていない」に倒れる。
+   * 事実ではないので facts に入れない — 同意の撤回と事実の訂正は別物であり、
+   * 意味検索で「近いもの」として曖昧に扱われては困る。
+   */
+  photoConsent: boolean;
+  nightContactOk: boolean;
 
   /**
    * 担当スタッフ。顧客はスタッフごとに分割して持ち、ログインした人には
@@ -103,18 +162,17 @@ export type Customer = {
    * 手で付ける序列は形骸化するうえ、接客中に見せる画面に顧客の格付けを
    * 出すことになるため。
    */
-  firstVisitDate?: IsoDate;
-  acquisitionChannel?: string;
-  referrerId?: Uuid;
-  /**
-   * 最終接触日。「連絡した」を押したときに更新する。
-   * 納品からの経過日数（daysSinceDelivery）とは別物で、
-   * 前回いつ声をかけたかを思い出すためだけに使う（トリガーの判定には使わない）。
+  /*
+   * 最終連絡日も持たない。書き込む経路が「注文を記録した」と
+   * 「アプローチで連絡したを押した」の 2 つしかなく、実際の連絡は個人の
+   * 連絡手段で行われるため 1 件も入らない。それを「最終連絡」として出すと、
+   * 昨日連絡した相手が半年前に見える。**間違っている日付は無い日付より悪い。**
+   * 「最近連絡していない人」は納品からの経過日数で見る。
+   *
+   * 初回来店日・流入経路・紹介者も持たない。3 つとも画面に出るだけで
+   * 集計にもトリガーにも出てこなかった。紹介は記録に
+   * 「高橋様のご紹介」と書けば、確定検索の全文一致で引ける。
    */
-  lastContactedAt?: IsoDate;
-
-  tags?: string[];
-  memo?: string;
   createdAt: IsoDate;
 };
 
@@ -352,7 +410,8 @@ export type AgentCustomerRef = {
   id: Uuid;
   name: string;
   nameKana: string;
-  hobbies?: string;
+  /** カードに並べるラベル名。ラベルの付いていない記録は出さない */
+  labels: string[];
 };
 
 /**
@@ -364,18 +423,30 @@ export type AgentCustomerRef = {
  */
 export type AgentAction =
   | {
-      kind: "add_hobby";
+      kind: "add_fact";
       customer: AgentCustomerRef;
-      /** 追記前の趣味。空だった場合は undefined */
-      before?: string;
-      /** 追記後の「・」区切り文字列 */
-      after: string;
-      /** 実際に増える分だけ。既にあったものは含めない */
-      added: string[];
+      /** 足すラベル。既存語に寄せた結果なので、表記は fact_labels のもの */
+      labelNames: string[];
+      /**
+       * false のものは適用時に fact_labels へ新しく作られる。
+       * カードに「新しい語です」と出すのはこの判定を見ている。
+       */
+      newLabelNames: string[];
+      /** どのカテゴリで作るか。既存語のときは使わない */
+      categoryKey: string;
+      /** 聞き取った言い回し。そのまま body になる */
+      body: string;
     }
   | { kind: "search_result"; keyword: string; customers: AgentCustomerRef[] }
   /** 誰の話か決められなかった。候補を出して選ばせる */
-  | { kind: "ask_customer"; keyword: string; candidates: AgentCustomerRef[]; pendingHobbies: string[] };
+  | {
+      kind: "ask_customer";
+      keyword: string;
+      candidates: AgentCustomerRef[];
+      pendingLabels: string[];
+      /** 聞き取った言い回し。相手が決まったら、そのまま提案の body になる */
+      body: string;
+    };
 
 export type AgentMessage = {
   id: Uuid;
@@ -445,6 +516,8 @@ export type DemoDataset = {
   staff: Staff[];
   customers: Customer[];
   anniversaries: CustomerAnniversary[];
+  facts: CustomerFact[];
+  ngNotes: CustomerNgNote[];
   measurementSheets: MeasurementSheet[];
   orders: Order[];
   orderItems: OrderItem[];

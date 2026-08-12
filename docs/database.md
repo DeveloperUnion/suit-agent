@@ -64,6 +64,8 @@ supabase/
 scripts/
   generate-masters.mts   lib/constants/* → supabase/masters.sql
   generate-dev-seed.ts   lib/mock/seed.ts → supabase/dev-seed.sql
+.github/workflows/
+  db.yml               PR で検証し、main へのマージで本番へ反映する（後述）
 ```
 
 ### マスタは「デプロイ手順」であって seed でも migration でもない
@@ -81,6 +83,54 @@ npm run db:masters:check                    # CI。生成し直して差分ゼ�
 
 正は `lib/constants/` の `measurement-fields.ts` / `adjustments.ts` / `facts.ts`。
 DB はミラーで、DB 側で直したものは次の生成で消える。
+
+---
+
+## CI（`.github/workflows/db.yml`）
+
+**どの DB が相手かを取り違えると事故になるので、そこから書く。**
+
+| | 手元の Docker | CI ランナーの中 | 本番 |
+|---|---|---|---|
+| 誰が触る | 自分だけ。**CI は来ない** | `verify` ジョブ | `deploy` ジョブ |
+| DB | `supabase start` した自分のコンテナ | ジョブごとに新品を立て、終われば VM ごと捨てる | 本番プロジェクト |
+| 流すもの | 今まで通り自分で `db:reset` | `db:reset` → `db:test` | `db push` → `masters.sql` |
+| データ | 消えない | **消えるものが最初から無い** | **消えない** |
+
+`db:reset` は使い捨ての DB にしか流れない。本番に流れるのは `db push`（記録の無い
+migration を追記するだけ）と、冪等な `masters.sql` の 2 つで、どちらも既存の行を消さない。
+**`deploy` に `db reset` は書かない。**
+
+`verify`（PR と main への push）:
+
+- **適用済みの migration を書き換えていないこと。**`db push` は一度当てたファイルを
+  二度流さないので、書き換えると**手元の `db:reset` は緑のまま本番にだけ入らない**。
+  merge-base との差分で `M`/`D`/`R` を見て落とす
+- `db:reset` → `db:test` → `db:masters:check`。3 つめは `lib/constants/*` を直して
+  `npm run db:masters` を忘れた PR を止める
+
+`app` は Docker が要らないので別ジョブで並走する（`lint` と `typecheck`）。
+`typecheck` が `next typegen && tsc --noEmit` なのは、`next-env.d.ts` と `.next/types`
+が生成物で git に入っていないため。`tsc` だけを打つと型が丸ごと見つからずに落ちる。
+
+`deploy` は `needs: verify`。**main への直 push でも、まっさらからの reset と pgTAP を
+通したコミットしか本番に触れない。**
+
+### 本番の credential を CI に置くことについて
+
+`SUPABASE_DB_URL`（`production` environment secret）は `postgres` ロールなので、
+このリポジトリで置かないと決めている `service_role` キーより強い。migration を
+自動で当てる以上これは避けられないが、等価交換ではないので抑えを書いておく。
+
+- repository secret ではなく **`production` environment に閉じる**。PR のジョブからは見えない
+- `deploy` は `needs: verify`。検証が緑のコミットしか本番に触れない
+- ワークフローで `$SUPABASE_DB_URL` を echo しない
+- 承認を挟みたくなったら Settings → Environments → production に reviewer を 1 人足すだけで、
+  コードを変えずに「マージ後、人が Approve するまで止まる」に切り替わる
+
+接続文字列は **Session pooler（ポート 5432）**を Dashboard の Connect からそのまま写す。
+直結ホスト `db.<ref>.supabase.co` は IPv6 専用で、GitHub Actions のランナーは IPv4 しか
+持たないので届かない。Transaction pooler（6543）は DDL に使えない。
 
 ---
 
@@ -232,9 +282,14 @@ dev-seed の事実で「アウトドア系が好きな人」のような曖昧�
 
 Tokyo リージョン。**まだ店舗には渡していない。**手順書ではなく、いまの状態として書く。
 
-- [x] `supabase link` → `supabase db push`（migration 13 本）
+- [x] `supabase link` → `supabase db push`（migration 13 本）。**手作業でやったのは
+      ここまで。**以降は main へマージすると `deploy` ジョブが流す
 - [x] `psql`（実際は SQL Editor）で `supabase/masters.sql`。**migration では入らない**ので、
-      スキーマを push するたびにこれも流す
+      スキーマを push するたびにこれも流す。この順序も `deploy` ジョブに入れてある
+- [ ] **`deploy` ジョブの有効化。**いまは `.github/workflows/db.yml` の `if:` に
+      `false &&` を書いて止めてある。外す前に、下の Pro プラン（日次バックアップ）と
+      `production` environment の `SUPABASE_DB_URL` を入れる。
+      **戻す先が無い状態で自動反映を有効にしない**
 - [x] 1 人目の管理者を SQL Editor から 1 行。管理者がいないと管理者を作れないため、
       ここだけは手作業。**2 人目以降は設定画面から名前とメールを登録するだけ**で、
       本人がサインインすると `auth.users` が作られ `auth_user_id` はトリガーが埋まる
@@ -329,6 +384,15 @@ Vercel の環境変数は 3 つ。**`SUPABASE_SERVICE_ROLE_KEY` は置かない*
 - **`worker_role` は `extensions` スキーマの USAGE を持たない。**pgTAP の `is()` も
   そこにあるので、`set role worker_role` した状態では判定関数を呼べない。
   数えるところだけをそのロールで走らせ、`\gset` で持ち帰ってから判定する
+- **適用済みの migration を書き換えても、ローカルは緑のまま通る。**`db:reset` は
+  まっさらから流すので直した内容が反映されるが、本番の `db push` は
+  `supabase_migrations.schema_migrations` に記録のあるファイルを二度流さない。
+  **どこにもエラーが出ないまま本番だけが古い**という形で現れる。
+  → CI に merge-base との差分検査を入れて落としている
+- **Supabase の直結ホストは IPv6 専用。**`db.<ref>.supabase.co` は AAAA しか返さず、
+  GitHub Actions のランナーは IPv4 しか持たないので接続が張れない
+  （名前解決は通るのでタイムアウトとして出る）。CI からは Session pooler を使う。
+  Transaction pooler（6543）は prepared statement を張れないので DDL には使えない
 
 ---
 

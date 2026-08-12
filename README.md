@@ -19,9 +19,10 @@
 
 ```bash
 npm install
-npm run dev     # http://localhost:3000
+npm run dev        # http://localhost:3000
 npm run build
 npm run lint
+npm run typecheck
 ```
 
 `.env.local` に 3 つ要る。**Supabase の 2 つが無いと画面が 1 枚も出ない**
@@ -36,6 +37,10 @@ GEMINI_API_KEY=...
 ```
 
 前の 2 つは `supabase status -o env` の出力。ローカルの DB の立て方は `docs/database.md`。
+
+PR を立てると CI（`.github/workflows/db.yml`）が、使い捨ての DB へ全 migration を
+まっさらから流して pgTAP を回し、あわせて `lint` と `typecheck` を通す。
+main へマージすると同じコミットが本番 DB へ反映される。詳しくは `docs/database.md` の CI 節。
 
 ## やらないこと
 

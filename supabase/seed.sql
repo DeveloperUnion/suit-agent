@@ -5,15 +5,22 @@
 -- lib/constants/*.ts から生成してここに足す。冪等に書くこと — migration に
 -- insert を書くと項目を 1 つ直すたびに新しい migration が要る。
 --
--- 本番の 1 人目だけは別立てになる。管理者がいないと管理者を作れないため、
--- SQL Editor から手で 1 行入れて、そこから招待画面で増やす。
---   insert into public.staff (name, email, role) values ('…', '…', 'admin');
---   -- そのあと画面から招待 → auth.admin.inviteUserByEmail() が auth_user_id を埋める
+-- 本番では staff を 1 行入れるだけでは足りない。auth.users が無いと
+-- current_staff_id() が NULL のままで、そもそもサインインできない
+-- （shouldCreateUser: false なので GoTrue が otp_disabled を返す）。
+--
+-- 招待画面は無い。auth.admin.inviteUserByEmail() には service_role キーが要り、
+-- 置かないと決めた以上そもそも実装できないため。当面は 1 人につき手作業で 2 手:
+--   1. Dashboard → Authentication → Users → Add user（Auto Confirm を有効に）
+--   2. SQL Editor で
+--      insert into public.staff (name, email, role) values ('…', '…', 'member');
+--      update public.staff s set auth_user_id = u.id from auth.users u
+--       where u.email = s.email and s.auth_user_id is null;
 
 -- ── スタッフ ────────────────────────────────────────────
 --
 -- 4 人とも管理者（全顧客を閲覧できるが、編集は自分の担当のみ）。
--- 一般スタッフ約 7 名は運用開始時に招待画面から追加する。
+-- 一般スタッフ約 7 名は運用開始時に上の 2 手で追加する。
 
 do $$
 declare

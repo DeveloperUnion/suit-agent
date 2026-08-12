@@ -10,7 +10,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(9);
+select plan(11);
 
 
 -- ── RLS の付け忘れ ──────────────────────────────────────
@@ -54,6 +54,33 @@ select is_empty(
        and not exists (select 1 from pg_policy p where p.polrelid = c.oid)
   $$,
   'RLS が有効なテーブルには最低 1 本のポリシーがあること'
+);
+
+
+-- ── 権限の二枚目の壁 ────────────────────────────────────
+--
+-- RLS が唯一の砦にならないよう、権限のほうでも塞いである。
+-- 新しいテーブルを足したときに既定 ACL で anon へ権限が戻っていないかを見る。
+
+select is_empty(
+  $$
+    select table_name || ':' || privilege_type
+      from information_schema.role_table_grants
+     where grantee = 'anon' and table_schema = 'public'
+  $$,
+  'anon は public のテーブルに 1 つも権限を持たないこと'
+);
+
+-- TRUNCATE は RLS を無視する。DML は grant / revoke で書いてあるが、
+-- これは既定 ACL でしか付かないので個別に見る。
+select is_empty(
+  $$
+    select table_name
+      from information_schema.role_table_grants
+     where grantee = 'authenticated' and table_schema = 'public'
+       and privilege_type in ('TRUNCATE', 'REFERENCES', 'TRIGGER')
+  $$,
+  'authenticated は TRUNCATE / REFERENCES / TRIGGER を持たないこと'
 );
 
 

@@ -18,7 +18,7 @@ Homebrew の PostgreSQL では代用できない — **`security_invoker` は PG
 open -a Docker            # 起動を待つ
 supabase start            # 初回はイメージの取得で数分
 npm run db:reset          # 全 migration → masters → seed → dev-seed
-npm run db:test           # pgTAP 102 件
+npm run db:test           # pgTAP 104 件
 ```
 
 `db:reset` を毎回通すのが要点。「途中から足した migration」ではなく
@@ -99,8 +99,9 @@ DB はミラーで、DB 側で直したものは次の生成で消える。
 | `..._customer_view` | `v_customers`（顧客 + 最終納品） |
 | `..._facts` | `fact_categories` / `fact_labels` / `fact_aliases` / `customer_facts` / `search_chunks` / `worker_role` のポリシー |
 | `..._facts_migration` | 同意 2 列 / `customer_ng_notes` / 使わない 8 列の削除 / ビュー作り直し |
+| `..._revoke_anon` | `anon` の権限を全部剥がす / `authenticated` の TRUNCATE / 既定 ACL |
 
-pgTAP 102 件。構造ガード（RLS 付け忘れ・`security_invoker` 忘れ）は
+pgTAP 104 件。構造ガード（RLS 付け忘れ・`security_invoker` 忘れ）は
 **わざと違反を作って検出することを確認済み**。
 
 アプリ側は `lib/data/*` 8 ファイルが supabase-js を見る。認証は
@@ -230,10 +231,20 @@ dev-seed の事実で「アウトドア系が好きな人」のような曖昧�
 
 - Supabase プロジェクトを作り `supabase link` → `supabase db push`
 - **`psql "$DATABASE_URL" -f supabase/masters.sql`**（採寸マスタ。migration では入らない）
-- 1 人目の管理者を SQL Editor から 1 行入れ、以降は招待画面から
+- 1 人目の管理者を SQL Editor から 1 行入れる。
+  **「以降は招待画面から」は嘘だった** — `createStaff()`（`lib/data/settings.ts`）は
+  `staff` に 1 行入れるだけで認証ユーザーを作らない。`auth.admin.inviteUserByEmail()` には
+  `service_role` キーが要り、置かないと決めた以上そもそも実装できない。
+  当面はスタッフ 1 人につき手作業で 2 手:
+  Dashboard → Authentication → Users → Add user（Auto Confirm）→ SQL Editor で
+  `update public.staff s set auth_user_id = u.id from auth.users u
+   where u.email = s.email and s.auth_user_id is null;`
+  メール一致で自動紐付けするトリガーにはしない（`staff` テーブルのコメントの理由）
 - **Authentication の設定を `config.toml` に合わせる**（ローカルの config は本番に
   反映されない）— セルフサインアップを止め、Site URL と Redirect URLs に本番ドメインを入れる。
-  ここが漏れるとリンクが `localhost` へ向いて、本番の初回ログインだけが通らない
+  ここが漏れるとリンクが `localhost` へ向いて、本番の初回ログインだけが通らない。
+  **メールのプロバイダ自体は有効のまま**にすること（切ると既存ユーザーへの
+  リンク送信まで止まる）
 - Vercel の環境変数は `NEXT_PUBLIC_SUPABASE_URL` と `NEXT_PUBLIC_SUPABASE_ANON_KEY` の 2 つだけ。
   **`SUPABASE_SERVICE_ROLE_KEY` は置かない**
 
@@ -244,8 +255,13 @@ dev-seed の事実で「アウトドア系が好きな人」のような曖昧�
 次に同じことをするときのために。
 
 - **Supabase は `public` の全テーブルに `authenticated`/`anon` へ ALL 権限を
-  既定で与える。**`grant select, insert, update` は無意味。ポリシーの無い DELETE は
-  エラーにならず 0 行になり、アプリのバグを隠す。**明示的に `revoke` する**
+  既定で与える。**`grant select, insert, update` は無意味で、ポリシーの無い DELETE も
+  エラーにならず 0 行になり、アプリのバグを隠す。
+  → **`20260812120000_revoke_anon.sql` で既定値ごと止めた。**いまは grant を
+  書き忘れると `permission denied` で落ちる。あわせて `anon` の権限を全部剥がし
+  （二枚目の壁）、`authenticated` から TRUNCATE も剥がした（**TRUNCATE は
+  RLS を無視する**）。プロジェクト作成画面の "Automatically expose new tables" は
+  無効を推奨されているが、**トグルは git に残らない**ので migration で塞ぐ
 - **`language sql` の関数は作成時に本体が検証される。**`app.current_staff_id()` を
   `staff` テーブルより先に書くと migration が落ちる。順序は テーブル → 関数 → ポリシー
 - **`MeasurementField.key` はグローバルに一意ではない。**`bust` は

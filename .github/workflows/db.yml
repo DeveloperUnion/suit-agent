@@ -1,0 +1,99 @@
+name: db
+
+# PR では「まっさらから全 migration を流して pgTAP が通るか」を確かめ、
+# main へのマージでは、その検証を通った同じコミットを本番へ反映する。
+#
+# どの DB が相手かを取り違えると事故になるので先に書いておく:
+#   verify … ランナーの中に立てた使い捨ての Supabase。ジョブが終われば VM ごと消える
+#   deploy … 本番。db push（未適用の migration の追記）と masters.sql（冪等な upsert）だけ
+# 本番に db reset は流さない。
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: db-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # 既存 migration の改変検査に merge-base が要る
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.95.4 # 手元と揃える。上げるときは両方
+      - run: npm ci
+
+      # db push は一度適用した migration を二度流さない。既存ファイルを書き換えると
+      # 手元の db:reset は緑のまま、本番にだけ入らない、という無音の事故になる。
+      - name: 適用済みの migration を書き換えていないこと
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags origin "$BASE"
+          # このブランチで足した migration は A なので出ない。
+          # main に既にあるファイルを触ったときだけ M / D / R で出る。
+          changed=$(git diff --name-status --diff-filter=MDR \
+            "origin/$BASE...HEAD" -- supabase/migrations/)
+          if [ -n "$changed" ]; then
+            echo "$changed"
+            echo "既に $BASE にある migration を書き換えている。"
+            echo "本番には入らないので、直したい内容は新しい migration に書くこと。"
+            exit 1
+          fi
+
+      # ここから先はランナーの中の使い捨ての DB が相手。手元にも本番にも触らない。
+      - run: supabase start -x studio,imgproxy,edge-runtime,logflare,vector
+      - run: npm run db:reset # 全 migration をまっさらから → masters → seed → dev-seed
+      - run: npm run db:test # pgTAP
+      - run: npm run db:masters:check # lib/constants を直して db:masters を忘れた PR を止める
+
+  app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint # lib/ai/** からの supabase().from( 禁止もここで効く
+      - run: npm run typecheck
+
+  deploy:
+    needs: verify
+    # 段階導入中は止めてある。有効にするのは production の Secret を入れてから。
+    # そのときこの行の `false &&` を消す（docs/database.md の「本番」節）。
+    if: false && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      # Session pooler（5432）の接続文字列。直結ホスト db.<ref>.supabase.co は
+      # IPv6 専用で、ランナーは IPv4 しか持たないので届かない。
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.95.4
+
+      - name: 反映前の状態
+        run: supabase migration list --db-url "$SUPABASE_DB_URL"
+
+      - name: migration を反映（未適用のものを追記するだけ）
+        run: supabase db push --db-url "$SUPABASE_DB_URL"
+
+      # migration では入らないので、スキーマを push するたびにこれも流す。
+      - name: マスタを流す
+        run: psql -v ON_ERROR_STOP=1 -f supabase/masters.sql "$SUPABASE_DB_URL"

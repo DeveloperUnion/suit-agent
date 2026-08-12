@@ -1,11 +1,16 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { AlertTriangle, UserPlus } from "lucide-react";
+import { AlertTriangle, Loader2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 
 import { FileDrop } from "@/components/common/file-drop";
-import { AmountFields, applyAmountChange } from "@/components/order/amount-fields";
+import {
+  DifferentPersonCheck,
+  SimilarCustomerList,
+  useDifferentPersonGate,
+} from "@/components/customer/similar-customer-list";
+import { AmountField } from "@/components/order/amount-field";
 import { OrderPhotoPicker } from "@/components/order/order-photos";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,14 +23,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { extractOrderSheet } from "@/lib/ai/extract-order-sheet";
 import { CONFIDENCE_WARN } from "@/lib/ai/extraction";
 import { ADJUSTMENT_MAP, MAX_ADJUSTMENTS } from "@/lib/constants/adjustments";
 import { ITEM_TYPE_MAP } from "@/lib/constants/measurement-fields";
-import { ORDER_PURPOSE_LABEL } from "@/lib/constants/labels";
 import {
   buildImportPlan,
   commitOrderSheetImport,
@@ -36,8 +38,6 @@ import {
 import { createCustomer, findSimilarCustomers } from "@/lib/data/customers";
 import { useQuery } from "@/lib/hooks/use-query";
 import type { OrderItemFabric } from "@/lib/data/orders";
-import type { OrderPurpose } from "@/lib/types";
-import { formatDateDot } from "@/lib/utils/date";
 import { cn } from "@/lib/utils";
 
 /**
@@ -82,11 +82,13 @@ export function OrderSheetImportDialog({
     [picking, newName, newKana],
   );
   const { data: candidates } = useQuery(candidatesLoader, [picking, newName, newKana]);
+  const gate = useDifferentPersonGate(candidates);
 
   const reset = () => {
     setPhase("select");
     setPlan(null);
     setNameMismatchAccepted(false);
+    gate.reset();
     setNewName("");
     setNewKana("");
   };
@@ -117,13 +119,11 @@ export function OrderSheetImportDialog({
   const updateFabric = (patch: Partial<OrderItemFabric>) =>
     setPlan((current) => (current ? { ...current, fabric: { ...current.fabric, ...patch } } : current));
 
-  const updateAmount = (key: keyof ImportPlan["amounts"], value: number) =>
-    setPlan((current) =>
-      current ? { ...current, amounts: applyAmountChange(current.amounts, key, value) } : current,
-    );
+  // 候補が出ているうちは、別人だと判断した人が明示するまで新規登録に進ませない
+  const canPickNew = newName.trim() !== "" && !gate.blocked;
 
   const handlePickNew = async () => {
-    if (newName.trim() === "") return;
+    if (!canPickNew) return;
     const id = await createCustomer({ name: newName.trim(), nameKana: newKana.trim() });
     update({ customerId: id });
     toast.success("顧客を登録しました", { description: "続けて発注書を取り込みます。" });
@@ -209,45 +209,27 @@ export function OrderSheetImportDialog({
               </p>
             ) : (
               <>
-                <span className="field-label">同じ方がいませんか</span>
-                {(candidates ?? []).length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    似た名前のお客様は見つかりませんでした。
-                  </p>
-                ) : (
-                  <ul className="flex max-h-48 flex-col overflow-y-auto rounded-md border border-border">
-                    {(candidates ?? []).map((candidate) => (
-                      <li key={candidate.id}>
-                        <button
-                          type="button"
-                          disabled={candidate.isOtherStaff}
-                          onClick={() => update({ customerId: candidate.id })}
-                          className="flex min-h-11 w-full flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b border-border/60 px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-accent/30 disabled:pointer-events-none disabled:opacity-60"
-                        >
-                          <span className="font-medium">{candidate.name}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {candidate.nameKana}
-                          </span>
-                          {candidate.isOtherStaff ? (
-                            <span className="ml-auto text-xs text-muted-foreground">
-                              他のスタッフの担当
-                            </span>
-                          ) : (
-                            <span className="ml-auto text-xs text-muted-foreground">
-                              {candidate.lastDeliveredAt
-                                ? `最終納品 ${formatDateDot(candidate.lastDeliveredAt)}`
-                                : "納品履歴なし"}
-                            </span>
-                          )}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                {/* 候補が無いときは見出しごと出さない。新規登録の一手だけが残る */}
+                {gate.found && (
+                  <>
+                    <span className="field-label">同じ方がいませんか</span>
+                    {/* 選べば既存のカルテに取り込む。新しく作るのは、どれでもないときだけ */}
+                    <SimilarCustomerList
+                      candidates={candidates ?? []}
+                      onSelect={(candidate) => update({ customerId: candidate.id })}
+                      actionLabel="選ぶ"
+                    />
+                    <DifferentPersonCheck
+                      checked={gate.checked}
+                      onChange={gate.setChecked}
+                      count={gate.count}
+                    />
+                  </>
                 )}
                 <Button
                   variant="outline"
                   className="h-11 gap-1.5 self-start"
-                  disabled={newName.trim() === ""}
+                  disabled={!canPickNew}
                   onClick={handlePickNew}
                 >
                   <UserPlus className="size-4" />
@@ -264,7 +246,12 @@ export function OrderSheetImportDialog({
       title: "受注情報",
       content: (
         <>
-          <div className="grid gap-4 sm:grid-cols-4">
+          {/*
+            日付は3つ。受注日・納品日（工場→店）・お渡し日（店→客）。
+            お渡し日は顧客の都合で決まるので、紙にはまず書かれていない。
+            空のままでも取り込める（フォローの起点は納品日で代用される）。
+          */}
+          <div className="grid gap-4 sm:grid-cols-3">
             <DateField
               id="import-ordered"
               label="受注日"
@@ -277,10 +264,10 @@ export function OrderSheetImportDialog({
               着心地確認の起点になるのはお渡し日のほう。
             */}
             <DateField
-              id="import-due"
+              id="import-arrived"
               label="納品日"
-              value={plan.dueDate ?? ""}
-              onChange={(v) => update({ dueDate: v || undefined })}
+              value={plan.arrivedAt ?? ""}
+              onChange={(v) => update({ arrivedAt: v || undefined })}
             />
             <DateField
               id="import-delivered"
@@ -288,24 +275,6 @@ export function OrderSheetImportDialog({
               value={plan.deliveredAt ?? ""}
               onChange={(v) => update({ deliveredAt: v || undefined })}
             />
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="import-purpose">用途</Label>
-              <Select
-                value={plan.purpose}
-                onValueChange={(v) => update({ purpose: v as OrderPurpose })}
-              >
-                <SelectTrigger id="import-purpose" className="h-11 bg-card">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(ORDER_PURPOSE_LABEL) as OrderPurpose[]).map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {ORDER_PURPOSE_LABEL[p]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
           </div>
 
           {/* 生地はマスタを引かない。紙に書かれているものがそのまま正 */}
@@ -349,16 +318,12 @@ export function OrderSheetImportDialog({
             </div>
           </div>
 
+          {/* 金額は紙に載らない。分かっていれば入れ、分からなければ後から注文カードで直せる */}
           <div className="mt-4">
-            <AmountFields
-              idPrefix="import"
-              amounts={plan.amounts}
-              onChange={updateAmount}
-              hint={
-                plan.amountsFromPaper
-                  ? "紙の金額欄から読み取った額です。"
-                  : "紙の金額欄が空欄でした。紙を見ながら入れてください。"
-              }
+            <AmountField
+              id="import-amount"
+              value={plan.totalAmount}
+              onChange={(v) => update({ totalAmount: v })}
             />
           </div>
         </>
@@ -515,12 +480,14 @@ export function OrderSheetImportDialog({
             </div>
           )}
 
+          {/*
+            スケルトンではなく回るものを出す。読み取りは十数秒かかることがあり、
+            止まっているのか動いているのかが分からないと、もう一度ドロップされる。
+          */}
           {phase === "reading" && (
-            <div className="flex flex-col gap-3">
-              <p className="text-sm text-muted-foreground">発注書を読み取っています…</p>
-              <Skeleton className="h-20 w-full" />
-              <Skeleton className="h-40 w-full" />
-              <Skeleton className="h-24 w-full" />
+            <div className="flex flex-1 flex-col items-center justify-center gap-4">
+              <Loader2 className="size-8 animate-spin text-brand" />
+              <p className="text-sm text-muted-foreground">読み取り中です</p>
             </div>
           )}
 

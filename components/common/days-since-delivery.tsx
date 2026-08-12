@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 
 /**
- * 納品からの経過日数。
+ * お渡しからの経過日数。
  *
  * 「最終接触から」ではない。連絡の間隔そのものより「いつ着はじめたか」のほうが
  * 接客の材料になる。カルテを開いた瞬間に判断できる必要があるため、
@@ -22,13 +22,13 @@ export function DaysSinceDelivery({
   className?: string;
 }) {
   if (days === null) {
-    return <span className={cn("text-muted-foreground", className)}>納品なし</span>;
+    return <span className={cn("text-muted-foreground", className)}>お渡しなし</span>;
   }
 
   if (size === "lg") {
     return (
       <div className={cn("flex flex-col gap-0.5", className)}>
-        <span className="field-label">納品から</span>
+        <span className="field-label">お渡しから</span>
         <span className="flex items-baseline gap-1">
           <span className="tnum font-mono text-3xl font-medium leading-none sm:text-4xl">
             {days}

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { AmountFields, applyAmountChange } from "@/components/order/amount-fields";
+import { AmountField } from "@/components/order/amount-field";
 import { OrderPhotos } from "@/components/order/order-photos";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ORDER_PURPOSE_LABEL } from "@/lib/constants/labels";
-import { updateOrder, type OrderAmounts, type OrderItemFabric, type OrderView } from "@/lib/data/orders";
+import { updateOrder, type OrderItemFabric, type OrderView } from "@/lib/data/orders";
 import type { OrderPurpose } from "@/lib/types";
 import { formatAmount } from "@/lib/utils/date";
 
@@ -45,7 +45,7 @@ export function OrderEditDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const [orderedAt, setOrderedAt] = useState(order.orderedAt);
-  const [dueDate, setDueDate] = useState(order.dueDate ?? "");
+  const [arrivedAt, setArrivedAt] = useState(order.arrivedAt ?? "");
   const [deliveredAt, setDeliveredAt] = useState(order.deliveredAt ?? "");
   const [purpose, setPurpose] = useState<OrderPurpose>(order.purpose);
   const [fabric, setFabric] = useState<OrderItemFabric>({
@@ -54,12 +54,7 @@ export function OrderEditDialog({
     fabricColorName: order.fabricColorName,
     fabricComposition: order.fabricComposition,
   });
-  const [amounts, setAmounts] = useState<OrderAmounts>({
-    subtotalAmount: order.subtotalAmount,
-    surchargeAmount: order.surchargeAmount,
-    taxAmount: order.taxAmount,
-    totalAmount: order.totalAmount,
-  });
+  const [totalAmount, setTotalAmount] = useState(order.totalAmount);
   const [saving, setSaving] = useState(false);
 
   // 初期値は useState だけで足りる。呼び出し側（orders-tab）が閉じるたびに
@@ -74,11 +69,11 @@ export function OrderEditDialog({
     try {
       await updateOrder(order.id, {
         orderedAt,
-        dueDate: dueDate || null,
+        arrivedAt: arrivedAt || null,
         deliveredAt: deliveredAt || null,
         purpose,
         ...fabric,
-        ...amounts,
+        totalAmount,
       });
       onOpenChange(false);
       toast.success("注文を更新しました");
@@ -107,16 +102,16 @@ export function OrderEditDialog({
             <div className="grid gap-4 sm:grid-cols-2">
               <DateField id="edit-ordered" label="受注日" value={orderedAt} onChange={setOrderedAt} />
               <DateField
-                id="edit-due"
+                id="edit-arrived"
                 label="納品日"
                 hint="工場から店に届く日"
-                value={dueDate}
-                onChange={setDueDate}
+                value={arrivedAt}
+                onChange={setArrivedAt}
               />
               <DateField
                 id="edit-delivered"
                 label="お渡し日"
-                hint="ここを入れると着心地確認のアプローチが立ちます"
+                hint="着心地確認の起点。空なら納品日で代用します"
                 value={deliveredAt}
                 onChange={setDeliveredAt}
               />
@@ -170,13 +165,7 @@ export function OrderEditDialog({
           </Section>
 
           <Section title="金額">
-            <AmountFields
-              idPrefix="edit"
-              amounts={amounts}
-              onChange={(key, value) =>
-                setAmounts((current) => applyAmountChange(current, key, value))
-              }
-            />
+            <AmountField id="edit-amount" value={totalAmount} onChange={setTotalAmount} />
           </Section>
 
           <Section title="着装写真">
@@ -186,9 +175,9 @@ export function OrderEditDialog({
 
         <DialogFooter className="shrink-0 flex-row items-center justify-between gap-3 border-t border-border px-4 py-3 sm:px-6">
           <span className="flex items-baseline gap-2">
-            <span className="field-label">合計</span>
+            <span className="field-label">売上</span>
             <span className="tnum font-mono text-lg font-medium">
-              ¥{formatAmount(amounts.totalAmount)}
+              ¥{formatAmount(totalAmount)}
             </span>
           </span>
           <span className="flex gap-2">

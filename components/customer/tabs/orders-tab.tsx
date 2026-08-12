@@ -12,11 +12,9 @@ import { ORDER_PURPOSE_LABEL, ORDER_STATUS_LABEL } from "@/lib/constants/labels"
 import { ITEM_TYPE_MAP } from "@/lib/constants/measurement-fields";
 import { getOwnedItemSummary, listOrders, type OrderView } from "@/lib/data/orders";
 import { useQuery } from "@/lib/hooks/use-query";
-import { usePostDeliveryMilestones } from "@/lib/hooks/use-settings";
 import { formatAmount, formatDateDot } from "@/lib/utils/date";
 
 export function OrdersTab({ customerId }: { customerId: string }) {
-  const milestones = usePostDeliveryMilestones();
 
   const ordersLoader = useCallback(() => listOrders(customerId), [customerId]);
   const { data: orders, loading } = useQuery(ordersLoader, [customerId]);
@@ -71,15 +69,6 @@ export function OrdersTab({ customerId }: { customerId: string }) {
 
       <section className="flex flex-col gap-3">
         <SectionTitle>注文履歴</SectionTitle>
-        {/*
-          2 つの日付の役割を先に言う。言わないと「納品日が入っているのに
-          アプローチが立たない」がバグに見える。
-        */}
-        <p className="text-xs text-muted-foreground">
-          発注書から納品日（工場→店）とお渡し日を読み取ります。
-          <strong className="font-medium text-foreground">お渡し日</strong>
-          を入れると、その{milestones.map((m) => m.label).join("後・")}後に「着心地確認」のアプローチが立ちます。
-        </p>
         <ul className="flex flex-col gap-3">
           {(orders ?? []).map((order) => (
             <li key={order.id} className="rounded-md border border-border bg-card">
@@ -95,7 +84,7 @@ export function OrdersTab({ customerId }: { customerId: string }) {
                   <Badge variant="outline" className="font-normal">
                     {ORDER_STATUS_LABEL[order.status]}
                   </Badge>
-                  <DeliveryDates dueDate={order.dueDate} deliveredAt={order.deliveredAt} />
+                  <DeliveryDates arrivedAt={order.arrivedAt} deliveredAt={order.deliveredAt} />
                   <span className="ml-auto flex items-center gap-3">
                     <span className="hidden text-xs text-muted-foreground sm:inline">
                       受注者 {order.staffName}
@@ -114,14 +103,6 @@ export function OrdersTab({ customerId }: { customerId: string }) {
                     </Button>
                   </span>
                 </div>
-                {/* 内訳は割増か税が載っているときだけ。0 が並ぶと合計が読みにくくなる */}
-                {(order.surchargeAmount > 0 || order.taxAmount > 0) && (
-                  <span className="tnum ml-auto font-mono text-xs text-muted-foreground">
-                    売上 ¥{formatAmount(order.subtotalAmount)}
-                    {order.surchargeAmount > 0 && ` ・割増 ¥${formatAmount(order.surchargeAmount)}`}
-                    {order.taxAmount > 0 && ` ・消費税 ¥${formatAmount(order.taxAmount)}`}
-                  </span>
-                )}
               </div>
 
               {/*
@@ -193,11 +174,11 @@ export function OrdersTab({ customerId }: { customerId: string }) {
  * お渡し日が空でも黙って隠さない。着心地確認が立たない理由がここにあり、
  * 隠すと「アプローチが出ない」だけが見えて原因が画面から消える。
  */
-function DeliveryDates({ dueDate, deliveredAt }: { dueDate?: string; deliveredAt?: string }) {
+function DeliveryDates({ arrivedAt, deliveredAt }: { arrivedAt?: string; deliveredAt?: string }) {
   return (
     <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm">
-      {dueDate && (
-        <span className="tnum font-mono text-muted-foreground">納品 {formatDateDot(dueDate)}</span>
+      {arrivedAt && (
+        <span className="tnum font-mono text-muted-foreground">納品 {formatDateDot(arrivedAt)}</span>
       )}
       {deliveredAt ? (
         <span className="tnum font-mono">お渡し {formatDateDot(deliveredAt)}</span>

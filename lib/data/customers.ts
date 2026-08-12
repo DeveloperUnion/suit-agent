@@ -19,15 +19,20 @@ import { PREFECTURES } from "@/lib/constants/prefectures";
  */
 
 export type CustomerListItem = Customer & {
-  /** 最終納品日。納品済みの注文が1件も無ければ undefined */
+  /**
+   * 最終お渡し日。お渡し日が空の注文は納品日で代用する（v_customers）。
+   * 注文が1件も無ければ undefined。
+   */
   lastDeliveredAt?: IsoDate;
-  /** 最終納品の注文 ID。納品後フォローがどの納品に対する通知かを識別するのに使う */
+  /** その注文 ID。お渡し後フォローがどのお渡しに対する通知かを識別するのに使う */
   lastDeliveredOrderId?: Uuid;
   /**
-   * 納品からの経過日数。納品済みの注文が1件も無ければ null。
-   * 「最終接触から」ではない。着心地を伺うのに意味があるのは納品からの日数のため。
+   * お渡しからの経過日数。注文が1件も無ければ null。
+   * 「最終接触から」ではない。着心地を伺うのに意味があるのはお渡しからの日数のため。
    */
   daysSinceDelivery: number | null;
+  /** キャンセルを除く注文件数。同姓同名の見分けに使う */
+  orderCount: number;
 };
 
 export type CustomerFilter = {
@@ -55,7 +60,8 @@ const LIST_COLUMNS = `
   ${CUSTOMER_COLUMNS},
   lastDeliveredAt:last_delivered_at,
   lastDeliveredOrderId:last_delivered_order_id,
-  daysSinceDelivery:days_since_delivery
+  daysSinceDelivery:days_since_delivery,
+  orderCount:order_count
 `;
 
 /** null を undefined に均す。型は省略可能項目を undefined で表している */
@@ -123,8 +129,8 @@ function normalizeForSearch(value: string): string {
 }
 
 /**
- * 納品済みの注文が無い顧客は起点が無いので末尾に置く。
- * 0 日目として扱うと「今日納品した人」と同じ位置に紛れてしまう。
+ * 注文が 1 件も無い顧客は起点が無いので末尾に置く。
+ * 0 日目として扱うと「今日お渡しした人」と同じ位置に紛れてしまう。
  */
 function byStaleness(a: CustomerListItem, b: CustomerListItem): number {
   if (a.daysSinceDelivery === null && b.daysSinceDelivery === null) {
@@ -267,6 +273,8 @@ export async function listStaff(): Promise<Staff[]> {
 export type SimilarCustomer = CustomerListItem & {
   /** 他のスタッフが担当している顧客か。詳細は開けないが、二重登録は防ぐ */
   isOtherStaff: boolean;
+  /** 担当しているスタッフの名前。他人の担当だったとき、誰に確認すればよいか分かるように */
+  staffName: string;
 };
 
 /**
@@ -276,7 +284,10 @@ export type SimilarCustomer = CustomerListItem & {
  * しまうと、データが分裂して後から直せないため。
  *
  * 越境は app.find_similar_customers()（SECURITY DEFINER）に閉じてあり、
- * 他人の顧客は氏名しか返らない。名簿の抜き出しには使えない。
+ * 他人の顧客は氏名・カナ・担当者名しか返らない。名簿の抜き出しには使えない。
+ *
+ * 呼ぶのは public のラッパのほう。PostgREST が公開しているのは public だけで、
+ * app スキーマの関数は rpc() から見えない。
  */
 export async function findSimilarCustomers(input: {
   name?: string;
@@ -290,10 +301,16 @@ export async function findSimilarCustomers(input: {
   });
   if (error) throw error;
 
-  type Row = { id: string; name: string; name_kana: string; is_other_staff: boolean };
+  type Row = {
+    id: string;
+    name: string;
+    name_kana: string;
+    staff_name: string;
+    is_other_staff: boolean;
+  };
   const rows = (data ?? []) as Row[];
 
-  // 自分の担当のぶんは通常の経路で詳細を足す。他人のぶんは氏名のまま。
+  // 自分の担当のぶんは通常の経路で詳細を足す。他人のぶんは氏名と担当者名のまま。
   const mine = rows.filter((r) => !r.is_other_staff).map((r) => r.id);
   const detail = new Map<string, CustomerListItem>();
   if (mine.length > 0) {
@@ -309,7 +326,7 @@ export async function findSimilarCustomers(input: {
 
   return rows.map((r) => {
     const full = detail.get(r.id);
-    if (full) return { ...full, isOtherStaff: false };
+    if (full) return { ...full, isOtherStaff: false, staffName: r.staff_name };
     return {
       id: r.id,
       name: r.name,
@@ -317,7 +334,9 @@ export async function findSimilarCustomers(input: {
       staffId: "",
       createdAt: "",
       daysSinceDelivery: null,
+      orderCount: 0,
       isOtherStaff: true,
+      staffName: r.staff_name,
     } as SimilarCustomer;
   });
 }

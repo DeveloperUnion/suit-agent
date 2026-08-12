@@ -142,7 +142,7 @@ export function CustomerDetailView({
 
         <div className="flex flex-wrap items-end justify-between gap-4 border-t border-border pt-4">
           {/*
-            出すのは納品からの日数だけ。「最終連絡」は持たないことにした —
+            出すのはお渡しからの日数だけ。「最終連絡」は持たないことにした —
             実際の連絡は個人の連絡手段で行われるので、システムが拾えるのは
             一部でしかなく、それを最終連絡として出すと読み手を誤らせる。
           */}
@@ -227,7 +227,6 @@ export function CustomerDetailView({
         customerName={customer.name}
         open={sheetOpen}
         onOpenChange={setSheetOpen}
-        onOpenImport={() => setImportOpen(true)}
         initialSheetId={sheetId}
       />
 

@@ -17,12 +17,11 @@ export type OrderView = Order & {
 
 const ORDER_COLUMNS = `
   id, customerId:customer_id, orderNumber:order_number,
-  orderedAt:ordered_at, dueDate:due_date, deliveredAt:delivered_at,
+  orderedAt:ordered_at, arrivedAt:arrived_at, deliveredAt:delivered_at,
   status, purpose,
   fabricProductNumber:fabric_product_number, fabricColorNumber:fabric_color_number,
   fabricColorName:fabric_color_name, fabricComposition:fabric_composition,
-  subtotalAmount:subtotal_amount, surchargeAmount:surcharge_amount,
-  taxAmount:tax_amount, totalAmount:total_amount,
+  totalAmount:total_amount,
   takenByStaffId:taken_by_staff_id,
   staff:taken_by_staff_id ( name ),
   items:order_items ( id, orderId:order_id, itemTypeId:item_type_id )
@@ -37,7 +36,7 @@ function toView(row: OrderRow): OrderView {
   const { staff, ...order } = row;
   return {
     ...order,
-    dueDate: order.dueDate ?? undefined,
+    arrivedAt: order.arrivedAt ?? undefined,
     deliveredAt: order.deliveredAt ?? undefined,
     staffName: staff?.name ?? "—",
     items: row.items ?? [],
@@ -108,27 +107,11 @@ export type OrderItemFabric = Pick<
   "fabricProductNumber" | "fabricColorNumber" | "fabricColorName" | "fabricComposition"
 >;
 
-/** 紙の右上と同じ4欄 */
-export type OrderAmounts = Pick<
-  Order,
-  "subtotalAmount" | "surchargeAmount" | "taxAmount" | "totalAmount"
->;
-
-/**
- * 合計の既定値。
- * 紙では合計欄も手書きなので、人が上書きするまでの初期値としてだけ使う。
- * DB 側には CHECK もトリガーも置いていない — 3 つの和と一致しないことが
- * 正常な状態だから。
- */
-export function defaultTotal(amounts: Omit<OrderAmounts, "totalAmount">): number {
-  return amounts.subtotalAmount + amounts.surchargeAmount + amounts.taxAmount;
-}
-
 export type CreateOrderInput = {
   customerId: Uuid;
   orderedAt: IsoDate;
-  /** 納品日（工場→店）。列名は due_date のままだが「納期」ではない */
-  dueDate?: IsoDate;
+  /** 納品日（工場→店） */
+  arrivedAt?: IsoDate;
   /** お渡し日（店→客）。紙に書かれていないことがあるので任意 */
   deliveredAt?: IsoDate;
   purpose: OrderPurpose;
@@ -137,7 +120,8 @@ export type CreateOrderInput = {
   /** 生地は 1 注文で 1 種類。紙が原反NO を 1 つしか持たない */
   items: { itemTypeId: ItemTypeId }[];
   fabric: OrderItemFabric;
-  amounts: OrderAmounts;
+  /** 売上金額（税込）。紙に金額欄は事実上入らないので、店が手で入れる */
+  totalAmount: number;
 };
 
 /**
@@ -157,9 +141,9 @@ export async function createOrder(input: CreateOrderInput): Promise<Uuid> {
       customer_id: input.customerId,
       order_number: `J1-${seq}-${Math.floor(Math.random() * 900) + 100}`,
       ordered_at: input.orderedAt,
-      due_date: input.dueDate ?? null,
-      // 紙にお渡し日が書かれていれば、登録した時点でもう納品済み。
-      // 取り込んだ直後に「納品にする」を押させる意味がない。
+      arrived_at: input.arrivedAt ?? null,
+      // お渡し日が入っていれば、登録した時点でもう渡してある。
+      // 取り込んだ直後に「お渡しにする」を押させる意味がない。
       delivered_at: input.deliveredAt ?? null,
       status: input.deliveredAt ? "delivered" : "ordered",
       purpose: input.purpose,
@@ -167,10 +151,7 @@ export async function createOrder(input: CreateOrderInput): Promise<Uuid> {
       fabric_color_number: input.fabric.fabricColorNumber ?? null,
       fabric_color_name: input.fabric.fabricColorName ?? null,
       fabric_composition: input.fabric.fabricComposition ?? null,
-      subtotal_amount: input.amounts.subtotalAmount,
-      surcharge_amount: input.amounts.surchargeAmount,
-      tax_amount: input.amounts.taxAmount,
-      total_amount: input.amounts.totalAmount,
+      total_amount: input.totalAmount,
     })
     .select("id")
     .single();
@@ -206,10 +187,10 @@ export async function createOrder(input: CreateOrderInput): Promise<Uuid> {
  * ここで触ると保有アイテム構成の集計（getOwnedItemSummary）と食い違う。
  */
 export type UpdateOrderInput = Partial<
-  Pick<Order, "orderedAt" | "purpose"> & OrderItemFabric & OrderAmounts
+  Pick<Order, "orderedAt" | "purpose" | "totalAmount"> & OrderItemFabric
 > & {
   /** 納品日（工場→店）。null で消す */
-  dueDate?: IsoDate | null;
+  arrivedAt?: IsoDate | null;
   /** お渡し日（店→客）。null で消す */
   deliveredAt?: IsoDate | null;
 };
@@ -217,12 +198,12 @@ export type UpdateOrderInput = Partial<
 /**
  * 注文の更新。
  *
- * もとは markOrderDelivered / clearOrderDelivery の 2 本で、納品日だけが
+ * もとは markOrderDelivered / clearOrderDelivery の 2 本で、お渡し日だけが
  * 後から動かせる唯一の値だった。発注書から日付を読むようになって
- * 「納品にする」という操作自体が要らなくなったので、日付も他の項目と同じく
+ * 「お渡しにする」という操作自体が要らなくなったので、日付も他の項目と同じく
  * ただの編集に畳んである。
  *
- * status はフォームに出さず**お渡し日から決める**。入っていれば納品済、
+ * status はフォームに出さず**お渡し日から決める**。入っていればお渡し済、
  * 空なら受注。人に選ばせると、日付と状態が食い違った行が必ず生まれる。
  *
  * 担当外を指定しても RLS が 0 行にするだけで、エラーにもならない。
@@ -230,16 +211,13 @@ export type UpdateOrderInput = Partial<
 export async function updateOrder(id: Uuid, patch: UpdateOrderInput): Promise<void> {
   const map: Record<string, string> = {
     orderedAt: "ordered_at",
-    dueDate: "due_date",
+    arrivedAt: "arrived_at",
     deliveredAt: "delivered_at",
     purpose: "purpose",
     fabricProductNumber: "fabric_product_number",
     fabricColorNumber: "fabric_color_number",
     fabricColorName: "fabric_color_name",
     fabricComposition: "fabric_composition",
-    subtotalAmount: "subtotal_amount",
-    surchargeAmount: "surcharge_amount",
-    taxAmount: "tax_amount",
     totalAmount: "total_amount",
   };
 
@@ -251,7 +229,7 @@ export async function updateOrder(id: Uuid, patch: UpdateOrderInput): Promise<vo
   }
 
   // お渡し日に触れたときだけ状態を追随させる。触れていない更新
-  // （金額の直しなど）で状態が動くと、納品済の注文が受注へ戻る。
+  // （金額の直しなど）で状態が動くと、お渡し済の注文が受注へ戻る。
   if ("deliveredAt" in patch) {
     row.status = patch.deliveredAt ? "delivered" : "ordered";
   }

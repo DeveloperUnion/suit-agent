@@ -38,9 +38,9 @@ export type OrderSheetExtraction = ExtractionMeta & {
   embroideryName?: ExtractedField;
   /** 受注日 */
   orderedAt?: ExtractedField;
-  /** 納品日。工場→店の納期であって、顧客へのお渡しではない */
-  factoryDueDate?: ExtractedField;
-  /** お渡し日。こちらが顧客への納品にあたる */
+  /** 納品日。工場から店に届く日 */
+  arrivedAt?: ExtractedField;
+  /** お渡し日。店から顧客へ渡す日。紙にはまず書かれていない */
   handoverDate?: ExtractedField;
   shopName?: ExtractedField;
   fitterName?: ExtractedField;
@@ -53,11 +53,11 @@ export type OrderSheetExtraction = ExtractionMeta & {
   /** 品質表示欄の組成 */
   fabricComposition?: ExtractedField;
   liningCode?: ExtractedField;
-  /** 紙の右上の金額4欄。多くの紙では空欄 */
-  subtotalAmount?: ExtractedField<number>;
-  surchargeAmount?: ExtractedField<number>;
-  taxAmount?: ExtractedField<number>;
-  totalAmount?: ExtractedField<number>;
+  /*
+   * 金額は読まない。紙の右上に金額欄はあるが、実運用では空欄のまま流れていて、
+   * 読ませても「空欄でした」としか言えなかった。売上は取り込んだあと
+   * 注文カードで人が入れる。
+   */
   sections: OrderSheetSection[];
   adjustments: OrderSheetAdjustment[];
   note?: ExtractedField;

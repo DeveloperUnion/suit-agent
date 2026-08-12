@@ -2,11 +2,15 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
-import { AlertTriangle, ChevronDown, X } from "lucide-react";
+import { ChevronDown, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { DaysSinceDelivery } from "@/components/common/days-since-delivery";
 import { FileDrop } from "@/components/common/file-drop";
+import {
+  DifferentPersonCheck,
+  SimilarCustomerList,
+  useDifferentPersonGate,
+} from "@/components/customer/similar-customer-list";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,7 +22,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   CARD_FIELD_LABEL,
   EXTRA_CARD_FIELDS,
@@ -64,10 +67,12 @@ export function CustomerCreateDialog({
     [name, nameKana, phone],
   );
   const { data: similar } = useQuery(similarLoader, [name, nameKana, phone]);
+  const gate = useDifferentPersonGate(similar);
 
   // 連絡手段は必須にしない。出張採寸で名前しか分からないまま帰る場面があり、
   // その場で登録できないと結局どこにも残らない。
-  const canSubmit = name.trim() !== "";
+  // 唯一の関門は「似た方がいませんか」— 二重登録だけは後から直せない。
+  const canSubmit = name.trim() !== "" && !gate.blocked;
 
   const reset = () => {
     setName("");
@@ -76,6 +81,7 @@ export function CustomerCreateDialog({
     setCard(null);
     setExtra({});
     setReading(false);
+    gate.reset();
   };
 
   /**
@@ -155,11 +161,9 @@ export function CustomerCreateDialog({
         <div className="flex max-h-[70dvh] flex-col gap-4 overflow-y-auto">
           {/* 名刺からの読み取り。埋まった内容は必ず人が見てから登録する */}
           {reading ? (
-            <div className="flex flex-col gap-2 rounded-md border border-border p-4">
-              <span className="text-sm text-muted-foreground">名刺を読み取っています…</span>
-              <Skeleton className="h-4 w-2/3" />
-              <Skeleton className="h-4 w-1/2" />
-              <Skeleton className="h-4 w-3/5" />
+            <div className="flex flex-col items-center gap-3 rounded-md border border-border p-6">
+              <Loader2 className="size-6 animate-spin text-brand" />
+              <span className="text-sm text-muted-foreground">読み取り中です</span>
             </div>
           ) : card ? (
             <p className="text-sm">
@@ -286,50 +290,24 @@ export function CustomerCreateDialog({
           )}
 
           {/* 顧客1,000名規模では再来店の見落としと同姓同名が必ず起きる */}
-          {similar && similar.length > 0 && (
-            <div className="flex flex-col gap-2 rounded-md border border-thread/30 bg-thread/5 p-3">
-              <span className="flex items-center gap-1.5 text-xs text-thread">
-                <AlertTriangle className="size-3.5" />
-                似た顧客がすでに登録されています
-              </span>
-              <ul className="flex flex-col">
-                {similar.map((c) =>
-                  c.isOtherStaff ? (
-                    // 他のスタッフの顧客は開けない。二重登録を防ぐために存在だけ知らせる
-                    <li
-                      key={c.id}
-                      className="flex min-h-10 items-center gap-3 px-1 text-sm text-muted-foreground"
-                    >
-                      <span className="font-medium text-foreground">{c.name}</span>
-                      <span className="text-xs">{c.nameKana}</span>
-                      <span className="ml-auto shrink-0 text-xs">他のスタッフが担当</span>
-                    </li>
-                  ) : (
-                    <li key={c.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onOpenChange(false);
-                          reset();
-                          router.push(`/customers/${c.id}`);
-                        }}
-                        className="flex min-h-10 w-full items-center gap-3 rounded-sm px-1 text-left text-sm hover:bg-accent/50"
-                      >
-                        <span className="font-medium">{c.name}</span>
-                        <span className="truncate text-xs text-muted-foreground">
-                          {c.companyName ?? c.nameKana}
-                        </span>
-                        <span className="ml-auto shrink-0">
-                          <DaysSinceDelivery days={c.daysSinceDelivery} />
-                        </span>
-                      </button>
-                    </li>
-                  ),
-                )}
-              </ul>
-              <p className="text-xs text-muted-foreground">
-                同じ方であれば、新しく登録しないでください。他のスタッフの担当であれば、その人に確認してください。
-              </p>
+          {gate.found && (
+            <div className="flex flex-col gap-2">
+              <span className="field-label">同じ方がいませんか</span>
+              {/* こちらは登録の手前なので、紐づける先が無い。開いて確かめてもらう */}
+              <SimilarCustomerList
+                candidates={similar ?? []}
+                onSelect={(c) => {
+                  onOpenChange(false);
+                  reset();
+                  router.push(`/customers/${c.id}`);
+                }}
+                actionLabel="カルテを開く"
+              />
+              <DifferentPersonCheck
+                checked={gate.checked}
+                onChange={gate.setChecked}
+                count={gate.count}
+              />
             </div>
           )}
         </div>

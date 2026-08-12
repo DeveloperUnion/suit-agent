@@ -2,7 +2,6 @@ import {
   CONFIDENCE_RULE,
   EXTRACTION_MODEL,
   ExtractionError,
-  extractedNumber,
   extractedString,
   OMIT_RULE,
   runExtraction,
@@ -55,8 +54,8 @@ const SCHEMA = {
     customerNameKana: extractedString("フリガナ欄。カタカナのまま"),
     embroideryName: extractedString("ネーム欄（漢字・筆記体・花文字）に書かれた刺繍名"),
     orderedAt: extractedString("受注日。YYYY-MM-DD 形式"),
-    factoryDueDate: extractedString("納品日（工場→店）。YYYY-MM-DD 形式"),
-    handoverDate: extractedString("お渡し日（店→お客様）。YYYY-MM-DD 形式"),
+    arrivedAt: extractedString("納品日（工場→店）。YYYY-MM-DD 形式"),
+    handoverDate: extractedString("お渡し日（店→お客様）。YYYY-MM-DD 形式。空欄なら省略する"),
     shopName: extractedString("販売店"),
     fitterName: extractedString("フィッター"),
     fabricProductNumber: extractedString("原反NO1（品番）"),
@@ -64,10 +63,6 @@ const SCHEMA = {
     fabricColorName: extractedString("生地貼付欄の色名。例: カーキ無地"),
     fabricComposition: extractedString("品質表示欄の組成。例: N(ナイロン) 92% / U(ポリウレタン) 8%"),
     liningCode: extractedString("裏地欄の記号"),
-    subtotalAmount: extractedNumber("右上の売上金額欄。空欄なら省略する"),
-    surchargeAmount: extractedNumber("右上の割増金額欄。空欄なら省略する"),
-    taxAmount: extractedNumber("右上の消費税欄。空欄なら省略する"),
-    totalAmount: extractedNumber("右上の合計金額欄。空欄なら省略する"),
     sections: {
       type: "array",
       description: "JACKET / PANTS / VEST など、紙にある採寸ブロックごとに1つ",
@@ -146,9 +141,7 @@ ${ADJUSTMENT_MASTERS.map((a) => `   - ${a.code}: ${adjustmentLabel(a)}`).join("\
    （参考: 使われうるコード ${ADJUSTMENT_CODES.join(", ")}）
 5. **中央の指示項目（丸つけ表）は読まないでください。** 今回は取り込みません。
 6. 備考欄に書かれた文章は note にそのまま入れてください。要約しないでください。
-7. 右上の金額欄は 売上金額・割増金額・消費税・合計金額 の4段です。書かれている段だけを読み、
-   桁区切りのカンマや「¥」は外して数値にしてください。ほとんどの紙では4段とも空欄です。
-   空欄の段は省略し、他の段から差し引きで計算して埋めることはしないでください。
+7. **右上の金額欄は読まないでください。** 実運用では空欄のまま流れており、取り込みでは使いません。
 
 ${OMIT_RULE}
 

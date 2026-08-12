@@ -25,13 +25,27 @@ import {
   updateStaff,
   type StaffWithLoad,
 } from "@/lib/data/settings";
+import { getCurrentStaff } from "@/lib/auth/current-staff";
 import { useQuery } from "@/lib/hooks/use-query";
 import type { StaffRole } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+/**
+ * スタッフの一覧と管理。
+ *
+ * 一覧は全員に見せる。誰が在籍していて誰が管理者かは、引き継ぎや
+ * 「他のスタッフの担当です」と言われたときに要る情報で、隠す理由がない。
+ *
+ * 追加・編集・無効化のボタンは管理者にだけ出す。RLS が天井なので一般スタッフが
+ * 押しても書き込めないが、押せてしまうボタンは「壊れている」としか見えない。
+ */
 export function StaffSettings() {
   const loader = useCallback(() => listAllStaff(), []);
   const { data: staff } = useQuery(loader, []);
+
+  const meLoader = useCallback(() => getCurrentStaff(), []);
+  const { data: me } = useQuery(meLoader, []);
+  const isAdmin = me?.role === "admin";
 
   const [editing, setEditing] = useState<StaffWithLoad | null>(null);
   const [creating, setCreating] = useState(false);
@@ -42,14 +56,24 @@ export function StaffSettings() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        {/*
+          見える範囲と編集できる範囲は一致しない。管理者は全員の顧客を読めるが、
+          書けるのは自分の担当だけ（RLS）。ここを曖昧に書くと、管理者が
+          「自分なら直せるはず」と思って直せず、原因も分からない。
+        */}
         <p className="max-w-prose text-sm text-muted-foreground">
-          顧客はスタッフごとに分かれています。ログインした人には自分の顧客だけが見えます。
+          顧客はスタッフごとに分かれています。
+          <br />
+          一般は自分の顧客だけが見えます。管理者は全員の顧客を見られますが、
+          編集できるのはどちらも自分の顧客だけです。
         </p>
-        <Button className="h-11 gap-1.5 sm:h-10" onClick={() => setCreating(true)}>
-          <UserPlus className="size-4" />
-          スタッフを追加
-        </Button>
+        {isAdmin && (
+          <Button className="h-11 shrink-0 gap-1.5 sm:h-10" onClick={() => setCreating(true)}>
+            <UserPlus className="size-4" />
+            スタッフを追加
+          </Button>
+        )}
       </div>
 
       <ul className="flex flex-col rounded-md border border-border bg-card">
@@ -69,29 +93,31 @@ export function StaffSettings() {
             </span>
             <span className="text-sm text-muted-foreground">{STAFF_ROLE_LABEL[s.role]}</span>
             <span className="tnum ml-auto font-mono text-sm">担当 {s.customerCount}名</span>
-            <span className="flex gap-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-10 gap-1.5"
-                onClick={() => setEditing(s)}
-              >
-                <Pencil className="size-3.5" />
-                編集
-              </Button>
-              {/* 自分自身は無効化できない。ログインできる人が0になるのを防ぐ */}
-              {!s.isCurrent && (
+            {isAdmin && (
+              <span className="flex gap-1">
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-10 gap-1.5 text-muted-foreground hover:text-thread"
-                  onClick={() => setDeactivating(s)}
+                  className="h-10 gap-1.5"
+                  onClick={() => setEditing(s)}
                 >
-                  <UserMinus className="size-3.5" />
-                  無効化
+                  <Pencil className="size-3.5" />
+                  編集
                 </Button>
-              )}
-            </span>
+                {/* 自分自身は無効化できない。ログインできる人が0になるのを防ぐ */}
+                {!s.isCurrent && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-10 gap-1.5 text-muted-foreground hover:text-thread"
+                    onClick={() => setDeactivating(s)}
+                  >
+                    <UserMinus className="size-3.5" />
+                    無効化
+                  </Button>
+                )}
+              </span>
+            )}
           </li>
         ))}
       </ul>
@@ -112,17 +138,19 @@ export function StaffSettings() {
                 <span className="tnum ml-auto font-mono text-sm text-muted-foreground">
                   担当 {s.customerCount}名
                 </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-10"
-                  onClick={async () => {
-                    await activateStaff(s.id);
-                    toast.success(`${s.name}を有効に戻しました`);
-                  }}
-                >
-                  有効に戻す
-                </Button>
+                {isAdmin && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-10"
+                    onClick={async () => {
+                      await activateStaff(s.id);
+                      toast.success(`${s.name}を有効に戻しました`);
+                    }}
+                  >
+                    有効に戻す
+                  </Button>
+                )}
               </li>
             ))}
           </ul>
@@ -175,12 +203,19 @@ function StaffFormDialog({
 
   const handleSubmit = async () => {
     if (!name.trim()) return;
-    if (staff) {
-      await updateStaff(staff.id, { name: name.trim(), email: email.trim(), role });
-      toast.success("スタッフを更新しました");
-    } else {
-      await createStaff({ name: name.trim(), email: email.trim(), role });
-      toast.success("スタッフを追加しました");
+    // 権限が無ければ RLS が 0 行にする。データ層が例外にしてくれるので、
+    // 成功したときだけ閉じる（黙って閉じると保存できたように見える）
+    try {
+      if (staff) {
+        await updateStaff(staff.id, { name: name.trim(), email: email.trim(), role });
+        toast.success("スタッフを更新しました");
+      } else {
+        await createStaff({ name: name.trim(), email: email.trim(), role });
+        toast.success("スタッフを追加しました");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "保存できませんでした");
+      return;
     }
     setSyncedId(null);
     onOpenChange(false);

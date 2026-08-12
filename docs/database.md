@@ -140,17 +140,18 @@ migration を追記するだけ）と、冪等な `masters.sql` の 2 つで、�
 |---|---|
 | `..._app_schema_and_staff` | `app` スキーマ / `current_staff_id()` / `is_admin()` / `normalize_ja()` / `worker_role` / `staff` |
 | `..._customers` | `customers` / `customer_anniversaries` / `can_read_customer()` / `can_write_customer()` / `find_similar_customers()` |
-| `..._orders` | `orders`（金額4欄・生地4列）/ `order_items` |
+| `..._orders` | `orders`（金額4列・生地4列）/ `order_items` |
 | `..._measurements` | マスタ3表 / 採寸4表（複合 FK） |
 | `..._approach_and_targets` | `app_settings`（1 行）/ `approach_resolutions` / `revenue_targets` / `v_approach_inputs` |
 | `..._change_log` | `change_log` とトリガー |
 | `..._agent_messages` | `agent_messages`（`action` jsonb + `applied_at`） |
 | `..._actor_defaults` | 操作者の列に `default app.current_staff_id()` |
-| `..._customer_view` | `v_customers`（顧客 + 最終納品） |
+| `..._customer_view` | `v_customers`（顧客 + 最終お渡し） |
 | `..._facts` | `fact_categories` / `fact_labels` / `fact_aliases` / `customer_facts` / `search_chunks` / `worker_role` のポリシー |
 | `..._facts_migration` | 同意 2 列 / `customer_ng_notes` / 使わない 8 列の削除 / ビュー作り直し |
 | `..._revoke_anon` | `anon` の権限を全部剥がす / `authenticated` の TRUNCATE / 既定 ACL |
 | `..._staff_gate` | `auth.users` のトリガー 2 本（招待の門番と自動紐付け） |
+| `..._handover_and_similar_customers` | `due_date` → `arrived_at` / `v_customers` の起点を `coalesce(delivered_at, arrived_at)` に / `anniversary_lead_days` / `public.find_similar_customers()` のラッパ |
 
 pgTAP 107 件。構造ガード（RLS 付け忘れ・`security_invoker` 忘れ）は
 **わざと違反を作って検出することを確認済み**。
@@ -204,7 +205,7 @@ RLS を採った最大の論拠は「境界を DB が持つので API 層が要�
 最後の改名は、フックが DB を見るようになった以上その名前が嘘になるため。
 変更行数を小さく見せるために誤った名前を残すのは本末転倒なので直した。
 
-（この表は移行時点の記録。トリガーのタブはその後、納品後フォローの節目を
+（この表は移行時点の記録。トリガーのタブはその後、お渡し後フォローの節目を
 店舗が変えられるようにしたときに一番右へ戻している。）
 
 `lib/data/*` の側では、狙いどおり**担当の絞り込みが全部消えた**。
@@ -410,7 +411,7 @@ Vercel の環境変数は 3 つ。**`SUPABASE_SERVICE_ROLE_KEY` は置かない*
    持たせれば OCR の「ありえるが間違っている」誤読を DB で止められる
 3. 個人情報の削除請求への対応手順（`app.purge_customer()` を誰が実行するか）
 4. 退職時の Supabase セッション失効の手順（DB からは実行できない）
-5. 納品後フォローの節目を実際に動かしたくなるか。半年・1 年のまま何ヶ月か回して、
+5. お渡し後フォローの節目を実際に動かしたくなるか。半年・1 年のまま何ヶ月か回して、
    触られないなら定数に戻して `app_settings` ごと畳んでよい
 6. 流入経路を集計したくなるか。列ごと落として記録の自由記述に畳んだので、
    集計するなら固定リストの列を改めて作る

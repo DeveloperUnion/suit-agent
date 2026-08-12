@@ -10,11 +10,7 @@ import { supabase } from "@/lib/supabase/client";
 import { bump } from "@/lib/store/revision";
 import { getCurrentStaffId, getViewingStaffId } from "@/lib/auth/current-staff";
 import { ANNIVERSARY_LABEL } from "@/lib/constants/labels";
-import {
-  ANNIVERSARY_LEAD_DAYS,
-  postDeliveryMilestones,
-  type PostDeliveryMilestone,
-} from "@/lib/constants/approach";
+import { postDeliveryMilestones, type PostDeliveryMilestone } from "@/lib/constants/approach";
 import { type CustomerListItem } from "@/lib/data/customers";
 import { getAppSettings } from "@/lib/data/settings";
 import {
@@ -68,11 +64,14 @@ function approachIdFor(customerId: Uuid): Uuid {
 // ── 各トリガーの評価 ────────────────────────────────
 
 /**
- * 納品後フォロー。
+ * お渡し後フォロー。
  *
- * 既定では納品の半年後と 1 年後に声をかける（節目は app_settings で変えられる）。
- * 起点は最新の納品で、注文ごとには立てない
- * （新しく納品があれば、古い納品のフォローはもう意味を持たないため）。
+ * 既定ではお渡しの半年後と 1 年後に声をかける（節目は app_settings で変えられる）。
+ * 起点は最新のお渡しで、注文ごとには立てない
+ * （新しくお渡しがあれば、古いお渡しのフォローはもう意味を持たないため）。
+ *
+ * お渡し日が空の注文は納品日で代用する（v_customers）。お渡し日は顧客の都合で
+ * 決まるので発注書には無く、空を理由に一生フォローが立たないほうが害が大きい。
  *
  * 半年を逃したまま 1 年が来たら、出すのは 1 年のほうだけ。そのとき言うべきことは
  * 「1 年経ちました」であって「半年経ちました」ではないから。
@@ -96,7 +95,7 @@ function evaluatePostDelivery(
     return {
       type: "post_delivery",
       key: `post_delivery:${lastDeliveredOrderId}:${milestone.key}`,
-      reason: `${formatDateDot(lastDeliveredAt)}の納品から${milestone.label}が経ちました。着心地を伺う頃合いです。`,
+      reason: `${formatDateDot(lastDeliveredAt)}のお渡しから${milestone.label}が経ちました。着心地を伺う頃合いです。`,
       // 節目を過ぎたまま放置されているものほど前に出す。
       // ただし記念日を押しのけないよう、上限を設けて頭打ちにする
       weight: 20 + Math.min(10, Math.floor(overdue / 30)),
@@ -105,10 +104,14 @@ function evaluatePostDelivery(
   return null;
 }
 
-function evaluateAnniversary(anniversaries: AnniversaryInput[], now: Date): TriggerHit | null {
+function evaluateAnniversary(
+  anniversaries: AnniversaryInput[],
+  now: Date,
+  leadDays: number,
+): TriggerHit | null {
   const upcoming = anniversaries
     .map((a) => ({ ...a, until: daysUntilNextAnniversary(a.date, now) }))
-    .filter((a) => a.until <= ANNIVERSARY_LEAD_DAYS)
+    .filter((a) => a.until <= leadDays)
     .sort((a, b) => a.until - b.until)[0];
   if (!upcoming) return null;
 
@@ -138,7 +141,7 @@ export type ApproachFilter = {
 /**
  * 発火中のアプローチを顧客ごとに 1 件へ統合して返す。
  *
- * 1 日に出す件数の上限は設けていない。トリガーが記念日と納品後の 2 つだけなら
+ * 1 日に出す件数の上限は設けていない。トリガーが記念日とお渡し後の 2 つだけなら
  * リストが溢れることはなく、上限で隠すと「見えていない分がある」という
  * 不安のほうが残るため。
  */
@@ -197,7 +200,7 @@ export async function listApproaches(filter: ApproachFilter = {}): Promise<Appro
 
     const hits = [
       evaluatePostDelivery(customer, now, milestones),
-      evaluateAnniversary(row.anniversaries ?? [], now),
+      evaluateAnniversary(row.anniversaries ?? [], now, settings.anniversaryLeadDays),
     ].filter((hit): hit is TriggerHit => hit !== null && !resolved.has(hit.key));
 
     if (hits.length === 0) continue;

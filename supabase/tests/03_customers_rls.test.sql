@@ -10,7 +10,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(25);
+select plan(34);
 
 
 -- ── 道具 ────────────────────────────────────────────────
@@ -233,6 +233,96 @@ select results_eq(
   $$ select name, is_other_staff from app.find_similar_customers(p_name => '国枝') $$,
   $$ values ('国枝 誠'::text, true) $$,
   '★ 二重登録の防止では他人の担当顧客も見つかる（氏名だけ返る）'
+);
+
+-- 誰に確認すればよいか分からないと、結局その場で新規登録されてしまう
+select results_eq(
+  $$ select staff_name from app.find_similar_customers(p_name => '国枝') $$,
+  $$ values ('テストB'::text) $$,
+  '他人の担当でも、誰が担当しているかは分かる'
+);
+
+/*
+ * PostgREST が公開しているのは public だけ。app スキーマの関数は rpc() から
+ * 呼べず、この経路が無いあいだ二重登録の防止は一度も動いていなかった。
+ * ラッパが public に居ることと、越境が app 側と同じであることを確かめる。
+ */
+select has_function(
+  'public', 'find_similar_customers', array['text', 'text', 'text'],
+  'public にラッパがある（PostgREST から呼べる）'
+);
+
+select results_eq(
+  $$ select name, staff_name, is_other_staff
+       from public.find_similar_customers(p_name => '国枝') $$,
+  $$ values ('国枝 誠'::text, 'テストB'::text, true) $$,
+  'ラッパ経由でも app 側と同じものが返る'
+);
+
+select ok(
+  has_function_privilege('authenticated', 'public.find_similar_customers(text, text, text)', 'execute'),
+  'ログイン済みのスタッフはラッパを実行できる'
+);
+
+
+-- ── お渡し後フォローの起点 ──────────────────────────────
+--
+-- お渡し日は顧客の都合で決まるので、発注書を取り込んだ時点では空のことが多い。
+-- 空を理由にフォローが一生立たないほうが害が大きいため、納品日で代用する。
+
+select pg_temp.as_postgres();
+insert into public.orders (customer_id, order_number, ordered_at, arrived_at, delivered_at,
+                           purpose, taken_by_staff_id)
+values ('c1111111-1111-4111-8111-111111111111', 'T-001', '2026-01-01',
+        '2026-02-10', null, 'business', :'a_id');
+
+select is(
+  (select last_delivered_at from public.v_customers
+    where id = 'c1111111-1111-4111-8111-111111111111'),
+  '2026-02-10'::date,
+  '★ お渡し日が空なら納品日を起点にする'
+);
+
+-- お渡し日が入ればそちらが正。実際に着はじめた日のほうが近いため
+update public.orders set delivered_at = '2026-02-18'
+ where order_number = 'T-001';
+
+select is(
+  (select last_delivered_at from public.v_customers
+    where id = 'c1111111-1111-4111-8111-111111111111'),
+  '2026-02-18'::date,
+  'お渡し日が入っていればそちらを起点にする'
+);
+
+select is(
+  (select order_count from public.v_customers
+    where id = 'c1111111-1111-4111-8111-111111111111'),
+  1::bigint,
+  '注文件数を返す（同姓同名の見分けに使う）'
+);
+
+-- キャンセルは起点にも件数にもしない
+update public.orders set status = 'cancelled' where order_number = 'T-001';
+select is(
+  (select order_count from public.v_customers
+    where id = 'c1111111-1111-4111-8111-111111111111'),
+  0::bigint,
+  'キャンセルした注文は数えない'
+);
+
+/*
+ * 納品日は受注時点で「40 日後に届く予定」として入る。そのまま起点にすると、
+ * まだ何も受け取っていない顧客が「お渡しから -34 日」になって一覧に紛れ込む。
+ */
+update public.orders
+   set status = 'ordered', delivered_at = null, arrived_at = current_date + 30
+ where order_number = 'T-001';
+
+select is(
+  (select last_delivered_at from public.v_customers
+    where id = 'c1111111-1111-4111-8111-111111111111'),
+  null::date,
+  '★ まだ届いていない注文は起点にしない（未来の日付を数えない）'
 );
 
 

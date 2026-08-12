@@ -497,14 +497,14 @@ function buildAll(): Built {
 
     // 注文
     const orderCount = isTokieda ? 4 : thick ? int(3, 6) : minimal ? 0 : int(1, 3);
-    /** この顧客の最終納品が何日前か。納品後フォローの起点になる */
+    /** この顧客の最終お渡しが何日前か。お渡し後フォローの起点になる */
     let lastDeliveryDays: number | null = null;
     let lastDeliveredOrderId: string | null = null;
 
     /*
-     * 納品後フォローが立つ顧客を確実に混ぜる。
+     * お渡し後フォローが立つ顧客を確実に混ぜる。
      *
-     * 放っておくと最新の納品が直近に寄り、半年・1年の節目を過ぎた顧客が
+     * 放っておくと最新のお渡しが直近に寄り、半年・1年の節目を過ぎた顧客が
      * ほとんど生まれない。トリガーが立つかどうかが偶然になると、
      * 機能が壊れているのかデータがそうなのか見分けられなくなる。
      * 3人に1人は、注文そのものを節目の先で作る（後から日付をずらすと、
@@ -522,7 +522,7 @@ function buildAll(): Built {
        * 目標線との比較というグラフの目的が果たせない。
        *
        * フォロー対象の顧客は最新の注文を節目の先に置き、それより前の注文を
-       * さらに古い側へ並べる（新しい納品が残っていると、そちらが最終納品になる）。
+       * さらに古い側へ並べる（新しいお渡しが残っていると、そちらが最終お渡しになる）。
        */
       const recent = !followUpDue && o === 0 && rand() < 0.35;
       const orderedDays = followUpDue
@@ -532,7 +532,7 @@ function buildAll(): Built {
           : int(15, 430);
       const orderedAt = daysAgo(orderedDays);
       const orderedDate = new Date(`${orderedAt}T00:00:00`);
-      // 受注から納品までのリードタイム。引いて未来になるものは納品前として扱う
+      // 受注からお渡しまでのリードタイム。引いて未来になるものはお渡し前として扱う
       const deliveryDays = orderedDays - int(40, 52);
       const delivered = deliveryDays > 0;
       if (delivered && (lastDeliveryDays === null || deliveryDays < lastDeliveryDays)) {
@@ -547,24 +547,23 @@ function buildAll(): Built {
       const priceOf = (t: OrderItem["itemTypeId"]) =>
         t === "jacket" ? 95000 : t === "pants" ? 45000 : 30000;
 
-      // 紙の右上と同じ4欄。割増は仕様追加があったときだけ載る
-      const subtotalAmount = itemTypes.reduce((sum, t) => sum + priceOf(t), 0);
-      const surchargeAmount = rand() < 0.3 ? int(1, 6) * 5000 : 0;
-      const taxAmount = Math.floor((subtotalAmount + surchargeAmount) * 0.1);
+      // 売上は税込の1本。仕様追加が乗ることがあるので、たまに割増ぶんを足す
+      const base = itemTypes.reduce((sum, t) => sum + priceOf(t), 0);
+      const surcharge = rand() < 0.3 ? int(1, 6) * 5000 : 0;
+
+      // 納品（工場→店）の 1 週間ほど後に顧客へお渡しする
+      const arrivedAt = toIsoDate(addDays(orderedDate, 43));
 
       orders.push({
         id: orderId,
         customerId: id,
         orderNumber: `J1-${String(int(100, 999))}-${String(int(100, 999))}`,
         orderedAt,
-        dueDate: toIsoDate(addDays(orderedDate, 43)),
+        arrivedAt,
         deliveredAt: delivered ? daysAgo(deliveryDays) : undefined,
         status: delivered ? "delivered" : "in_production",
         purpose,
-        subtotalAmount,
-        surchargeAmount,
-        taxAmount,
-        totalAmount: subtotalAmount + surchargeAmount + taxAmount,
+        totalAmount: Math.floor((base + surcharge) * 1.1),
         // 生地は注文単位。紙が原反ＮＯ を 1 つしか持たない
         ...fabric,
         takenByStaffId: staffId,
@@ -592,7 +591,7 @@ function buildAll(): Built {
         customerId: id,
         triggerKey: `post_delivery:${lastDeliveredOrderId}:6m`,
         triggerType: "post_delivery",
-        reason: "納品から半年が経ちました。着心地を伺う頃合いです。",
+        reason: "お渡しから半年が経ちました。着心地を伺う頃合いです。",
         status: "skipped",
         resolvedAt: `${daysAgo(lastDeliveryDays - 180)}T10:15:00`,
       });

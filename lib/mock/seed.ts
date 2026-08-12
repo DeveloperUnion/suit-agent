@@ -2,6 +2,9 @@ import type {
   ApproachTask,
   Customer,
   CustomerAnniversary,
+  CustomerFact,
+  CustomerNgNote,
+  FactSource,
   MeasurementSheet,
   DemoDataset,
   Order,
@@ -21,7 +24,7 @@ import { addDays, daysAgo, toIsoDate, toIsoMonth } from "@/lib/utils/date";
  */
 
 /** 構造を変えたら上げる */
-export const SEED_VERSION = 18;
+export const SEED_VERSION = 19;
 
 /**
  * 決定的な擬似乱数。リセットのたびに同じデータが再現されるようにする
@@ -112,7 +115,6 @@ const COMPANIES: [string, string][] = [
 
 const JOB_TITLES = ["代表取締役", "取締役", "執行役員", "本部長", "部長", "次長", "課長", "マネージャー", "主任", ""];
 const DEPARTMENTS = ["営業本部", "経営企画部", "財務部", "人事部", "法務部", "開発本部", "管理部", ""];
-const CHANNELS = ["紹介", "Instagram", "路面店", "既存客再来", "Web検索", "イベント"];
 
 /**
  * 居住地の分布。首都圏を厚くしつつ、地方も1県あたり数名まとまるようにしている。
@@ -160,6 +162,8 @@ const SCENES = ["商談", "式典", "会食", "日常業務", "登壇", "冠婚�
 type Built = {
   customers: Customer[];
   anniversaries: CustomerAnniversary[];
+  facts: CustomerFact[];
+  ngNotes: CustomerNgNote[];
   sheets: MeasurementSheet[];
   orders: Order[];
   orderItems: OrderItem[];
@@ -266,6 +270,8 @@ function buildAll(): Built {
 
   const customers: Customer[] = [];
   const anniversaries: CustomerAnniversary[] = [];
+  const facts: CustomerFact[] = [];
+  const ngNotes: CustomerNgNote[] = [];
   const sheets: MeasurementSheet[] = [];
   const orders: Order[] = [];
   const orderItems: OrderItem[] = [];
@@ -294,19 +300,25 @@ function buildAll(): Built {
       ? undefined
       : RESIDENCES[residenceCursor++ % RESIDENCES.length];
 
-    // 最終接触日は意図的に散らす。カルテの「最終連絡」がいろいろな状態で見えるように
-    const bucket = i % 4;
-    let lastContactDays =
-      bucket === 0
-        ? int(2, 30)
-        : bucket === 1
-          ? int(31, 90)
-          : bucket === 2
-            ? int(95, 175)
-            : int(185, 320);
 
     // 顧客の担当。同じ顧客の採寸・受注・送信もこの人が行った想定にする
     const staffId = pick(STAFF).id;
+
+    // 人となり。移行後の姿を直接作る（もとは hobbies / preferences / tags の 3 列だった）。
+    // ラベルになる語だけをチップにし、ならないものは走り書きとして本文だけ持つ。
+    const colors = minimal ? [] : pickSome(["ネイビー", "チャコール", "グレー", "ブラウン"], int(1, 2));
+    const patterns = minimal ? [] : pickSome(["無地", "ストライプ", "チェック"], 1);
+    const silhouette = minimal ? undefined : pick(["クラシック", "ブリティッシュ", "スリム", "ソフト"]);
+    const scenes = minimal ? [] : pickSome(SCENES, int(1, 3));
+    const hobbies = minimal ? [] : pickSome(HOBBIES, int(1, 2));
+
+    // もとの tags は 3 種類が混ざっていた。事実はラベルへ、同意は列へ、
+    // 「紹介元」は意味を持っていなかったので捨てる。
+    const oldTags = minimal ? [] : pickSome(["紹介元", "式典多め", "出張多い", "写真OK", "夜間連絡可"], int(0, 2));
+
+    // 初回購入日は顧客の列としては持たない（表示されるだけだった）。
+    // 記念日としては意味があるので customer_anniversaries に残す。
+    const firstPurchase = minimal ? undefined : daysAgo(int(200, 1600));
 
     const customer: Customer = {
       id,
@@ -324,25 +336,38 @@ function buildAll(): Built {
       department: minimal ? undefined : pick(DEPARTMENTS) || undefined,
       jobTitle: minimal ? undefined : pick(JOB_TITLES) || undefined,
       industry: minimal ? undefined : industry,
-      preferences: minimal
-        ? undefined
-        : {
-            colors: pickSome(["ネイビー", "チャコール", "グレー", "ブラウン"], int(1, 2)),
-            patterns: pickSome(["無地", "ストライプ", "チェック"], 1),
-            silhouette: pick(["クラシック", "ブリティッシュ", "スリム", "ソフト"]),
-            scenes: pickSome(SCENES, int(1, 3)),
-          },
-      hobbies: minimal ? undefined : pickSome(HOBBIES, int(1, 2)).join("・"),
       familyInfo: minimal ? undefined : pick(["妻・長男（中学生）", "妻・長女（小学生）・次女", "独身", "妻のみ", "妻・長男・次男"]),
-      ngNotes: undefined,
+      photoConsent: oldTags.includes("写真OK"),
+      nightContactOk: oldTags.includes("夜間連絡可"),
       staffId,
-      firstVisitDate: minimal ? daysAgo(int(5, 60)) : daysAgo(int(200, 1600)),
-      acquisitionChannel: pick(CHANNELS),
-      lastContactedAt: daysAgo(lastContactDays),
-      tags: minimal ? undefined : pickSome(["紹介元", "式典多め", "出張多い", "写真OK", "夜間連絡可"], int(0, 2)),
-      memo: minimal ? undefined : undefined,
       createdAt: daysAgo(int(30, 1700)),
     };
+
+    const factsBefore = facts.length;
+    const own = (
+      body: string,
+      label?: { name: string; categoryKey: string },
+      source: FactSource = "migration",
+    ) => {
+      facts.push({
+        id: `fact-${id}-${facts.length}`,
+        customerId: id,
+        body,
+        source,
+        createdAt: customer.createdAt,
+        label: label ? { id: `label-${label.name}`, ...label } : undefined,
+      });
+    };
+
+    for (const v of hobbies) own(v, { name: v, categoryKey: "hobby" });
+    for (const v of colors) own(v, { name: v, categoryKey: "preference" });
+    for (const v of patterns) own(v, { name: v, categoryKey: "preference" });
+    if (silhouette) own(silhouette, { name: silhouette, categoryKey: "preference" });
+    for (const v of scenes) own(v, { name: v, categoryKey: "scene" });
+    for (const v of oldTags) {
+      if (v === "式典多め") own(v, { name: v, categoryKey: "scene" });
+      if (v === "出張多い") own(v, { name: v, categoryKey: "lifestyle" });
+    }
 
     if (isTokieda) {
       customer.name = "時枝 正";
@@ -353,23 +378,36 @@ function buildAll(): Built {
       customer.jobTitle = "部長";
       customer.industry = "総合商社";
       customer.embroideryName = "T.TOKIEDA";
-      customer.hobbies = "ゴルフ・ワイン";
       customer.familyInfo = "妻・長男（高校生）・長女（中学生）";
-      customer.ngNotes = "光沢の強い生地は好まない。前回ピークドラペルを提案して断られている。";
-      customer.preferences = {
-        colors: ["ネイビー", "チャコール"],
-        patterns: ["無地", "ストライプ"],
-        silhouette: "ブリティッシュ",
-        scenes: ["商談", "会食", "式典"],
-      };
-      customer.acquisitionChannel = "紹介";
-      customer.firstVisitDate = "2021-04-17";
       customer.staffId = "staff-1";
-      // トリガーの判定にも使うため、上書きした値に揃える
-      lastContactDays = 118;
-      customer.lastContactedAt = daysAgo(lastContactDays);
-      customer.tags = ["紹介元", "出張多い"];
-      customer.memo = "紹介経由の来店。ご子息の成人式スーツの相談を受けている（2027年予定）。";
+      customer.photoConsent = true;
+
+      // 自動生成ぶんを捨てて、壁打ちで見ていた内容に置き換える
+      facts.length = factsBefore;
+      for (const v of ["ゴルフ", "ワイン"]) own(v, { name: v, categoryKey: "hobby" });
+      for (const v of ["ネイビー", "チャコール"]) own(v, { name: v, categoryKey: "preference" });
+      for (const v of ["無地", "ストライプ"]) own(v, { name: v, categoryKey: "preference" });
+      own("ブリティッシュ", { name: "ブリティッシュ", categoryKey: "preference" });
+      for (const v of ["商談", "会食", "式典"]) own(v, { name: v, categoryKey: "scene" });
+      own("出張多い", { name: "出張多い", categoryKey: "lifestyle" });
+      // ラベルにならない話。これが「メモ」の行き先
+      own("高橋様のご紹介で来店。");
+      own("ご子息の成人式スーツの相談を受けている（2027年予定）。");
+
+      ngNotes.push(
+        {
+          id: `ng-${id}-1`,
+          customerId: id,
+          body: "光沢の強い生地は好まない。",
+          createdAt: customer.createdAt,
+        },
+        {
+          id: `ng-${id}-2`,
+          customerId: id,
+          body: "前回ピークドラペルを提案して断られている。",
+          createdAt: customer.createdAt,
+        },
+      );
     }
 
     customers.push(customer);
@@ -384,12 +422,12 @@ function buildAll(): Built {
         label: "誕生日",
       });
     }
-    if (customer.firstVisitDate && !minimal) {
+    if (firstPurchase) {
       anniversaries.push({
         id: `anv-${id}-f`,
         customerId: id,
         type: "first_purchase",
-        date: customer.firstVisitDate,
+        date: isTokieda ? "2021-04-17" : firstPurchase,
         label: "初回購入記念日",
       });
     }
@@ -569,7 +607,7 @@ function buildAll(): Built {
     }
   }
 
-  return { customers, anniversaries, sheets, orders, orderItems, approachTasks };
+  return { customers, anniversaries, facts, ngNotes, sheets, orders, orderItems, approachTasks };
 }
 
 /**
@@ -628,6 +666,8 @@ export function createSeedDatabase(): DemoDataset {
     staff: STAFF,
     customers: built.customers,
     anniversaries: built.anniversaries,
+    facts: built.facts,
+    ngNotes: built.ngNotes,
     measurementSheets: built.sheets,
     orders: built.orders,
     orderItems: built.orderItems,

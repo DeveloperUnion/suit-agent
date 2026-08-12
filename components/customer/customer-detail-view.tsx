@@ -21,7 +21,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getCustomer } from "@/lib/data/customers";
 import { getSilhouetteState } from "@/lib/data/measurements";
 import { useQuery } from "@/lib/hooks/use-query";
-import { formatDateDot } from "@/lib/utils/date";
 
 const TABS = [
   { value: "profile", label: "基本情報" },
@@ -135,17 +134,12 @@ export function CustomerDetailView({
 
         <div className="flex flex-wrap items-end justify-between gap-4 border-t border-border pt-4">
           {/*
-            納品からの日数と最終連絡日は別物。並べて置き、
-            大きい数字のほうが「連絡していない日数」だと読み違えられないようにする。
+            出すのは納品からの日数だけ。「最終連絡」は持たないことにした —
+            実際の連絡は個人の連絡手段で行われるので、システムが拾えるのは
+            一部でしかなく、それを最終連絡として出すと読み手を誤らせる。
           */}
           <div className="flex flex-wrap items-end gap-5">
             <DaysSinceDelivery days={customer.daysSinceDelivery} size="lg" />
-            <span className="flex flex-col gap-0.5 pb-1">
-              <span className="field-label">最終連絡</span>
-              <span className="tnum font-mono text-sm text-muted-foreground">
-                {formatDateDot(customer.lastContactedAt)}
-              </span>
-            </span>
           </div>
 
           {/*

@@ -40,17 +40,6 @@ function lit(v: unknown): string {
   return `'${String(v).replace(/'/g, "''")}'`;
 }
 
-/** text[] リテラル */
-function arr(v: string[] | undefined): string {
-  if (!v?.length) return "null";
-  return `array[${v.map(lit).join(", ")}]::text[]`;
-}
-
-function jsonb(v: unknown): string {
-  if (v === undefined || v === null) return "null";
-  return `${lit(JSON.stringify(v))}::jsonb`;
-}
-
 const db = createSeedDatabase();
 
 /**
@@ -85,8 +74,8 @@ push(`insert into public.customers (`);
 push(`  id, name, name_kana, birth_date, gender, phone, email, address,`);
 push(`  residence_prefecture, embroidery_name,`);
 push(`  company_name, department, job_title, industry,`);
-push(`  family_info, memo, hobbies, preferences, tags, ng_notes,`);
-push(`  staff_id, first_visit_date, acquisition_channel, last_contacted_at, created_at`);
+push(`  family_info, photo_consent, night_contact_ok,`);
+push(`  staff_id, created_at`);
 push(`) values`);
 push(
   db.customers
@@ -96,10 +85,8 @@ push(
         lit(c.phone), lit(c.email), lit(c.address), lit(c.residencePrefecture),
         lit(c.embroideryName),
         lit(c.companyName), lit(c.department), lit(c.jobTitle), lit(c.industry),
-        lit(c.familyInfo), lit(c.memo), lit(c.hobbies), jsonb(c.preferences),
-        arr(c.tags), lit(c.ngNotes),
-        lit(staffId(c.staffId)), lit(c.firstVisitDate), lit(c.acquisitionChannel),
-        lit(c.lastContactedAt), lit(c.createdAt),
+        lit(c.familyInfo), lit(c.photoConsent), lit(c.nightContactOk),
+        lit(staffId(c.staffId)), lit(c.createdAt),
       ].join(", ")})`,
     )
     .join(",\n"),
@@ -107,16 +94,67 @@ push(
 push(`on conflict (id) do nothing;`);
 push(``);
 
-// referrer_id は自己参照なので、全顧客を入れてから当てる
-const withReferrer = db.customers.filter((c) => c.referrerId);
-if (withReferrer.length > 0) {
-  push(`-- 紹介者は自己参照なので、全件を入れてから当てる`);
-  for (const c of withReferrer) {
-    push(
-      `update public.customers set referrer_id = ${lit(toUuid(c.referrerId!))} ` +
-        `where id = ${lit(toUuid(c.id))};`,
-    );
-  }
+// ── 人となりと記録 ──
+//
+// ラベルは店舗で共通なので、全顧客ぶんを畳んでから 1 回で入れる。
+// id はラベル名から決まる（同じ語なら常に同じ uuid）ので、
+// customer_facts 側は名前を引き直さずに参照できる。
+const labels = new Map<string, { name: string; categoryKey: string }>();
+for (const f of db.facts) {
+  if (f.label) labels.set(f.label.name, { name: f.label.name, categoryKey: f.label.categoryKey });
+}
+if (labels.size > 0) {
+  push(`insert into public.fact_labels (id, name, category_key) values`);
+  push(
+    [...labels.values()]
+      .map((l) => `  (${lit(toUuid(`label-${l.name}`))}, ${lit(l.name)}, ${lit(l.categoryKey)})`)
+      .join(",\n"),
+  );
+  push(`on conflict (id) do nothing;`);
+  push(``);
+}
+
+if (db.facts.length > 0) {
+  push(`-- label_id が null の行は「まだラベルの付いていない走り書き」。`);
+  push(`-- 移行元が自由記述だったものはこちらへ落ちる。`);
+  push(`insert into public.customer_facts (id, customer_id, label_id, body, source, created_by_staff_id, created_at) values`);
+  push(
+    db.facts
+      .map((f) => {
+        const owner = db.customers.find((c) => c.id === f.customerId)!;
+        return `  (${[
+          lit(toUuid(f.id)),
+          lit(toUuid(f.customerId)),
+          f.label ? lit(toUuid(`label-${f.label.name}`)) : "null",
+          lit(f.body),
+          lit(f.source),
+          lit(staffId(owner.staffId)),
+          lit(f.createdAt),
+        ].join(", ")})`;
+      })
+      .join(",\n"),
+  );
+  push(`on conflict (id) do nothing;`);
+  push(``);
+}
+
+if (db.ngNotes.length > 0) {
+  push(`insert into public.customer_ng_notes (id, customer_id, body, created_by_staff_id, created_at) values`);
+  push(
+    db.ngNotes
+      .map((n) => {
+        const owner = db.customers.find((c) => c.id === n.customerId)!;
+        return `  (${[
+          lit(toUuid(n.id)),
+          lit(toUuid(n.customerId)),
+          lit(n.body),
+          lit(staffId(owner.staffId)),
+          lit(n.createdAt),
+        ].join(", ")})`;
+      })
+      .join(",\n"),
+  );
+  push(`on conflict (id) do nothing;`);
   push(``);
 }
 
@@ -283,6 +321,8 @@ writeFileSync(OUT, lines.join("\n"));
 console.log(
   `supabase/dev-seed.sql を生成しました:\n` +
     `  顧客 ${db.customers.length} / 記念日 ${db.anniversaries.length}\n` +
+    `  人となり ${db.facts.length}（うちラベル無し ${db.facts.filter((f) => !f.label).length}）` +
+    ` / NG ${db.ngNotes.length}\n` +
     `  注文 ${db.orders.length} / 明細 ${db.orderItems.length} / 採寸票 ${db.measurementSheets.length}\n` +
     `  アプローチ解決 ${db.approachTasks.length} / 売上目標 ${db.revenueTargets.length}`,
 );

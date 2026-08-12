@@ -252,8 +252,6 @@ export async function commitOrderSheetImport(
     measurementSheetId: sheetId,
     fabric: plan.fabric,
     amounts: plan.amounts,
-    // 過去日付の紙を取り込んだだけで「今日連絡した」ことにはしない
-    touchLastContact: false,
     items: plan.sections.map((section) => ({ itemTypeId: section.itemTypeId })),
   });
 

@@ -128,7 +128,6 @@ export function CustomerCreateDialog({
       ...Object.fromEntries(
         Object.entries(extra).filter(([, v]) => v !== undefined && v.trim() !== ""),
       ),
-      firstVisitDate: new Date().toISOString().slice(0, 10),
     });
     setSaving(false);
     reset();

@@ -94,28 +94,28 @@ select is(
 -- 「エラーが出ないから通った」と読み違えないよう、値そのものを確かめる。
 
 select pg_temp.login_as(:'admin_uid');
-update public.customers set memo = '管理者が書き換えた' where id = 'c1111111-1111-4111-8111-111111111111';
+update public.customers set family_info = '管理者が書き換えた' where id = 'c1111111-1111-4111-8111-111111111111';
 select pg_temp.as_postgres();
 select is(
-  (select memo from public.customers where id = 'c1111111-1111-4111-8111-111111111111'),
+  (select family_info from public.customers where id = 'c1111111-1111-4111-8111-111111111111'),
   null,
   '★ 管理者でも他人の担当顧客は編集できない（閲覧と編集の非対称性）'
 );
 
 select pg_temp.login_as(:'b_uid');
-update public.customers set memo = 'B が書き換えた' where id = 'c1111111-1111-4111-8111-111111111111';
+update public.customers set family_info = 'B が書き換えた' where id = 'c1111111-1111-4111-8111-111111111111';
 select pg_temp.as_postgres();
 select is(
-  (select memo from public.customers where id = 'c1111111-1111-4111-8111-111111111111'),
+  (select family_info from public.customers where id = 'c1111111-1111-4111-8111-111111111111'),
   null,
   '一般スタッフも他人の担当顧客は編集できない'
 );
 
 select pg_temp.login_as(:'a_uid');
-update public.customers set memo = 'A が書いた' where id = 'c1111111-1111-4111-8111-111111111111';
+update public.customers set family_info = 'A が書いた' where id = 'c1111111-1111-4111-8111-111111111111';
 select pg_temp.as_postgres();
 select is(
-  (select memo from public.customers where id = 'c1111111-1111-4111-8111-111111111111'),
+  (select family_info from public.customers where id = 'c1111111-1111-4111-8111-111111111111'),
   'A が書いた',
   '自分の担当顧客は編集できる'
 );

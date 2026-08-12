@@ -1,16 +1,16 @@
 "use client";
 
 import { useCallback } from "react";
-import { AlertTriangle, Plus, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { EditableSection, FormField } from "@/components/common/editable-section";
 import { EmptyState, Field } from "@/components/common/field";
-import { Badge } from "@/components/ui/badge";
+import { HandlingPanel } from "@/components/customer/handling-panel";
+import { PersonalityPanel, RecordsPanel } from "@/components/customer/personality-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { ANNIVERSARY_LABEL } from "@/lib/constants/labels";
 import { INDUSTRIES } from "@/lib/constants/industries";
 import { PREFECTURES } from "@/lib/constants/prefectures";
@@ -34,14 +34,6 @@ const OTHER_INDUSTRY = "__other__";
 
 const isKnownIndustry = (value: string) => (INDUSTRIES as readonly string[]).includes(value);
 
-/** カンマ区切りの文字列と配列を行き来する。タグや好みの色に使う */
-const toList = (value: string) =>
-  value
-    .split(/[,、\s]+/)
-    .map((v) => v.trim())
-    .filter(Boolean);
-const fromList = (value?: string[]) => (value ?? []).join("、");
-
 export function ProfileTab({ customer }: { customer: CustomerListItem }) {
   const loader = useCallback(() => listAnniversaries(customer.id), [customer.id]);
   const { data: anniversaries } = useQuery(loader, [customer.id]);
@@ -53,27 +45,24 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
 
   return (
     <div className="flex flex-col gap-8">
-      {/* NG事項は事故防止の情報なので、他の項目に埋もれさせない */}
-      {customer.ngNotes && (
-        <div className="flex items-start gap-2.5 rounded-md border border-thread/30 bg-thread/5 p-3.5">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-thread" />
-          <div className="flex flex-col gap-0.5">
-            <span className="field-label text-thread">NG事項</span>
-            <p className="text-sm leading-relaxed">{customer.ngNotes}</p>
-          </div>
-        </div>
-      )}
+      {/* 取りこぼしが許されない情報は 1 箇所にまとめ、他の項目に埋もれさせない */}
+      <HandlingPanel
+        customerId={customer.id}
+        photoConsent={customer.photoConsent}
+        nightContactOk={customer.nightContactOk}
+      />
 
       <div className="grid gap-x-8 gap-y-6 lg:grid-cols-2">
         {/* ── 連絡先 ── */}
         <EditableSection
-          title="連絡先"
+          title="基本情報"
           initial={() => ({
             phone: customer.phone ?? "",
             email: customer.email ?? "",
             birthDate: customer.birthDate ?? "",
             residencePrefecture: customer.residencePrefecture ?? NO_PREFECTURE,
             address: customer.address ?? "",
+            embroideryName: customer.embroideryName ?? "",
           })}
           onSave={(v) =>
             save(
@@ -84,8 +73,9 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
                 residencePrefecture:
                   v.residencePrefecture === NO_PREFECTURE ? undefined : v.residencePrefecture,
                 address: v.address || undefined,
+                embroideryName: v.embroideryName || undefined,
               },
-              "連絡先",
+              "基本情報",
             )
           }
           view={
@@ -95,6 +85,8 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
               <Field label="生年月日" value={formatDateLong(customer.birthDate)} />
               <Field label="居住地" value={customer.residencePrefecture} />
               <Field label="住所" value={customer.address} className="sm:col-span-2" />
+              {/* 発注書に毎回入れる文字。人に紐づくので票ではなくここに置く */}
+              <Field label="ネーム刺繍" value={customer.embroideryName} />
             </div>
           }
           edit={(v, set) => (
@@ -146,6 +138,14 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
                 <Input
                   value={v.address}
                   onChange={(e) => set({ address: e.target.value })}
+                  className={INPUT}
+                />
+              </FormField>
+              <FormField label="ネーム刺繍">
+                <Input
+                  value={v.embroideryName}
+                  onChange={(e) => set({ embroideryName: e.target.value })}
+                  placeholder="T.TOKIEDA"
                   className={INPUT}
                 />
               </FormField>
@@ -246,124 +246,31 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
           )}
         />
 
-        {/* ── パーソナル ── */}
+        {/* ── 人となり ── */}
+        {/*
+          チップは表示だけ。「＋」で足せるが、消す口は下の「記録」に 1 つだけ置いてある。
+          同じ 1 行に入り口を 2 つ作ると、どちらで消したのかが分からなくなる。
+        */}
         <EditableSection
-          title="パーソナル"
-          initial={() => ({
-            hobbies: customer.hobbies ?? "",
-            colors: fromList(customer.preferences?.colors),
-            patterns: fromList(customer.preferences?.patterns),
-            silhouette: customer.preferences?.silhouette ?? "",
-            scenes: fromList(customer.preferences?.scenes),
-            familyInfo: customer.familyInfo ?? "",
-            embroideryName: customer.embroideryName ?? "",
-          })}
-          onSave={(v) =>
-            save(
-              {
-                hobbies: v.hobbies || undefined,
-                familyInfo: v.familyInfo || undefined,
-                embroideryName: v.embroideryName || undefined,
-                preferences: {
-                  colors: toList(v.colors),
-                  patterns: toList(v.patterns),
-                  silhouette: v.silhouette || undefined,
-                  scenes: toList(v.scenes),
-                },
-              },
-              "パーソナル",
-            )
-          }
+          title="人となり"
+          className="lg:col-span-2"
+          initial={() => ({ familyInfo: customer.familyInfo ?? "" })}
+          onSave={(v) => save({ familyInfo: v.familyInfo || undefined }, "家族構成")}
           view={
-            <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
-              <Field label="趣味・嗜好" value={customer.hobbies} className="sm:col-span-2" />
-              <Field
-                label="好みの色"
-                value={
-                  customer.preferences?.colors?.length ? (
-                    <ChipList items={customer.preferences.colors} />
-                  ) : undefined
-                }
-              />
-              <Field
-                label="好みの柄"
-                value={
-                  customer.preferences?.patterns?.length ? (
-                    <ChipList items={customer.preferences.patterns} />
-                  ) : undefined
-                }
-              />
-              <Field label="好みのシルエット" value={customer.preferences?.silhouette} />
-              <Field
-                label="着用シーン"
-                value={
-                  customer.preferences?.scenes?.length ? (
-                    <ChipList items={customer.preferences.scenes} />
-                  ) : undefined
-                }
-              />
-              <Field label="家族構成" value={customer.familyInfo} className="sm:col-span-2" />
-              {/* 発注書に毎回入れる文字。人に紐づくので票ではなくここに置く */}
-              <Field label="ネーム刺繍" value={customer.embroideryName} />
+            <div className="flex flex-col gap-4 pt-1">
+              <PersonalityPanel customerId={customer.id} />
+              {/* 分解しない。「長男がいる人」を全員引く場面が無いうえ、年齢は時間で古びる */}
+              <Field label="家族構成" value={customer.familyInfo} />
             </div>
           }
           edit={(v, set) => (
-            <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
-              <FormField label="趣味・嗜好" className="sm:col-span-2">
-                <Input
-                  value={v.hobbies}
-                  onChange={(e) => set({ hobbies: e.target.value })}
-                  placeholder="ゴルフ・ワイン"
-                  className={INPUT}
-                />
-              </FormField>
-              <FormField label="好みの色（読点区切り）">
-                <Input
-                  value={v.colors}
-                  onChange={(e) => set({ colors: e.target.value })}
-                  placeholder="ネイビー、チャコール"
-                  className={INPUT}
-                />
-              </FormField>
-              <FormField label="好みの柄（読点区切り）">
-                <Input
-                  value={v.patterns}
-                  onChange={(e) => set({ patterns: e.target.value })}
-                  placeholder="無地、ストライプ"
-                  className={INPUT}
-                />
-              </FormField>
-              <FormField label="好みのシルエット">
-                <Input
-                  value={v.silhouette}
-                  onChange={(e) => set({ silhouette: e.target.value })}
-                  className={INPUT}
-                />
-              </FormField>
-              <FormField label="着用シーン（読点区切り）">
-                <Input
-                  value={v.scenes}
-                  onChange={(e) => set({ scenes: e.target.value })}
-                  placeholder="商談、会食"
-                  className={INPUT}
-                />
-              </FormField>
-              <FormField label="家族構成" className="sm:col-span-2">
-                <Input
-                  value={v.familyInfo}
-                  onChange={(e) => set({ familyInfo: e.target.value })}
-                  className={INPUT}
-                />
-              </FormField>
-              <FormField label="ネーム刺繍">
-                <Input
-                  value={v.embroideryName}
-                  onChange={(e) => set({ embroideryName: e.target.value })}
-                  placeholder="T.TOKIEDA"
-                  className={INPUT}
-                />
-              </FormField>
-            </div>
+            <FormField label="家族構成">
+              <Input
+                value={v.familyInfo}
+                onChange={(e) => set({ familyInfo: e.target.value })}
+                className={INPUT}
+              />
+            </FormField>
           )}
         />
 
@@ -483,114 +390,31 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
           )}
         />
 
-        {/* ── 営業管理 ── */}
-        <EditableSection
-          title="営業管理"
-          initial={() => ({
-            firstVisitDate: customer.firstVisitDate ?? "",
-            acquisitionChannel: customer.acquisitionChannel ?? "",
-            tags: fromList(customer.tags),
-            ngNotes: customer.ngNotes ?? "",
-          })}
-          onSave={(v) =>
-            save(
-              {
-                firstVisitDate: v.firstVisitDate || undefined,
-                acquisitionChannel: v.acquisitionChannel || undefined,
-                tags: toList(v.tags),
-                ngNotes: v.ngNotes || undefined,
-              },
-              "営業管理",
-            )
-          }
-          view={
-            <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
-              <Field label="初回来店日" value={formatDateLong(customer.firstVisitDate)} />
-              <Field label="流入経路" value={customer.acquisitionChannel} />
-              <Field
-                label="タグ"
-                value={customer.tags?.length ? <ChipList items={customer.tags} /> : undefined}
-              />
-              <Field label="NG事項" value={customer.ngNotes} className="sm:col-span-2" />
-            </div>
-          }
-          edit={(v, set) => (
-            <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
-              <FormField label="初回来店日">
-                <Input
-                  type="date"
-                  value={v.firstVisitDate}
-                  onChange={(e) => set({ firstVisitDate: e.target.value })}
-                  className={`${INPUT} font-mono`}
-                />
-              </FormField>
-              <FormField label="流入経路">
-                <Input
-                  value={v.acquisitionChannel}
-                  onChange={(e) => set({ acquisitionChannel: e.target.value })}
-                  className={INPUT}
-                />
-              </FormField>
-              <FormField label="タグ（読点区切り）">
-                <Input
-                  value={v.tags}
-                  onChange={(e) => set({ tags: e.target.value })}
-                  className={INPUT}
-                />
-              </FormField>
-              <FormField label="NG事項" className="sm:col-span-2">
-                <Textarea
-                  value={v.ngNotes}
-                  onChange={(e) => set({ ngNotes: e.target.value })}
-                  rows={2}
-                  placeholder="断られた提案、避けるべき話題など"
-                  className="resize-none bg-card"
-                />
-              </FormField>
-            </div>
-          )}
-        />
+        {/*
+          記録 — ラベルの付いていない走り書きも、付いている行もここに並ぶ。
+          もとは「メモ」の textarea で、上書きすると前の内容が消えていた。
+          追記式にしたので日付と記録者が残る。
 
-        {/* ── メモ ── */}
-        <EditableSection
-          title="メモ"
-          initial={() => ({ memo: customer.memo ?? "" })}
-          onSave={(v) => save({ memo: v.memo || undefined }, "メモ")}
-          view={
-            customer.memo ? (
-              <p className="whitespace-pre-wrap py-2 text-sm leading-relaxed">{customer.memo}</p>
-            ) : (
-              <p className="py-3 text-sm text-muted-foreground">記載なし</p>
-            )
-          }
-          edit={(v, set) => (
-            <Textarea
-              value={v.memo}
-              onChange={(e) => set({ memo: e.target.value })}
-              rows={4}
-              className="resize-none bg-card"
-            />
-          )}
-        />
+          営業管理（初回来店日・流入経路・タグ）は畳んだ。3 つとも表示専用で、
+          集計にもトリガーにも出てこなかった。紹介は「高橋様のご紹介」と
+          ここへ書けば、確定検索の全文一致で引ける。
+        */}
+        <section className="flex flex-col gap-1 lg:col-span-2">
+          <div className="flex items-center gap-2 border-b border-border pb-1.5">
+            <span className="h-3 w-0.5 shrink-0 bg-brand" />
+            <h3 className="flex-1 font-heading text-sm font-medium tracking-wide">記録</h3>
+          </div>
+          <div className="pt-2">
+            <RecordsPanel customerId={customer.id} />
+          </div>
+        </section>
       </div>
 
-      {!customer.companyName && !customer.hobbies && (
+      {!customer.companyName && !customer.familyInfo && (
         <EmptyState>
           この顧客はまだ氏名と連絡先しか登録されていません。各セクションの「編集」から、聞けたことを少しずつ足していけます。
         </EmptyState>
       )}
     </div>
-  );
-}
-
-function ChipList({ items }: { items: string[] }) {
-  return (
-    <span className="flex flex-wrap gap-1">
-      {items.map((item) => (
-        <Badge key={item} variant="secondary" className="font-normal">
-          {item}
-        </Badge>
-      ))}
-    </span>
   );
 }

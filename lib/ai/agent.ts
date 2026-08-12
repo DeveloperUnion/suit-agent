@@ -1,11 +1,10 @@
 import type { AgentAction, Uuid } from "@/lib/types";
-import { getCustomer } from "@/lib/data/customers";
 import { simulateLatency, type ExtractionMeta } from "@/lib/ai/extraction";
 import {
+  customerRef,
   findCustomersByName,
-  planHobbyMerge,
-  searchByHobby,
-  toCustomerRef,
+  planFactAdd,
+  searchByLabel,
 } from "@/lib/ai/agent-tools";
 
 /**
@@ -112,16 +111,16 @@ export async function interpret(
         reply: "どんな趣味の方をお探しでしょうか。「ゴルフが趣味な人」のように教えてください。",
       };
     }
-    const customers = await searchByHobby(keyword);
+    const customers = await searchByLabel(keyword);
     if (customers.length === 0) {
       return {
         ...meta,
-        reply: `「${keyword}」が趣味の方は見つかりませんでした。まだカルテに残っていないかもしれません。`,
+        reply: `「${keyword}」に当たる方は見つかりませんでした。まだカルテに残っていないかもしれません。`,
       };
     }
     return {
       ...meta,
-      reply: `「${keyword}」が趣味の方は${customers.length}名です。`,
+      reply: `「${keyword}」に当たる方は${customers.length}名です。`,
       action: { kind: "search_result", keyword, customers },
     };
   }
@@ -149,14 +148,20 @@ export async function interpret(
         return {
           ...meta,
           reply: `「${name}」さんが${candidates.length}名いらっしゃいます。どなたでしょうか。`,
-          action: { kind: "ask_customer", keyword: name, candidates, pendingHobbies: hobbies },
+          action: {
+            kind: "ask_customer",
+            keyword: name,
+            candidates,
+            pendingLabels: hobbies,
+            body: text,
+          },
         };
       }
-      return { ...meta, ...(await proposeHobby(candidates[0].id, hobbies)) };
+      return { ...meta, ...(await proposeFact(candidates[0].id, hobbies, text)) };
     }
 
     if (ctx.customerId) {
-      return { ...meta, ...(await proposeHobby(ctx.customerId, hobbies)) };
+      return { ...meta, ...(await proposeFact(ctx.customerId, hobbies, text)) };
     }
 
     return {
@@ -172,29 +177,36 @@ export async function interpret(
   };
 }
 
-/** 追記の提案を組み立てる。ここでは書き込まない */
-async function proposeHobby(
+/**
+ * 追記の提案を組み立てる。ここでは書き込まない。
+ *
+ * 拾えるのが「趣味らしい」という言い回しだけなので、新しい語は hobby として
+ * 作る。会話を LLM に替える回で、分類もモデルに決めさせる。
+ */
+export async function proposeFact(
   customerId: Uuid,
-  hobbies: string[],
+  labelNames: string[],
+  body: string,
 ): Promise<{ reply: string; action?: AgentAction }> {
-  const customer = await getCustomer(customerId);
-  if (!customer) {
+  const ref = await customerRef(customerId);
+  if (!ref) {
     return { reply: "その顧客のカルテを開けませんでした。担当が変わっているかもしれません。" };
   }
-  const merge = planHobbyMerge(customer.hobbies, hobbies);
-  if (merge.added.length === 0) {
+  const plan = await planFactAdd(customerId, labelNames);
+  if (plan.labelNames.length === 0) {
     return {
-      reply: `${nameOf(customer.name)}の趣味には、すでに${hobbies.join("・")}が入っています。`,
+      reply: `${nameOf(ref.name)}には、すでに${labelNames.join("・")}が入っています。`,
     };
   }
   return {
-    reply: `${nameOf(customer.name)}の趣味に${merge.added.join("・")}を足します。`,
+    reply: `${nameOf(ref.name)}の人となりに${plan.labelNames.join("・")}を足します。`,
     action: {
-      kind: "add_hobby",
-      customer: toCustomerRef(customer),
-      before: merge.before,
-      after: merge.after,
-      added: merge.added,
+      kind: "add_fact",
+      customer: ref,
+      labelNames: plan.labelNames,
+      newLabelNames: plan.newLabelNames,
+      categoryKey: "hobby",
+      body,
     },
   };
 }

@@ -46,10 +46,9 @@ const CUSTOMER_COLUMNS = `
   residencePrefecture:residence_prefecture,
   embroideryName:embroidery_name,
   companyName:company_name, department, jobTitle:job_title, industry,
-  familyInfo:family_info, memo, hobbies, preferences, tags, ngNotes:ng_notes,
-  staffId:staff_id, firstVisitDate:first_visit_date,
-  acquisitionChannel:acquisition_channel, referrerId:referrer_id,
-  lastContactedAt:last_contacted_at, createdAt:created_at
+  familyInfo:family_info,
+  photoConsent:photo_consent, nightContactOk:night_contact_ok,
+  staffId:staff_id, createdAt:created_at
 `;
 
 const LIST_COLUMNS = `
@@ -370,17 +369,10 @@ function toRow(patch: Partial<Customer>): Record<string, unknown> {
     department: "department",
     jobTitle: "job_title",
     industry: "industry",
-    preferences: "preferences",
-    hobbies: "hobbies",
     familyInfo: "family_info",
-    ngNotes: "ng_notes",
+    photoConsent: "photo_consent",
+    nightContactOk: "night_contact_ok",
     staffId: "staff_id",
-    firstVisitDate: "first_visit_date",
-    acquisitionChannel: "acquisition_channel",
-    referrerId: "referrer_id",
-    lastContactedAt: "last_contacted_at",
-    tags: "tags",
-    memo: "memo",
     createdAt: "created_at",
   };
 

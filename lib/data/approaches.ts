@@ -150,7 +150,6 @@ type ApproachInputRow = {
   nameKana: string;
   companyName: string | null;
   staffId: Uuid;
-  lastContactedAt: IsoDate | null;
   lastDeliveredAt: IsoDate | null;
   lastDeliveredOrderId: Uuid | null;
   daysSinceDelivery: number | null;
@@ -165,7 +164,7 @@ export async function listApproaches(filter: ApproachFilter = {}): Promise<Appro
   // localStorage では無害だったが DB では 300 クエリになる。
   let q = supabase().from("v_approach_inputs").select(`
     customerId:customer_id, name, nameKana:name_kana, companyName:company_name,
-    staffId:staff_id, lastContactedAt:last_contacted_at,
+    staffId:staff_id,
     lastDeliveredAt:last_delivered_at, lastDeliveredOrderId:last_delivered_order_id,
     daysSinceDelivery:days_since_delivery, anniversaries
   `);
@@ -192,7 +191,6 @@ export async function listApproaches(filter: ApproachFilter = {}): Promise<Appro
       ...row,
       id: row.customerId,
       companyName: row.companyName ?? undefined,
-      lastContactedAt: row.lastContactedAt ?? undefined,
       lastDeliveredAt: row.lastDeliveredAt ?? undefined,
       lastDeliveredOrderId: row.lastDeliveredOrderId ?? undefined,
     } as unknown as CustomerListItem;
@@ -263,14 +261,10 @@ export async function resolveApproach(
     );
   if (error) throw error;
 
-  // 「連絡した」のときだけ最終接触日を動かす。スキップは連絡していない。
-  if (status === "done") {
-    const { error: touchError } = await supabase()
-      .from("customers")
-      .update({ last_contacted_at: toIsoDate(new Date()) })
-      .eq("id", customerId);
-    if (touchError) throw touchError;
-  }
+  // 顧客行には何も書き戻さない。最終接触日は持たないことにした
+  // （実際の連絡は個人の連絡手段で行われるので、ここで拾える分は一部でしかなく、
+  // それを「最終連絡」として出すと昨日連絡した相手が半年前に見える）。
+  // 「対応した／見送った」の記録は上の approach_resolutions が持っている。
   bump();
 }
 

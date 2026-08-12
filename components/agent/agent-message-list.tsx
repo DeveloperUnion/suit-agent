@@ -24,7 +24,7 @@ export function AgentMessageList({
   /** キーボードで容器が縮んだ瞬間にも最新へ寄せ直すため、依存として受け取る */
   keyboardHeight: number;
   onApply: (message: AgentMessage) => Promise<void> | void;
-  onPickCustomer: (customer: AgentCustomerRef, hobbies: string[]) => void;
+  onPickCustomer: (customer: AgentCustomerRef, labels: string[], body: string) => void;
   onNavigate: (href: string) => void;
   onPickExample: (text: string) => void;
 }) {

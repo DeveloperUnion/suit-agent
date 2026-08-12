@@ -18,7 +18,7 @@ Homebrew の PostgreSQL では代用できない — **`security_invoker` は PG
 open -a Docker            # 起動を待つ
 supabase start            # 初回はイメージの取得で数分
 npm run db:reset          # 全 migration → masters → seed → dev-seed
-npm run db:test           # pgTAP 71 件
+npm run db:test           # pgTAP 102 件
 ```
 
 `db:reset` を毎回通すのが要点。「途中から足した migration」ではなく
@@ -56,9 +56,9 @@ hosokawa@example.com / shirahige@example.com / nozaki@example.com / admin@kenset
 ```
 supabase/
   migrations/*.sql     実行可能な正。手で書く（db diff は関数・ポリシーを取りこぼす）
-  masters.sql          生成物。採寸マスタ。本番にも要る（後述）
+  masters.sql          生成物。採寸マスタと人となりの見出し。本番にも要る（後述）
   dev-seed.sql         生成物。モックの 50 顧客。ローカル専用
-  seed.sql             管理者 3 名と auth.users。ローカル専用
+  seed.sql             管理者 4 名と auth.users。ローカル専用
   tests/*.sql          pgTAP。db:test で回る
   config.toml          Storage / Realtime は無効（使わないと決めた）
 scripts/
@@ -79,7 +79,7 @@ psql "$DATABASE_URL" -f supabase/masters.sql   # 本番。冪等なので何度�
 npm run db:masters:check                    # CI。生成し直して差分ゼロを検査
 ```
 
-正は `lib/constants/measurement-fields.ts` と `adjustments.ts`。
+正は `lib/constants/` の `measurement-fields.ts` / `adjustments.ts` / `facts.ts`。
 DB はミラーで、DB 側で直したものは次の生成で消える。
 
 ---
@@ -97,8 +97,10 @@ DB はミラーで、DB 側で直したものは次の生成で消える。
 | `..._agent_messages` | `agent_messages`（`action` jsonb + `applied_at`） |
 | `..._actor_defaults` | 操作者の列に `default app.current_staff_id()` |
 | `..._customer_view` | `v_customers`（顧客 + 最終納品） |
+| `..._facts` | `fact_categories` / `fact_labels` / `fact_aliases` / `customer_facts` / `search_chunks` / `worker_role` のポリシー |
+| `..._facts_migration` | 同意 2 列 / `customer_ng_notes` / 使わない 8 列の削除 / ビュー作り直し |
 
-pgTAP 71 件。構造ガード（RLS 付け忘れ・`security_invoker` 忘れ）は
+pgTAP 102 件。構造ガード（RLS 付け忘れ・`security_invoker` 忘れ）は
 **わざと違反を作って検出することを確認済み**。
 
 アプリ側は `lib/data/*` 8 ファイルが supabase-js を見る。認証は
@@ -165,32 +167,57 @@ RLS を採った最大の論拠は「境界を DB が持つので API 層が要�
 
 ## 次にやること
 
-### 着手前に決めること（2 つ）
+### モデル名は `lib/ai/models.ts` にだけ書く
 
-| | 決め方 |
+用途ごとに事業者もモデルも違い、どれも半年で入れ替わる。呼び出し側に
+文字列を書かない。
+
+| 用途 | 現在 |
 |---|---|
-| **埋め込みモデル** | `text-embedding-3-small`（1536 を Matryoshka で 512 に切り詰め）か `voyage-3-lite` か。**費用は論点にならない**（初期投入 6.6 万チャンクで $0.04）。日本語の性能と運用のしやすさで選ぶ。`search_chunks.embedding_model` を持たせてあるので後から差し替えられる |
-| **`lib/ai/` の ESLint ルール** | `supabase.from(` を禁止し `supabase.rpc(` だけ許すか。エージェントの読み取りが必ず RLS を通る SQL 関数を経由することの担保。書き込み側は「提案 → 適用」が既に塞いでいるので、これは読み取り側のためのもの |
+| 紙・写真の読み取り | `gemini-3.6-flash` |
+| 会話 | `gpt5.6luna`（まだ呼んでいない。定数に置いてあるだけ） |
+| 埋め込み | `gemini-embedding-001`（**未確定**） |
+
+**埋め込みだけは実装時に引き比べて決める。**候補は `gemini-embedding-001` 系と
+`text-embedding-3-large`。費用は論点にならない（初期投入 6.6 万チャンクで数セント）。
+dev-seed の事実で「アウトドア系が好きな人」のような曖昧な問いを両方に投げ、
+出てくる顔ぶれで選ぶ。
+
+どちらも既定は 3072 次元だが、**pgvector の HNSW は 2000 次元までしか索引化
+できない**ので、API 側（`outputDimensionality` / `dimensions`）で 1536 に
+切り詰めて使う。どちらも Matryoshka 表現なので先頭を切り出すだけで済む。
+`search_chunks.embedding_model` がどのモデルで作った行かを持っているが、
+**混在させたまま検索してはいけない**（ベクトル空間が違うので距離が意味を成さない）。
+替えるときは全行を埋め込み直す。
 
 ### Phase 1 との違い
 
 **Phase 2 は画面の作り替えを伴う。**Phase 1 は「画面を 1 行も変えずに DB 化する」が
-目標だったが、こちらは趣味欄が textarea からチップの追加/削除に変わる。
-性質が違うので、1 画面ずつ壁打ちしながら進めるほうがよい。
+目標だった。こちらではカルテが 6 セクションに組み替わり、趣味欄が textarea から
+チップに、メモが 1 行ずつの追記リストになった。性質が違うので、
+1 画面ずつ壁打ちしながら進めている。
 
 ### Phase 2 — 人となりとエージェント基盤
 
-1. `fact_categories` / `fact_labels` / `fact_aliases` / `customer_facts` / `search_chunks`
-2. `customers.hobbies` / `preferences` / `tags` / `ng_notes` からの移行
-   （`source='migration'`。機械的に割るので誤りが混ざる、と後から言えるようにする）
-3. `customer_ng_notes` テーブルと `photo_consent` / `night_contact_ok` への分割
-4. 埋め込みのバックフィル（`app/api/cron/embed`、`worker_role`）
-5. `app.search_customers()` — 確定検索と意味検索を 1 本の関数で両方走らせる。
-   **ツールを 2 本に分けて「網羅が要るときは確定検索を使え」とプロンプトで
-   指示する解は採らない**（RLS を採ったのと同じ理由で、作法は必ず破れる）
-6. `lib/ai/` の ESLint ルール
-7. 埋め込みは**二重**にする — 書き込み直後の fire-and-forget と Cron のバックフィル。
-   片方だけだと「その顧客だけ検索に出てこない」が無音で起きる
+- [x] `fact_categories` / `fact_labels` / `fact_aliases` / `customer_facts` / `search_chunks`
+- [x] `lib/ai/` の ESLint ルール（`supabase().from(` を禁止）
+- [x] `customers` の 8 列を落として facts へ移す。**`memo` も facts に入れた**
+      （`label_id` が null の行）。カルテは「人となり（チップ）」と
+      「記録（1 行ずつ追記）」の 2 面になったが、DB では同じ 1 テーブル
+- [x] `customer_ng_notes` テーブルと `photo_consent` / `night_contact_ok` への分割
+- [ ] 埋め込みのバックフィル（`app/api/cron/embed`、`worker_role`）。
+      **`worker_role` は nologin のまま置いてある。**Cron が何のロールで接続するかは
+      ここで決める（本命は LOGIN + 専用パスワード。`BYPASSRLS` は与えない）
+- [ ] `app.search_customers()` — 確定検索と意味検索を 1 本の関数で両方走らせる。
+      **ツールを 2 本に分けて「網羅が要るときは確定検索を使え」とプロンプトで
+      指示する解は採らない**（RLS を採ったのと同じ理由で、作法は必ず破れる）。
+      確定検索は**ラベル一致と本文の全文一致の両方**を LIMIT なしで返す —
+      走り書きに「ゴルフ」と書かれた顧客を落とさないため
+- [ ] 会話を `MODELS.chat` に差し替える（いまは `lib/ai/agent.ts` のパターン照合）。
+      このとき `lib/ai/` から `lib/data/*` の import も禁止する
+      （`agent-tools.ts` が丸ごと書き換わるので、それまでは入れられない）
+- [ ] 埋め込みは**二重**にする — 書き込み直後の fire-and-forget と Cron のバックフィル。
+      片方だけだと「その顧客だけ検索に出てこない」が無音で起きる
 
 ### Phase 3 — 運用
 
@@ -244,6 +271,17 @@ RLS を採った最大の論拠は「境界を DB が持つので API 層が要�
   開発中に即詰まるので、ローカルの `email_sent` は上げてある
 - テストは `seed.sql` が流れた後の DB で走る。**「テーブルが空」を前提にすると
   seed を足すたびに壊れる**。件数ではなく不変条件を確かめる
+- **HNSW + RLS + LIMIT は取りこぼす。**`order by embedding <=> q limit k` は
+  インデックス走査が先で RLS のフィルタが後なので、他スタッフの顧客が k 枠を
+  食い潰して自分の顧客が落ちる。`app.search_customers()` では多めに取ってから
+  絞る。確定検索側は LIMIT なしで全件返すので影響を受けない
+- **PostgreSQL 16 でロールのメンバーシップが `INHERIT` と `SET` に分かれた。**
+  `CREATEROLE` を持つ `postgres` が作ったロールへの自動付与は `SET` を含まないので、
+  `grant … with set true` を書かないと `set role worker_role` が権限エラーになる
+  （ロールを作ったのに一度も使えない、という形で現れる）
+- **`worker_role` は `extensions` スキーマの USAGE を持たない。**pgTAP の `is()` も
+  そこにあるので、`set role worker_role` した状態では判定関数を呼べない。
+  数えるところだけをそのロールで走らせ、`\gset` で持ち帰ってから判定する
 
 ---
 
@@ -255,6 +293,7 @@ RLS を採った最大の論拠は「境界を DB が持つので API 層が要�
    持たせれば OCR の「ありえるが間違っている」誤読を DB で止められる
 3. 個人情報の削除請求への対応手順（`app.purge_customer()` を誰が実行するか）
 4. 退職時の Supabase セッション失効の手順（DB からは実行できない）
-5. `acquisitionChannel` の選択肢。現状は自由記述で、集計するなら固定リストが要る
-6. 納品後フォローの節目を実際に動かしたくなるか。半年・1 年のまま何ヶ月か回して、
+5. 納品後フォローの節目を実際に動かしたくなるか。半年・1 年のまま何ヶ月か回して、
    触られないなら定数に戻して `app_settings` ごと畳んでよい
+6. 流入経路を集計したくなるか。列ごと落として記録の自由記述に畳んだので、
+   集計するなら固定リストの列を改めて作る

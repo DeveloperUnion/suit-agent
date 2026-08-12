@@ -9,13 +9,10 @@
 -- current_staff_id() が NULL のままで、そもそもサインインできない
 -- （shouldCreateUser: false なので GoTrue が otp_disabled を返す）。
 --
--- 招待画面は無い。auth.admin.inviteUserByEmail() には service_role キーが要り、
--- 置かないと決めた以上そもそも実装できないため。当面は 1 人につき手作業で 2 手:
---   1. Dashboard → Authentication → Users → Add user（Auto Confirm を有効に）
---   2. SQL Editor で
---      insert into public.staff (name, email, role) values ('…', '…', 'member');
---      update public.staff s set auth_user_id = u.id from auth.users u
---       where u.email = s.email and s.auth_user_id is null;
+-- 2 人目以降は設定画面から名前とメールを登録するだけでよい。本人が
+-- サインイン画面でメールを入れると auth.users が作られ（staff に行がある
+-- メールだけが通る）、auth_user_id は AFTER トリガーが埋める。
+-- 1 人目だけは管理者がいないと管理者を作れないので、SQL Editor から手で 1 行。
 
 -- ── スタッフ ────────────────────────────────────────────
 --
@@ -38,6 +35,15 @@ begin
       ('5ea55000-0000-4000-8000-000000000004'::uuid, 'a0000000-0000-4000-8000-000000000004'::uuid, '下平 凌生', 'admin@kensetsu-tech.com', 'admin')
     ) as t(staff_id, auth_user_id, name, email, role)
   loop
+    -- staff が先。auth.users のトリガーが「staff に居るメールか」を見るので、
+    -- 逆順だと 1 人目から弾かれる。auth_user_id は入れない — 下の insert で
+    -- AFTER トリガーが埋める（本番と同じ経路を通す）。
+    insert into public.staff (id, name, email, role)
+    values (r.staff_id, r.name, r.email, r.role)
+    on conflict (id) do update
+      set name = excluded.name,
+          role = excluded.role;
+
     -- パスワードは持たせない。入り口は Magic Link だけで、ローカルも同じ経路を通る
     -- （届いたメールは Inbucket http://127.0.0.1:54324 で読む）。
     -- トークン列を NULL のままにしない。GoTrue は Go の string で受けるので、
@@ -66,12 +72,7 @@ begin
       'email', now(), now(), now()
     ) on conflict (provider, provider_id) do nothing;
 
-    insert into public.staff (id, auth_user_id, name, email, role)
-    values (r.staff_id, r.auth_user_id, r.name, r.email, r.role)
-    on conflict (id) do update
-      set name = excluded.name,
-          role = excluded.role,
-          auth_user_id = excluded.auth_user_id;
+
   end loop;
 end
 $$;

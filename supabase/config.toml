@@ -179,9 +179,11 @@ enable_refresh_token_rotation = true
 # Requires enable_refresh_token_rotation = true.
 refresh_token_reuse_interval = 10
 # Allow/disallow new user signups to your project.
-# 招待制。アプリ側も shouldCreateUser: false を渡しているが、作法ではなく
-# 構造で塞ぐ（本番は Dashboard の Authentication → Sign In / Up で同じ設定にする）。
-enable_signup = false
+# **有効にする。**招待制の門番はこのフラグではなく DB のトリガー
+# （app.guard_auth_user_is_staff）に移した。staff に行が無いメールでは
+# auth.users を作れないので、ここを true にしても誰でも入れるようにはならない。
+# フラグは Dashboard から戻せてしまうが、トリガーは git の中にある。
+enable_signup = true
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts

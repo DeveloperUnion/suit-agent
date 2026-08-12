@@ -148,9 +148,11 @@ export async function signInWithMagicLink(email: string): Promise<void> {
   const { error } = await supabase().auth.signInWithOtp({
     email,
     options: {
-      // セルフサインアップは禁止。staff に行が無ければ current_staff_id() が
-      // NULL を返して全ポリシーが 0 行になるが、auth.users だけ増えるのは避ける。
-      shouldCreateUser: false,
+      // 初回は認証ユーザーがまだ無いので作らせる。誰でも作れるわけではなく、
+      // staff に行が無いメールは DB のトリガーが弾く
+      // （app.guard_auth_user_is_staff）。管理者が設定画面で登録した人だけが、
+      // ここでリンクを受け取れる。
+      shouldCreateUser: true,
       emailRedirectTo: typeof window !== "undefined" ? window.location.origin : undefined,
     },
   });

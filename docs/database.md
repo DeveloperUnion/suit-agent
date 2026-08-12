@@ -18,7 +18,7 @@ Homebrew の PostgreSQL では代用できない — **`security_invoker` は PG
 open -a Docker            # 起動を待つ
 supabase start            # 初回はイメージの取得で数分
 npm run db:reset          # 全 migration → masters → seed → dev-seed
-npm run db:test           # pgTAP 104 件
+npm run db:test           # pgTAP 107 件
 ```
 
 `db:reset` を毎回通すのが要点。「途中から足した migration」ではなく
@@ -100,8 +100,9 @@ DB はミラーで、DB 側で直したものは次の生成で消える。
 | `..._facts` | `fact_categories` / `fact_labels` / `fact_aliases` / `customer_facts` / `search_chunks` / `worker_role` のポリシー |
 | `..._facts_migration` | 同意 2 列 / `customer_ng_notes` / 使わない 8 列の削除 / ビュー作り直し |
 | `..._revoke_anon` | `anon` の権限を全部剥がす / `authenticated` の TRUNCATE / 既定 ACL |
+| `..._staff_gate` | `auth.users` のトリガー 2 本（招待の門番と自動紐付け） |
 
-pgTAP 104 件。構造ガード（RLS 付け忘れ・`security_invoker` 忘れ）は
+pgTAP 107 件。構造ガード（RLS 付け忘れ・`security_invoker` 忘れ）は
 **わざと違反を作って検出することを確認済み**。
 
 アプリ側は `lib/data/*` 8 ファイルが supabase-js を見る。認証は
@@ -231,15 +232,13 @@ dev-seed の事実で「アウトドア系が好きな人」のような曖昧�
 
 - Supabase プロジェクトを作り `supabase link` → `supabase db push`
 - **`psql "$DATABASE_URL" -f supabase/masters.sql`**（採寸マスタ。migration では入らない）
-- 1 人目の管理者を SQL Editor から 1 行入れる。
-  **「以降は招待画面から」は嘘だった** — `createStaff()`（`lib/data/settings.ts`）は
-  `staff` に 1 行入れるだけで認証ユーザーを作らない。`auth.admin.inviteUserByEmail()` には
-  `service_role` キーが要り、置かないと決めた以上そもそも実装できない。
-  当面はスタッフ 1 人につき手作業で 2 手:
-  Dashboard → Authentication → Users → Add user（Auto Confirm）→ SQL Editor で
-  `update public.staff s set auth_user_id = u.id from auth.users u
-   where u.email = s.email and s.auth_user_id is null;`
-  メール一致で自動紐付けするトリガーにはしない（`staff` テーブルのコメントの理由）
+- 1 人目の管理者だけ SQL Editor から 1 行入れる（管理者がいないと管理者を作れないため）。
+  **2 人目以降は設定画面から名前とメールを登録するだけ。**本人がサインイン画面で
+  メールを入れると `auth.users` が作られ、`auth_user_id` はトリガーが埋める
+- **Authentication → Sign In / Providers の「新規サインアップ」は有効のまま**にする。
+  招待制の門番は GoTrue のフラグではなく DB のトリガー
+  （`app.guard_auth_user_is_staff`）に移してある。フラグを切ると、
+  **設定画面から追加したスタッフが誰もサインインできなくなる**
 - **Authentication の設定を `config.toml` に合わせる**（ローカルの config は本番に
   反映されない）— セルフサインアップを止め、Site URL と Redirect URLs に本番ドメインを入れる。
   ここが漏れるとリンクが `localhost` へ向いて、本番の初回ログインだけが通らない。
@@ -295,6 +294,11 @@ dev-seed の事実で「アウトドア系が好きな人」のような曖昧�
   `CREATEROLE` を持つ `postgres` が作ったロールへの自動付与は `SET` を含まないので、
   `grant … with set true` を書かないと `set role worker_role` が権限エラーになる
   （ロールを作ったのに一度も使えない、という形で現れる）
+- **`auth.users` のトリガーが投げた例外は GoTrue が 500 に丸める。**
+  `Database error saving new user` としか出ないので、ログだけ見ると不具合に見える。
+  画面側は登録済みかどうかを区別しない文言を返しているので実害は無いが、
+  HTTP のステータスでは区別できてしまう（11 名の店舗でメールアドレスの
+  列挙が脅威にならないため、受け入れている）
 - **`worker_role` は `extensions` スキーマの USAGE を持たない。**pgTAP の `is()` も
   そこにあるので、`set role worker_role` した状態では判定関数を呼べない。
   数えるところだけをそのロールで走らせ、`\gset` で持ち帰ってから判定する

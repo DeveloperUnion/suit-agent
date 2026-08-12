@@ -244,6 +244,11 @@ dev-seed の事実で「アウトドア系が好きな人」のような曖昧�
   ここが漏れるとリンクが `localhost` へ向いて、本番の初回ログインだけが通らない。
   **メールのプロバイダ自体は有効のまま**にすること（切ると既存ユーザーへの
   リンク送信まで止まる）
+- **カスタム SMTP を設定する。**組み込みのメールは 2 通/時で、これを外す手段が
+  他に無い（後述の罠）。Google Workspace の SMTP なら DNS を触らずに通せる。
+  最終的には Resend などで `noreply@<自分のドメイン>` にする —
+  差出人が `noreply@mail.app.supabase.io` のままだと、受け取る側には
+  フィッシングと区別がつかない
 - Vercel の環境変数は 3 つ。**`SUPABASE_SERVICE_ROLE_KEY` は置かない**
 
   | | |
@@ -287,8 +292,17 @@ dev-seed の事実で「アウトドア系が好きな人」のような曖昧�
   （`GOTRUE_EXTERNAL_EMAIL_ENABLED` に写る）。既存ユーザーへのリンク送信まで
   `email_provider_disabled` で落ちるので、新規登録を塞ぐのは `[auth]` 直下の
   `enable_signup = false` のほう。こちらなら未登録の宛先だけが `otp_disabled` になる
-- **Magic Link の rate limit は既定 2 通/時。**入り口がリンクだけになると
-  開発中に即詰まるので、ローカルの `email_sent` は上げてある
+- **メールの送信上限は既定 2 通/時で、本番では動かせない。**組み込みのリレーが
+  共有のものなので、`Rate Limits` の欄は**カスタム SMTP を入れて初めて編集可能**になる
+  （Supabase に課金しても外れない）。種類の区別は無く、確認・招待・Magic Link・
+  再設定が同じ枠から引かれる。**入り口が Magic Link だけなので、上限に当たると
+  誰もログインできない** — 本番の初回ログインで実際にこれを踏んだ。
+  ローカルの `email_sent` は 60 に上げてある
+- **429 には 2 種類ある。**上の送信枠と、同一宛先への連続要求に対する
+  60 秒ほどのクールダウン。後者は**カスタム SMTP を入れても残る**。
+  区別はレスポンス本文でつく（`For security purposes, you can only request this
+  after N seconds` ならクールダウン）。Logs の `log_type: "edge"` には本文が
+  入らないので、Auth Logs か DevTools の Response を見ること
 - テストは `seed.sql` が流れた後の DB で走る。**「テーブルが空」を前提にすると
   seed を足すたびに壊れる**。件数ではなく不変条件を確かめる
 - **HNSW + RLS + LIMIT は取りこぼす。**`order by embedding <=> q limit k` は

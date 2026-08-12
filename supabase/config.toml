@@ -206,8 +206,17 @@ password_requirements = ""
 
 [auth.rate_limit]
 # Number of emails that can be sent per hour. Requires auth.email.smtp to be enabled.
-# 既定の 2 通/時はローカルだと即詰まる（入り口がリンクだけになったので、
-# 開発中は 1 日に何度もサインインし直す）。本番は既定のままでよい。
+#
+# **本番は既定のままにしてはいけない。**組み込みのメールリレーは共有のもので、
+# 既定 2 通/時から動かせない（この欄はカスタム SMTP を入れて初めて編集可能になる。
+# Supabase に課金しても外れない）。入り口が Magic Link だけなので、
+# **上限に当たると誰もログインできない。**11 名が朝いっせいに開けば確実に当たる。
+#
+# 種類の区別は無く、確認・招待・Magic Link・再設定が同じ枠から引かれる。
+# これとは別に、同一宛先への連続要求には 60 秒ほどのクールダウンがあり、
+# そちらはカスタム SMTP を入れても残る。
+#
+# ローカルは Mailpit 宛てなので上げてある。
 email_sent = 60
 # Number of SMS messages that can be sent per hour. Requires auth.sms to be enabled.
 sms_sent = 30

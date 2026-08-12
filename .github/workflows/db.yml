@@ -13,6 +13,9 @@ on:
     branches: [main]
   push:
     branches: [main]
+  # main には入っているのに本番へ反映されていない、という状態を
+  # 空コミット無しで流し直すための口。verify を通ってから deploy に進む。
+  workflow_dispatch:
 
 concurrency:
   group: db-${{ github.ref }}
@@ -73,9 +76,12 @@ jobs:
 
   deploy:
     needs: verify
-    # 段階導入中は止めてある。有効にするのは production の Secret を入れてから。
-    # そのときこの行の `false &&` を消す（docs/database.md の「本番」節）。
-    if: false && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # 本番に流すのは main だけ。手動実行（workflow_dispatch）でも、他のブランチを
+    # 選んで走らせたぶんはここで落ちる。戻す先は Supabase の日次バックアップだけなので、
+    # 壊す変更を入れる前にそれが取れていることを確かめる（docs/database.md の「本番」節）。
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     environment: production
     env:

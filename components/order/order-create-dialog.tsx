@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Ruler } from "lucide-react";
 import { toast } from "sonner";
 
-import { AmountFields, applyAmountChange } from "@/components/order/amount-fields";
+import { AmountField } from "@/components/order/amount-field";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,7 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ORDER_PURPOSE_LABEL } from "@/lib/constants/labels";
 import { ITEM_TYPE_MAP } from "@/lib/constants/measurement-fields";
 import { listSheets } from "@/lib/data/measurements";
-import { createOrder, type OrderAmounts, type OrderItemFabric } from "@/lib/data/orders";
+import { createOrder, type OrderItemFabric } from "@/lib/data/orders";
 import { useQuery } from "@/lib/hooks/use-query";
 import type { ItemTypeId, OrderPurpose } from "@/lib/types";
 import { addDays, formatAmount, formatDateDot, toIsoDate } from "@/lib/utils/date";
@@ -28,13 +28,6 @@ import { cn } from "@/lib/utils";
 
 /** 注文で扱うアイテム。紙の採寸票と同じ 3 種を既定にする */
 const ITEM_TYPES: ItemTypeId[] = ["jacket", "pants", "vest"];
-
-const EMPTY_AMOUNTS: OrderAmounts = {
-  subtotalAmount: 0,
-  surchargeAmount: 0,
-  taxAmount: 0,
-  totalAmount: 0,
-};
 
 /**
  * 手入力の注文追加。
@@ -62,10 +55,10 @@ export function OrderCreateDialog({
   const [sheetId, setSheetId] = useState<string>("");
   const [fabric, setFabric] = useState<OrderItemFabric>({});
   const [orderedAt, setOrderedAt] = useState(today);
-  const [dueDate, setDueDate] = useState(toIsoDate(addDays(new Date(), 45)));
+  const [arrivedAt, setArrivedAt] = useState(toIsoDate(addDays(new Date(), 43)));
   const [purpose, setPurpose] = useState<OrderPurpose>("business");
   const [selected, setSelected] = useState<Record<string, boolean>>({});
-  const [amounts, setAmounts] = useState<OrderAmounts>(EMPTY_AMOUNTS);
+  const [totalAmount, setTotalAmount] = useState(0);
   const [saving, setSaving] = useState(false);
 
   const sheetsLoader = useCallback(() => listSheets(customerId), [customerId]);
@@ -81,7 +74,7 @@ export function OrderCreateDialog({
       setSheetId(sheetList[0]?.id ?? "");
       setSelected(Object.fromEntries(ITEM_TYPES.map((type) => [type, type !== "vest"])));
       setFabric({});
-      setAmounts(EMPTY_AMOUNTS);
+      setTotalAmount(0);
     });
     return () => {
       alive = false;
@@ -100,11 +93,11 @@ export function OrderCreateDialog({
     await createOrder({
       customerId,
       orderedAt,
-      dueDate,
+      arrivedAt,
       purpose,
       measurementSheetId: sheetId || undefined,
       fabric,
-      amounts,
+      totalAmount,
       items: selectedItems.map((type) => ({ itemTypeId: type })),
     });
     setSaving(false);
@@ -278,12 +271,12 @@ export function OrderCreateDialog({
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="due-date">納期</Label>
+                <Label htmlFor="arrived-at">納品日</Label>
                 <Input
-                  id="due-date"
+                  id="arrived-at"
                   type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
+                  value={arrivedAt}
+                  onChange={(e) => setArrivedAt(e.target.value)}
                   className="h-11 bg-card font-mono"
                 />
               </div>
@@ -304,24 +297,18 @@ export function OrderCreateDialog({
               </div>
             </div>
 
-            {/* 取り込みと同じ4欄。どちらから入れても同じ形で残す */}
+            {/* 取り込みと同じ1欄。どちらから入れても同じ形で残す */}
             <div className="mt-4">
-              <AmountFields
-                idPrefix="order"
-                amounts={amounts}
-                onChange={(key, value) =>
-                  setAmounts((current) => applyAmountChange(current, key, value))
-                }
-              />
+              <AmountField id="order-amount" value={totalAmount} onChange={setTotalAmount} />
             </div>
           </Step>
         </div>
 
         <DialogFooter className="shrink-0 flex-row items-center justify-between gap-3 border-t border-border px-4 py-3 sm:px-6">
           <span className="flex items-baseline gap-2">
-            <span className="field-label">合計</span>
+            <span className="field-label">売上</span>
             <span className="tnum font-mono text-lg font-medium">
-              ¥{formatAmount(amounts.totalAmount)}
+              ¥{formatAmount(totalAmount)}
             </span>
           </span>
           <span className="flex gap-2">

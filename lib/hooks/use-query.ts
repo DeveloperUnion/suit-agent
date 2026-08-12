@@ -26,9 +26,17 @@ export function useQuery<T>(
 
   useEffect(() => {
     let alive = true;
-    loader().then((data) => {
-      if (alive) setState({ data, loading: false });
-    });
+    loader()
+      .then((data) => {
+        if (alive) setState({ data, loading: false });
+      })
+      .catch((error) => {
+        // 握り潰すと「0 件だった」と「読めなかった」が画面上で区別できなくなる。
+        // 実際、似た顧客の検索が RPC ごと 404 を返していたのに、画面には
+        // 「見つかりませんでした」と出続けて誰も気づけなかった。
+        console.error(error);
+        if (alive) setState({ data: undefined, loading: false });
+      });
     return () => {
       alive = false;
     };

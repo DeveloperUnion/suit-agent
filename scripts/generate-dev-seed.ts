@@ -180,9 +180,9 @@ if (db.anniversaries.length > 0) {
 // モックのデータは明細ごとに同じ値が入っているので、先頭を代表として採る。
 if (db.orders.length > 0) {
   push(`insert into public.orders (`);
-  push(`  id, customer_id, order_number, ordered_at, due_date, delivered_at, status, purpose,`);
+  push(`  id, customer_id, order_number, ordered_at, arrived_at, delivered_at, status, purpose,`);
   push(`  fabric_product_number, fabric_color_number, fabric_color_name, fabric_composition,`);
-  push(`  subtotal_amount, surcharge_amount, tax_amount, total_amount, taken_by_staff_id`);
+  push(`  total_amount, taken_by_staff_id`);
   push(`) values`);
   push(
     db.orders
@@ -190,10 +190,10 @@ if (db.orders.length > 0) {
         (o) =>
           `  (${[
             lit(toUuid(o.id)), lit(toUuid(o.customerId)), lit(o.orderNumber), lit(o.orderedAt),
-            lit(o.dueDate), lit(o.deliveredAt), lit(o.status), lit(o.purpose),
+            lit(o.arrivedAt), lit(o.deliveredAt), lit(o.status), lit(o.purpose),
             lit(o.fabricProductNumber), lit(o.fabricColorNumber),
             lit(o.fabricColorName), lit(o.fabricComposition),
-            o.subtotalAmount, o.surchargeAmount, o.taxAmount, o.totalAmount,
+            o.totalAmount,
             lit(staffId(o.takenByStaffId)),
           ].join(", ")})`,
       )

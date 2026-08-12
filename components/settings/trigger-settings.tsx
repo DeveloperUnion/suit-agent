@@ -7,7 +7,7 @@ import { EditableSection, FormField } from "@/components/common/editable-section
 import { Field } from "@/components/common/field";
 import { Input } from "@/components/ui/input";
 import { getCurrentStaff } from "@/lib/auth/current-staff";
-import { ANNIVERSARY_LEAD_DAYS, postDeliveryLabel } from "@/lib/constants/approach";
+import { postDeliveryLabel } from "@/lib/constants/approach";
 import { listApproaches } from "@/lib/data/approaches";
 import { updateAppSettings } from "@/lib/data/settings";
 import { useQuery } from "@/lib/hooks/use-query";
@@ -18,6 +18,10 @@ const MAX_MILESTONES = 3;
 const MIN_MONTHS = 1;
 const MAX_MONTHS = 60;
 
+/** DB の app_settings.anniversary_lead_days の CHECK と同じ */
+const MIN_LEAD_DAYS = 0;
+const MAX_LEAD_DAYS = 60;
+
 const NUM_INPUT = "h-11 w-24 bg-card font-mono";
 
 /**
@@ -26,9 +30,8 @@ const NUM_INPUT = "h-11 w-24 bg-card font-mono";
  * アプローチは毎回評価する作りなので、保存すればリストの出方が即座に変わる。
  * その効果がこの場で見えるよう、現在の件数を添える。
  *
- * ここで変えられるのは納品後フォローの節目だけ。記念日の 7 日前は店舗として
- * 確定した決めごとで、試しに動かして様子を見る数字ではないため出さない。
- * 「変えられない決めごと」も、どう動くかは見えている必要があるので表示はする。
+ * 節目も記念日の予告日数も、やってみないと適切な長さが分からなかったので
+ * どちらも店舗に開けている。変えられるのは管理者だけ（RLS）。
  */
 export function TriggerSettings() {
   const settings = useAppSettings();
@@ -42,15 +45,28 @@ export function TriggerSettings() {
 
   const monthsText = settings.postDeliveryMonths.map(postDeliveryLabel).join("・");
 
-  const save = async (raw: string[]) => {
+  const saveMonths = async (raw: string[]) => {
     const months = normalize(raw);
     if (!months) {
       toast.error(`節目は ${MIN_MONTHS}〜${MAX_MONTHS} ヶ月の数字で、1〜${MAX_MILESTONES} 個まで入れてください。`);
       return;
     }
+    await save({ postDeliveryMonths: months }, "お渡し後フォローの節目を更新しました");
+  };
+
+  const saveLeadDays = async (raw: string) => {
+    const days = Number(raw.trim());
+    if (!Number.isInteger(days) || days < MIN_LEAD_DAYS || days > MAX_LEAD_DAYS) {
+      toast.error(`予告は ${MIN_LEAD_DAYS}〜${MAX_LEAD_DAYS} 日の数字で入れてください。`);
+      return;
+    }
+    await save({ anniversaryLeadDays: days }, "記念日の予告日数を更新しました");
+  };
+
+  const save = async (patch: Parameters<typeof updateAppSettings>[0], message: string) => {
     try {
-      await updateAppSettings({ postDeliveryMonths: months });
-      toast.success("納品後フォローの節目を更新しました");
+      await updateAppSettings(patch);
+      toast.success(message);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "更新できませんでした");
     }
@@ -69,81 +85,95 @@ export function TriggerSettings() {
       <div className="grid gap-x-8 gap-y-6 lg:grid-cols-2">
         {isAdmin ? (
           <EditableSection
-            title="納品後フォロー"
+            title="お渡し後フォロー"
             initial={() => ({
               values: padTo(settings.postDeliveryMonths.map(String), MAX_MILESTONES),
             })}
-            onSave={(v) => save(v.values)}
+            onSave={(v) => saveMonths(v.values)}
             view={<PostDeliveryView monthsText={monthsText} />}
             edit={(v, set) => (
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap gap-4">
-                  {v.values.map((value, i) => (
-                    <FormField key={i} label={`${i + 1}つめ`}>
-                      <span className="flex items-center gap-2">
-                        <Input
-                          value={value}
-                          onChange={(e) =>
-                            set({
-                              values: v.values.map((cur, j) => (j === i ? e.target.value : cur)),
-                            })
-                          }
-                          inputMode="numeric"
-                          placeholder="—"
-                          className={NUM_INPUT}
-                        />
-                        <span className="text-sm text-muted-foreground">ヶ月後</span>
-                      </span>
-                    </FormField>
-                  ))}
-                </div>
-                <p className="max-w-prose text-xs leading-relaxed text-muted-foreground">
-                  空欄にすればその節目は無くなります。節目を変えると、変えた後の節目は
-                  「まだ声をかけていないもの」として立ち直します。
-                  すでに連絡した相手にもう一度出ることがあるのはそのためです。
-                </p>
+              <div className="flex flex-wrap gap-4">
+                {v.values.map((value, i) => (
+                  <FormField key={i} label={`${i + 1}つめ`}>
+                    <span className="flex items-center gap-2">
+                      <Input
+                        value={value}
+                        onChange={(e) =>
+                          set({
+                            values: v.values.map((cur, j) => (j === i ? e.target.value : cur)),
+                          })
+                        }
+                        inputMode="numeric"
+                        placeholder="—"
+                        className={NUM_INPUT}
+                      />
+                      <span className="text-sm text-muted-foreground">ヶ月後</span>
+                    </span>
+                  </FormField>
+                ))}
               </div>
             )}
           />
         ) : (
-          <section className="flex flex-col gap-2">
-            <h3 className="font-heading text-base font-medium">納品後フォロー</h3>
-            <div className="flex flex-col gap-2 rounded-md border border-border bg-card px-4 py-3">
-              <PostDeliveryView monthsText={monthsText} />
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                店舗共通の設定です。変えられるのは管理者だけです。
-              </p>
-            </div>
-          </section>
+          <ReadOnlySection title="お渡し後フォロー">
+            <PostDeliveryView monthsText={monthsText} />
+          </ReadOnlySection>
         )}
 
-        {/* 変えられない決めごとも、どう動くかは見えている必要がある */}
-        <section className="flex flex-col gap-2">
-          <h3 className="font-heading text-base font-medium">記念日</h3>
-          <div className="flex flex-col gap-2 rounded-md border border-border bg-card px-4 py-3">
-            <Field
-              label="出すタイミング"
-              value={`誕生日・記念日の${ANNIVERSARY_LEAD_DAYS}日前から出す`}
-            />
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              店舗として確定した決めごとのため、ここでは変えられません。
-              画面では「あと3日」のようなカウントダウンで見せています。
-            </p>
-          </div>
-        </section>
+        {isAdmin ? (
+          <EditableSection
+            title="記念日"
+            initial={() => ({ days: String(settings.anniversaryLeadDays) })}
+            onSave={(v) => saveLeadDays(v.days)}
+            view={<AnniversaryView leadDays={settings.anniversaryLeadDays} />}
+            edit={(v, set) => (
+              <FormField label="予告">
+                <span className="flex items-center gap-2">
+                  <Input
+                    value={v.days}
+                    onChange={(e) => set({ days: e.target.value })}
+                    inputMode="numeric"
+                    className={NUM_INPUT}
+                  />
+                  <span className="text-sm text-muted-foreground">日前から</span>
+                </span>
+              </FormField>
+            )}
+          />
+        ) : (
+          <ReadOnlySection title="記念日">
+            <AnniversaryView leadDays={settings.anniversaryLeadDays} />
+          </ReadOnlySection>
+        )}
       </div>
     </div>
   );
 }
 
 function PostDeliveryView({ monthsText }: { monthsText: string }) {
+  return <Field label="出すタイミング" value={`最後のお渡しから${monthsText}が経った日`} />;
+}
+
+function AnniversaryView({ leadDays }: { leadDays: number }) {
   return (
-    <>
-      <Field label="出すタイミング" value={`最後の納品から${monthsText}が経った日`} />
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        起点は最後の納品です。半年を逃したまま1年が来た場合は、1年のほうだけを出します。
-      </p>
-    </>
+    <Field
+      label="出すタイミング"
+      value={
+        leadDays === 0 ? "誕生日・記念日の当日に出す" : `誕生日・記念日の${leadDays}日前から出す`
+      }
+    />
+  );
+}
+
+/** 一般スタッフに見せる形。EditableSection の枠だけ揃える */
+function ReadOnlySection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="flex flex-col gap-2">
+      <h3 className="font-heading text-base font-medium">{title}</h3>
+      <div className="flex flex-col gap-2 rounded-md border border-border bg-card px-4 py-3">
+        {children}
+      </div>
+    </section>
   );
 }
 

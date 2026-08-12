@@ -12,7 +12,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TRIGGER_LABEL } from "@/lib/constants/labels";
 import { listApproaches, resolveApproach, type ApproachItem } from "@/lib/data/approaches";
 import { useQuery } from "@/lib/hooks/use-query";
-import { usePostDeliveryMilestones } from "@/lib/hooks/use-settings";
 import type { TriggerType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -24,7 +23,6 @@ const FILTERS: { value: TriggerType | "all"; label: string }[] = [
 
 export function ApproachListView() {
   const [trigger, setTrigger] = useState<TriggerType | "all">("all");
-  const milestones = usePostDeliveryMilestones();
 
   const loader = useCallback(
     () => listApproaches({ triggerType: trigger === "all" ? undefined : trigger }),
@@ -43,12 +41,6 @@ export function ApproachListView() {
           ) : null
         }
       />
-
-      <p className="max-w-prose text-sm leading-relaxed text-muted-foreground">
-        納品の{milestones.map((m) => m.label).join("後・")}後と、記念日の2つで全顧客を毎回評価しています。
-        同じ顧客に両方あたった場合は1件にまとめます。
-        連絡そのものは手で行ってください。ここから送ることはありません。
-      </p>
 
       <div className="flex flex-wrap items-center gap-2">
         {FILTERS.map((f) => (
@@ -123,7 +115,7 @@ function ApproachRow({ item }: { item: ApproachItem }) {
         </div>
 
         <span className="flex flex-col items-end">
-          <span className="field-label">納品から</span>
+          <span className="field-label">お渡しから</span>
           <DaysSinceDelivery days={customer.daysSinceDelivery} />
         </span>
       </div>

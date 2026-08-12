@@ -26,7 +26,7 @@ export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
   ordered: "受注",
   in_production: "製作中",
   fitting: "仮縫い",
-  delivered: "納品済",
+  delivered: "お渡し済",
   cancelled: "キャンセル",
 };
 
@@ -37,8 +37,12 @@ export const ORDER_PURPOSE_LABEL: Record<OrderPurpose, string> = {
   casual: "カジュアル",
 };
 
+/*
+ * 内部値の post_delivery は変えない。approach_resolutions.trigger_key に埋まっていて、
+ * 変えると対応済みの通知が全件立ち直す。表に出る呼び名だけを「お渡し」に寄せている。
+ */
 export const TRIGGER_LABEL: Record<TriggerType, string> = {
-  post_delivery: "納品後フォロー",
+  post_delivery: "お渡し後フォロー",
   anniversary: "記念日",
 };
 
@@ -54,7 +58,7 @@ export const INPUT_METHOD_LABEL: Record<MeasurementInputMethod, string> = {
 };
 
 /*
- * アプローチのルール（記念日の予告日数・納品後フォローの節目）はここに置かない。
- * lib/constants/approach.ts にまとめてある。節目だけは店舗が変えられるので、
+ * アプローチのルール（記念日の予告日数・お渡し後フォローの節目）はここに置かない。
+ * lib/constants/approach.ts にまとめてある。どちらも店舗が変えられるので、
  * 実際に効く値は lib/data/settings.ts の getAppSettings() から読む。
  */

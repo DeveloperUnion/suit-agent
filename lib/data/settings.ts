@@ -2,13 +2,16 @@ import type { AppSettings, IsoMonth, Staff, Uuid } from "@/lib/types";
 import { supabase } from "@/lib/supabase/client";
 import { bump } from "@/lib/store/revision";
 import { getCurrentStaffId } from "@/lib/auth/current-staff";
-import { DEFAULT_POST_DELIVERY_MONTHS } from "@/lib/constants/approach";
+import {
+  DEFAULT_ANNIVERSARY_LEAD_DAYS,
+  DEFAULT_POST_DELIVERY_MONTHS,
+} from "@/lib/constants/approach";
 
 /**
  * 店舗共通の設定・スタッフ・売上目標。
  *
- * 店舗が変えられる業務ルールは app_settings の 1 行だけ（納品後フォローの節目）。
- * 記念日の 7 日前は lib/constants/approach.ts の固定値のまま。
+ * 店舗が変えられる業務ルールは app_settings の 1 行だけ
+ * （お渡し後フォローの節目と、記念日を何日前から出すか）。
  *
  * 設定もスタッフも、編集できるのは管理者だけ。RLS が app.is_admin() を見ているので、
  * ここに権限の分岐は書かない。
@@ -18,6 +21,7 @@ import { DEFAULT_POST_DELIVERY_MONTHS } from "@/lib/constants/approach";
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   postDeliveryMonths: DEFAULT_POST_DELIVERY_MONTHS,
+  anniversaryLeadDays: DEFAULT_ANNIVERSARY_LEAD_DAYS,
 };
 
 /**
@@ -32,7 +36,7 @@ export async function getAppSettings(): Promise<AppSettings> {
 
   const { data, error } = await supabase()
     .from("app_settings")
-    .select("postDeliveryMonths:post_delivery_months")
+    .select("postDeliveryMonths:post_delivery_months, anniversaryLeadDays:anniversary_lead_days")
     .maybeSingle();
   if (error) throw error;
 
@@ -45,6 +49,9 @@ export async function getAppSettings(): Promise<AppSettings> {
 export async function updateAppSettings(patch: Partial<AppSettings>): Promise<void> {
   const row: Record<string, unknown> = {};
   if (patch.postDeliveryMonths) row.post_delivery_months = patch.postDeliveryMonths;
+  if (patch.anniversaryLeadDays !== undefined) {
+    row.anniversary_lead_days = patch.anniversaryLeadDays;
+  }
 
   // 管理者でなければ RLS が 0 行にする。エラーにならないので、
   // 「保存しました」と嘘のトーストを出さないよう返り行数で確かめる。
@@ -97,15 +104,24 @@ export async function listAllStaff(): Promise<StaffWithLoad[]> {
   });
 }
 
+/**
+ * スタッフの追加・更新は管理者だけ（RLS）。
+ *
+ * 権限が無いと RLS は行を 0 にするだけでエラーにしない。返り行数を見ないと
+ * 「追加しました」という嘘のトーストが出るので、updateAppSettings と同じく
+ * ここで確かめる。画面側でもボタンを出し分けているが、それは見た目の話でしかない。
+ */
+const NOT_ADMIN = "スタッフを変更できるのは管理者だけです";
+
 export async function createStaff(input: Omit<Staff, "id" | "isActive">): Promise<Uuid> {
   const { data, error } = await supabase()
     .from("staff")
     .insert({ name: input.name, email: input.email, role: input.role })
-    .select("id")
-    .single();
+    .select("id");
   if (error) throw error;
+  if (!data || data.length === 0) throw new Error(NOT_ADMIN);
   bump();
-  return (data as { id: string }).id;
+  return (data[0] as { id: string }).id;
 }
 
 export async function updateStaff(id: Uuid, patch: Partial<Omit<Staff, "id">>): Promise<void> {
@@ -115,8 +131,9 @@ export async function updateStaff(id: Uuid, patch: Partial<Omit<Staff, "id">>): 
   if (patch.role !== undefined) row.role = patch.role;
   if (patch.isActive !== undefined) row.is_active = patch.isActive;
 
-  const { error } = await supabase().from("staff").update(row).eq("id", id);
+  const { data, error } = await supabase().from("staff").update(row).eq("id", id).select("id");
   if (error) throw error;
+  if (!data || data.length === 0) throw new Error(NOT_ADMIN);
   bump();
 }
 

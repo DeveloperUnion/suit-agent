@@ -12,14 +12,8 @@ import { ADJUSTMENT_MAP, adjustmentLabel } from "@/lib/constants/adjustments";
 import { deriveActual } from "@/lib/constants/measurement-ease";
 import { findField } from "@/lib/constants/measurement-fields";
 import { createSheetFromImport } from "@/lib/data/measurements";
-import {
-  createOrder,
-  markOrderDelivered,
-  type OrderAmounts,
-  type OrderItemFabric,
-} from "@/lib/data/orders";
+import { createOrder, markOrderDelivered, type OrderItemFabric } from "@/lib/data/orders";
 import { updateCustomer } from "@/lib/data/customers";
-import { formatDateDot } from "@/lib/utils/date";
 
 /**
  * 工場発注書の取り込み。
@@ -71,14 +65,16 @@ export type ImportPlan = {
   updateEmbroideryName: boolean;
   measuredAt: IsoDate;
   orderedAt: IsoDate;
-  dueDate?: IsoDate;
+  /** 納品日。工場から店に届く日。紙の「納品日」欄から読む */
+  arrivedAt?: IsoDate;
+  /** お渡し日。紙にはまず書かれていないので、店が手で入れる。空のままでもよい */
   deliveredAt?: IsoDate;
+  /** 用途は紙に無い。取り込みでは既定のまま持ち、画面には出さない */
   purpose: OrderPurpose;
   /** 生地はマスタを引かず、紙の値をそのまま持つ */
   fabric: OrderItemFabric;
-  amounts: OrderAmounts;
-  /** 紙の金額欄から1つでも読めたか。読めていなければ確認画面で転記を促す */
-  amountsFromPaper: boolean;
+  /** 売上金額（税込）。紙の金額欄は事実上いつも空欄なので、初期値は 0 */
+  totalAmount: number;
   sections: ImportPlanSection[];
   adjustments: ImportPlanAdjustment[];
   note: string;
@@ -136,15 +132,6 @@ export function buildImportPlan(
 
   const orderedAt = extraction.orderedAt?.value ?? new Date().toISOString().slice(0, 10);
 
-  const subtotalAmount = extraction.subtotalAmount?.value ?? 0;
-  const surchargeAmount = extraction.surchargeAmount?.value ?? 0;
-  const taxAmount = extraction.taxAmount?.value ?? 0;
-  const amountsFromPaper =
-    extraction.subtotalAmount !== undefined ||
-    extraction.surchargeAmount !== undefined ||
-    extraction.taxAmount !== undefined ||
-    extraction.totalAmount !== undefined;
-
   return {
     customerId: context.customerId,
     paperCustomerName: extraction.customerName?.value,
@@ -154,7 +141,7 @@ export function buildImportPlan(
     // 紙に採寸日は無い。今日にすると過去の紙が履歴の先頭に来て、前回比が全部壊れる
     measuredAt: orderedAt,
     orderedAt,
-    dueDate: extraction.factoryDueDate?.value,
+    arrivedAt: extraction.arrivedAt?.value,
     deliveredAt: extraction.handoverDate?.value,
     purpose: "business",
     fabric: {
@@ -163,15 +150,7 @@ export function buildImportPlan(
       fabricColorName: extraction.fabricColorName?.value,
       fabricComposition: extraction.fabricComposition?.value,
     },
-    amounts: {
-      subtotalAmount,
-      surchargeAmount,
-      taxAmount,
-      // 合計欄が読めていればそれが正。読めていなければ3段の和を初期値にする
-      totalAmount:
-        extraction.totalAmount?.value ?? subtotalAmount + surchargeAmount + taxAmount,
-    },
-    amountsFromPaper,
+    totalAmount: 0,
     sections,
     adjustments,
     note: buildNote(extraction, unknownFieldKeys),
@@ -192,9 +171,6 @@ function buildNote(extraction: OrderSheetExtraction, unknownFieldKeys: string[])
   if (shop.length > 0) lines.push(`販売店 ${shop.join(" / フィッター ")}`);
 
   if (extraction.liningCode) lines.push(`裏地 ${extraction.liningCode.value}`);
-  if (extraction.factoryDueDate) {
-    lines.push(`工場納品日 ${formatDateDot(extraction.factoryDueDate.value)}`);
-  }
   if (unknownFieldKeys.length > 0) {
     lines.push(`採寸項目に無い記入: ${unknownFieldKeys.join(", ")}`);
   }
@@ -247,11 +223,11 @@ export async function commitOrderSheetImport(
   const orderId = await createOrder({
     customerId: plan.customerId,
     orderedAt: plan.orderedAt,
-    dueDate: plan.dueDate,
+    arrivedAt: plan.arrivedAt,
     purpose: plan.purpose,
     measurementSheetId: sheetId,
     fabric: plan.fabric,
-    amounts: plan.amounts,
+    totalAmount: plan.totalAmount,
     items: plan.sections.map((section) => ({ itemTypeId: section.itemTypeId })),
   });
 

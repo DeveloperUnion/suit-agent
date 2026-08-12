@@ -8,7 +8,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(10);
+select plan(15);
 
 
 -- ── 道具 ────────────────────────────────────────────────
@@ -64,6 +64,10 @@ select is(
 select is(
   (select post_delivery_months from public.app_settings), '{6,12}'::integer[],
   '既定の節目は半年と 1 年'
+);
+select is(
+  (select anniversary_lead_days from public.app_settings), 7,
+  '記念日は既定で 7 日前から出す'
 );
 
 
@@ -129,6 +133,40 @@ select throws_ok(
   $$ update public.app_settings set post_delivery_months = '{6,12,24,36}' $$,
   '23514', null,
   '節目は 3 つまで'
+);
+
+
+-- ── 記念日の予告日数 ────────────────────────────────────
+--
+-- 節目と同じく、やってみないと適切な長さが分からない数字なので店舗に開けている。
+-- 0 は「当日だけ出す」で、有効な設定であることを確かめる。
+
+select pg_temp.login_as(:'member_uid');
+update public.app_settings set anniversary_lead_days = 14;
+select pg_temp.as_postgres();
+select is(
+  (select anniversary_lead_days from public.app_settings), 7,
+  '一般スタッフは予告日数を変えられない'
+);
+
+select pg_temp.login_as(:'admin_uid');
+update public.app_settings set anniversary_lead_days = 0;
+select pg_temp.as_postgres();
+select is(
+  (select anniversary_lead_days from public.app_settings), 0,
+  '管理者は予告日数を変えられる（0 は当日のみ）'
+);
+
+select pg_temp.login_as(:'admin_uid');
+select throws_ok(
+  $$ update public.app_settings set anniversary_lead_days = -1 $$,
+  '23514', null,
+  '負の予告日数は入らない'
+);
+select throws_ok(
+  $$ update public.app_settings set anniversary_lead_days = 61 $$,
+  '23514', null,
+  '2 ヶ月以上前からは出さない'
 );
 
 

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { FileDrop } from "@/components/common/file-drop";
 import { AmountFields, applyAmountChange } from "@/components/order/amount-fields";
+import { OrderPhotoPicker } from "@/components/order/order-photos";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -147,13 +148,20 @@ export function OrderSheetImportDialog({
     if (!plan || !canSubmit) return;
     setSaving(true);
     const resolved = plan as ResolvedImportPlan;
-    const { sheetId } = await commitOrderSheetImport(resolved);
+    const { sheetId, photoFailures } = await commitOrderSheetImport(resolved);
     setSaving(false);
     onOpenChange(false);
     reset();
     toast.success("発注書を取り込みました", {
       description: "採寸票と注文を作成しました。実寸は空欄のままです。",
     });
+    // 写真だけ落ちても取り込み自体は成立している。黙って捨てると
+    // 「入れたはずの写真が無い」に後から気づくことになる
+    if (photoFailures > 0) {
+      toast.error(`着装写真を ${photoFailures} 枚上げられませんでした`, {
+        description: "注文履歴の「編集」からもう一度足せます。",
+      });
+    }
     onImported(sheetId, resolved.customerId);
   };
 
@@ -263,9 +271,14 @@ export function OrderSheetImportDialog({
               value={plan.orderedAt}
               onChange={(v) => update({ orderedAt: v, measuredAt: v })}
             />
+            {/*
+              紙には日付が 2 つある。束ねない — お渡し日はお客様の都合でずれるが、
+              納品日は工場の都合だけで決まって先に確定する。
+              着心地確認の起点になるのはお渡し日のほう。
+            */}
             <DateField
               id="import-due"
-              label="納期"
+              label="納品日"
               value={plan.dueDate ?? ""}
               onChange={(v) => update({ dueDate: v || undefined })}
             />
@@ -409,6 +422,15 @@ export function OrderSheetImportDialog({
             </p>
           )}
         </>
+      ),
+    });
+
+    // 紙とは別の情報だが、仕立てた直後に撮るものなので取り込みと同じ流れに置く。
+    // ここではまだ注文が無いので File のまま預かり、注文ができた直後に上げる。
+    steps.push({
+      title: "着装写真",
+      content: (
+        <OrderPhotoPicker files={plan.photos} onChange={(photos) => update({ photos })} />
       ),
     });
 

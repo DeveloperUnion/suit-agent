@@ -56,11 +56,11 @@ hosokawa@example.com / shirahige@example.com / nozaki@example.com / admin@kenset
 ```
 supabase/
   migrations/*.sql     実行可能な正。手で書く（db diff は関数・ポリシーを取りこぼす）
-  masters.sql          生成物。採寸マスタと人となりの見出し。本番にも要る（後述）
+  masters.sql          生成物。採寸マスタとパーソナルの見出し。本番にも要る（後述）
   dev-seed.sql         生成物。モックの 50 顧客。ローカル専用
   seed.sql             管理者 4 名と auth.users。ローカル専用
   tests/*.sql          pgTAP。db:test で回る
-  config.toml          Storage / Realtime は無効（使わないと決めた）
+  config.toml          Storage は着装写真のためだけに有効。Realtime は無効
 scripts/
   generate-masters.mts   lib/constants/* → supabase/masters.sql
   generate-dev-seed.ts   lib/mock/seed.ts → supabase/dev-seed.sql
@@ -199,14 +199,16 @@ dev-seed の事実で「アウトドア系が好きな人」のような曖昧�
 チップに、メモが 1 行ずつの追記リストになった。性質が違うので、
 1 画面ずつ壁打ちしながら進めている。
 
-### Phase 2 — 人となりとエージェント基盤
+### Phase 2 — パーソナルとエージェント基盤
 
 - [x] `fact_categories` / `fact_labels` / `fact_aliases` / `customer_facts` / `search_chunks`
 - [x] `lib/ai/` の ESLint ルール（`supabase().from(` を禁止）
 - [x] `customers` の 8 列を落として facts へ移す。**`memo` も facts に入れた**
-      （`label_id` が null の行）。カルテは「人となり（チップ）」と
-      「記録（1 行ずつ追記）」の 2 面になったが、DB では同じ 1 テーブル
+      （`label_id` が null の行）。カルテは「パーソナル（チップ）」と
+      「メモ（1 行ずつ追記）」の 2 面になったが、DB では同じ 1 テーブル
 - [x] `customer_ng_notes` テーブルと `photo_consent` / `night_contact_ok` への分割
+      （同意 2 列は Phase 3 で落とした。一度も使われず、注意事項の枠の
+      下半分を占めていただけだった）
 - [ ] 埋め込みのバックフィル（`app/api/cron/embed`、`worker_role`）。
       **`worker_role` は nologin のまま置いてある。**Cron が何のロールで接続するかは
       ここで決める（本命は LOGIN + 専用パスワード。`BYPASSRLS` は与えない）
@@ -223,8 +225,12 @@ dev-seed の事実で「アウトドア系が好きな人」のような曖昧�
 
 ### Phase 3 — 運用
 
+- [x] `public.delete_customer()`（顧客の物理削除。テーブルへの delete 権限は
+      付けず、この関数 1 本に閉じる。`change_log` は削除の事実だけ残す。
+      実体の写真はクライアントが Storage から先に消す）
+- [x] `app.sync_birthday_anniversary()`（生年月日 → 誕生日の記念日）
+- [x] `order_photos` と `order-photos` バケット（着装写真）
 - `app.deactivate_staff()`（退職時の引き継ぎ。いまは無効化だけで引き継ぎは手作業）
-- `app.purge_customer()`（削除請求。`change_log` のマスキングまで）
 - `customer_assignments`（引き継ぎ履歴）
 - `alterations`
 

@@ -1,26 +1,19 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { ImageOff, PackageCheck } from "lucide-react";
-import { toast } from "sonner";
+import { Pencil } from "lucide-react";
 
 import { EmptyState, SectionTitle } from "@/components/common/field";
+import { OrderEditDialog } from "@/components/order/order-edit-dialog";
+import { OrderPhotos } from "@/components/order/order-photos";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ORDER_PURPOSE_LABEL, ORDER_STATUS_LABEL } from "@/lib/constants/labels";
 import { ITEM_TYPE_MAP } from "@/lib/constants/measurement-fields";
-import {
-  clearOrderDelivery,
-  getOwnedItemSummary,
-  listOrders,
-  markOrderDelivered,
-} from "@/lib/data/orders";
+import { getOwnedItemSummary, listOrders, type OrderView } from "@/lib/data/orders";
 import { useQuery } from "@/lib/hooks/use-query";
 import { usePostDeliveryMilestones } from "@/lib/hooks/use-settings";
-import { formatAmount, formatDateDot, toIsoDate } from "@/lib/utils/date";
+import { formatAmount, formatDateDot } from "@/lib/utils/date";
 
 export function OrdersTab({ customerId }: { customerId: string }) {
   const milestones = usePostDeliveryMilestones();
@@ -30,6 +23,9 @@ export function OrdersTab({ customerId }: { customerId: string }) {
 
   const summaryLoader = useCallback(() => getOwnedItemSummary(customerId), [customerId]);
   const { data: summary } = useQuery(summaryLoader, [customerId]);
+
+  // 編集中の注文。id ではなく行そのものを持つ（ダイアログが初期値に使う）
+  const [editing, setEditing] = useState<OrderView | null>(null);
 
   if (!loading && (!orders || orders.length === 0)) {
     return <EmptyState>注文履歴がまだありません。</EmptyState>;
@@ -75,9 +71,14 @@ export function OrdersTab({ customerId }: { customerId: string }) {
 
       <section className="flex flex-col gap-3">
         <SectionTitle>注文履歴</SectionTitle>
-        {/* 納品ボタンの意味を先に言う。言わないと誰も押さず、トリガーが壊れて見える */}
+        {/*
+          2 つの日付の役割を先に言う。言わないと「納品日が入っているのに
+          アプローチが立たない」がバグに見える。
+        */}
         <p className="text-xs text-muted-foreground">
-          納品日を記録すると、その{milestones.map((m) => m.label).join("後・")}後に「着心地確認」のアプローチが立ちます。
+          発注書から納品日（工場→店）とお渡し日を読み取ります。
+          <strong className="font-medium text-foreground">お渡し日</strong>
+          を入れると、その{milestones.map((m) => m.label).join("後・")}後に「着心地確認」のアプローチが立ちます。
         </p>
         <ul className="flex flex-col gap-3">
           {(orders ?? []).map((order) => (
@@ -94,16 +95,23 @@ export function OrdersTab({ customerId }: { customerId: string }) {
                   <Badge variant="outline" className="font-normal">
                     {ORDER_STATUS_LABEL[order.status]}
                   </Badge>
-                  <DeliveryControl
-                    orderId={order.id}
-                    deliveredAt={order.deliveredAt}
-                    isDelivered={order.status === "delivered"}
-                  />
-                  <span className="ml-auto flex items-center gap-4">
-                    <span className="text-xs text-muted-foreground">受注者 {order.staffName}</span>
+                  <DeliveryDates dueDate={order.dueDate} deliveredAt={order.deliveredAt} />
+                  <span className="ml-auto flex items-center gap-3">
+                    <span className="hidden text-xs text-muted-foreground sm:inline">
+                      受注者 {order.staffName}
+                    </span>
                     <span className="tnum font-mono text-sm font-medium">
                       ¥{formatAmount(order.totalAmount)}
                     </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-9 gap-1.5"
+                      onClick={() => setEditing(order)}
+                    >
+                      <Pencil className="size-3.5" />
+                      編集
+                    </Button>
                   </span>
                 </div>
                 {/* 内訳は割増か税が載っているときだけ。0 が並ぶと合計が読みにくくなる */}
@@ -122,10 +130,8 @@ export function OrdersTab({ customerId }: { customerId: string }) {
                 マスタは引かず、発注書に書かれていた値をそのまま出す。
               */}
               <div className="flex flex-col gap-2.5 p-4 sm:flex-row sm:gap-4">
-                {/* 着装写真のプレースホルダ */}
-                <div className="flex h-24 w-full shrink-0 items-center justify-center rounded-sm border border-dashed border-border bg-muted/40 sm:h-28 sm:w-20">
-                  <ImageOff className="size-4 text-muted-foreground/50" />
-                </div>
+                {/* 着装写真。足す・消すは編集ダイアログの中だけ */}
+                <OrderPhotos orderId={order.id} readOnly />
 
                 <div className="flex min-w-0 flex-1 flex-col gap-2">
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -163,76 +169,41 @@ export function OrdersTab({ customerId }: { customerId: string }) {
           ))}
         </ul>
       </section>
+
+      {editing && (
+        <OrderEditDialog
+          // 別の注文を開いたら初期値を作り直す
+          key={editing.id}
+          order={editing}
+          open
+          onOpenChange={(next) => !next && setEditing(null)}
+        />
+      )}
     </div>
   );
 }
 
 /**
- * 納品の記録。
- * 納品日は「着心地確認」の起点になる唯一の入力なので、注文カードの見出しに置く。
+ * 納品日とお渡し日。
+ *
+ * 読むだけ。直すのは編集ダイアログの中で、他の項目と同じ扱いにしてある。
+ * もとは「納品にする」ボタンで日付を手入力させていたが、発注書に両方とも
+ * 書いてあるので、押させる操作そのものが要らなくなった。
+ *
+ * お渡し日が空でも黙って隠さない。着心地確認が立たない理由がここにあり、
+ * 隠すと「アプローチが出ない」だけが見えて原因が画面から消える。
  */
-function DeliveryControl({
-  orderId,
-  deliveredAt,
-  isDelivered,
-}: {
-  orderId: string;
-  deliveredAt?: string;
-  isDelivered: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const [date, setDate] = useState(toIsoDate(new Date()));
-
-  if (isDelivered && deliveredAt) {
-    return (
-      <span className="flex items-center gap-1.5">
-        <span className="tnum font-mono text-sm">納品 {formatDateDot(deliveredAt)}</span>
-        <button
-          type="button"
-          onClick={async () => {
-            await clearOrderDelivery(orderId);
-            toast.success("納品の記録を取り消しました");
-          }}
-          className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-        >
-          取り消す
-        </button>
-      </span>
-    );
-  }
-
+function DeliveryDates({ dueDate, deliveredAt }: { dueDate?: string; deliveredAt?: string }) {
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="h-9 gap-1.5">
-          <PackageCheck className="size-3.5" />
-          納品にする
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="flex w-64 flex-col gap-3">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`delivered-${orderId}`}>納品日</Label>
-          <Input
-            id={`delivered-${orderId}`}
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="h-11 bg-card font-mono"
-          />
-        </div>
-        <Button
-          className="h-10"
-          onClick={async () => {
-            await markOrderDelivered(orderId, date);
-            setOpen(false);
-            toast.success("納品を記録しました", {
-              description: "着心地確認のアプローチの起点になります。",
-            });
-          }}
-        >
-          記録する
-        </Button>
-      </PopoverContent>
-    </Popover>
+    <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm">
+      {dueDate && (
+        <span className="tnum font-mono text-muted-foreground">納品 {formatDateDot(dueDate)}</span>
+      )}
+      {deliveredAt ? (
+        <span className="tnum font-mono">お渡し {formatDateDot(deliveredAt)}</span>
+      ) : (
+        <span className="text-xs text-muted-foreground/70">お渡し 未設定</span>
+      )}
+    </span>
   );
 }

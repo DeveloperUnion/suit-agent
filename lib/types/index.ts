@@ -40,7 +40,7 @@ export type CustomerAnniversary = {
   label: string;
 };
 
-// ── 人となりと記録 ──────────────────────────────────────
+// ── パーソナルとメモ ────────────────────────────────────
 //
 // 「ゴルフが趣味な人を全員」引くために正規化してある。文字列 1 本のままだと
 // 表記の揺れで取りこぼし、しかも誰も気づけない。
@@ -49,7 +49,7 @@ export type CustomerAnniversary = {
 // スタッフに「これは趣味欄か、メモか」を毎回選ばせることになり、速いほうへ
 // 情報が逃げる。1 つにして、入力は「1 行書く」だけにしてある。
 
-/** 人となりの見出し。表示にしか使わない — 検索の絞り込みには絶対に使わない */
+/** パーソナルの見出し。表示にしか使わない — 検索の絞り込みには絶対に使わない */
 export type FactCategory = {
   key: string;
   label: string;
@@ -135,17 +135,13 @@ export type Customer = {
 
   /*
    * 趣味・好み・タグ・メモ・NG は列として持たない。
-   * customer_facts（ラベルの有無で人となりと走り書きを兼ねる）と
+   * customer_facts（ラベルの有無でパーソナルと走り書きを兼ねる）と
    * customer_ng_notes へ移した。
+   *
+   * 同意（写真掲載・夜間連絡）も持たない。一度作ったが一度も使われず、
+   * 注意事項の枠の下半分を占めて NG 事項の視線を奪っていたので落とした。
+   * 掲載を始めるなら、媒体を区別しない boolean 1 本では足りない。
    */
-
-  /**
-   * 同意。既定はどちらも false で、「まだ許可を得ていない」に倒れる。
-   * 事実ではないので facts に入れない — 同意の撤回と事実の訂正は別物であり、
-   * 意味検索で「近いもの」として曖昧に扱われては困る。
-   */
-  photoConsent: boolean;
-  nightContactOk: boolean;
 
   /**
    * 担当スタッフ。顧客はスタッフごとに分割して持ち、ログインした人には
@@ -300,7 +296,16 @@ export type Order = {
   customerId: Uuid;
   orderNumber: string;
   orderedAt: IsoDate;
+  /**
+   * 納品日。工場から店に届く日で、紙の 2 段目にある。
+   * 列名は due_date のままだが「納期」ではなく納品日として扱う。
+   */
   dueDate?: IsoDate;
+  /**
+   * お渡し日。店からお客様へ手渡した日で、紙の上段にある。
+   * 着心地確認アプローチの起点はこちら。お客様の都合でずれるので空のこともあり、
+   * 空のままの注文を催促する仕組みは docs/todo.md に置いてある。
+   */
   deliveredAt?: IsoDate;
   status: OrderStatus;
   purpose: OrderPurpose;
@@ -346,13 +351,32 @@ export type Order = {
  * 生地も金額も注文単位（Order 側）で持つ。紙が原反NO を 1 つしか持たず、
  * 明細ごとの金額欄も無いため、ここに置くと同じ値が明細の数だけ重複する。
  *
- * 着装写真も持たない。画像を一切保存しない判断のため
- * （削除請求への対応を DB だけで完結させ、保持する個人情報を減らす）。
+ * 着装写真も明細には持たない。紙が原反NO を 1 つしか持たないのと同じ理由で、
+ * 写真も「その注文で仕立てた一式」に付く。行は OrderPhoto。
  */
 export type OrderItem = {
   id: Uuid;
   orderId: Uuid;
   itemTypeId: ItemTypeId;
+};
+
+/**
+ * 着装写真。
+ *
+ * 実体は order-photos バケット（非公開）で、この行はその索引。
+ * 読み出しは常に署名 URL なので、URL を持ち回っても期限で切れる。
+ *
+ * 「画像を一切保存しない」という当初の判断はここで反転している。代わりに
+ * 削除を 2 段にした — deleteCustomer() が Storage を消してから
+ * delete_customer() を呼ぶので、削除請求は DB と Storage の両方で完結する。
+ */
+export type OrderPhoto = {
+  id: Uuid;
+  orderId: Uuid;
+  customerId: Uuid;
+  /** {customerId}/{orderId}/{uuid}.jpg */
+  storagePath: string;
+  createdAt: IsoDate;
 };
 
 export type Alteration = {

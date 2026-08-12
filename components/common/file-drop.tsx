@@ -23,13 +23,17 @@ export function FileDrop({
   label,
   hint,
   disabled,
+  multiple,
   className,
 }: {
+  /** 複数渡されたときは 1 件ずつ呼ばれる */
   onFile: (file: File) => void;
   accept: string;
   label: string;
   hint?: string;
   disabled?: boolean;
+  /** 着装写真のように、まとめて選べたほうが早いもの */
+  multiple?: boolean;
   className?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -55,8 +59,9 @@ export function FileDrop({
       onDrop={(e) => {
         e.preventDefault();
         setOver(false);
-        const file = e.dataTransfer.files[0];
-        if (file && !disabled) accept_(file);
+        if (disabled) return;
+        const files = multiple ? Array.from(e.dataTransfer.files) : e.dataTransfer.files[0] ? [e.dataTransfer.files[0]] : [];
+        for (const file of files) accept_(file);
       }}
       className={cn(
         "flex flex-col items-center gap-2 rounded-md border border-dashed p-5 text-center transition-colors",
@@ -80,12 +85,13 @@ export function FileDrop({
         type="file"
         accept={accept}
         capture="environment"
+        multiple={multiple}
         className="hidden"
         onChange={(e) => {
-          const file = e.target.files?.[0];
+          const files = Array.from(e.target.files ?? []);
           // 同じファイルを続けて選べるよう、毎回クリアする
           e.target.value = "";
-          if (file) accept_(file);
+          for (const file of files) accept_(file);
         }}
       />
     </div>

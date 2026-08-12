@@ -127,7 +127,10 @@ export function defaultTotal(amounts: Omit<OrderAmounts, "totalAmount">): number
 export type CreateOrderInput = {
   customerId: Uuid;
   orderedAt: IsoDate;
+  /** 納品日（工場→店）。列名は due_date のままだが「納期」ではない */
   dueDate?: IsoDate;
+  /** お渡し日（店→客）。紙に書かれていないことがあるので任意 */
+  deliveredAt?: IsoDate;
   purpose: OrderPurpose;
   /** どの寸法で作るか。リピートは前回の採寸票をそのまま使うことが多い */
   measurementSheetId?: Uuid;
@@ -155,7 +158,10 @@ export async function createOrder(input: CreateOrderInput): Promise<Uuid> {
       order_number: `J1-${seq}-${Math.floor(Math.random() * 900) + 100}`,
       ordered_at: input.orderedAt,
       due_date: input.dueDate ?? null,
-      status: "ordered",
+      // 紙にお渡し日が書かれていれば、登録した時点でもう納品済み。
+      // 取り込んだ直後に「納品にする」を押させる意味がない。
+      delivered_at: input.deliveredAt ?? null,
+      status: input.deliveredAt ? "delivered" : "ordered",
       purpose: input.purpose,
       fabric_product_number: input.fabric.fabricProductNumber ?? null,
       fabric_color_number: input.fabric.fabricColorNumber ?? null,
@@ -191,29 +197,68 @@ export async function createOrder(input: CreateOrderInput): Promise<Uuid> {
   return orderId;
 }
 
-// ── 納品の記録 ──────────────────────────────────
+// ── 注文の更新 ──────────────────────────────────
 
 /**
- * 納品を記録する。
+ * 後から直せる項目。
  *
- * 納品日は「納品後フォロー（着心地確認）」トリガーの起点そのもので、
- * ここが動かないとアプローチが一切立たない。
+ * 明細（order_items）と採寸票の紐づけは入れない。採寸票と表裏なので、
+ * ここで触ると保有アイテム構成の集計（getOwnedItemSummary）と食い違う。
  */
-export async function markOrderDelivered(orderId: Uuid, deliveredAt: IsoDate): Promise<void> {
-  const { error } = await supabase()
-    .from("orders")
-    .update({ delivered_at: deliveredAt, status: "delivered" })
-    .eq("id", orderId);
-  if (error) throw error;
-  bump();
-}
+export type UpdateOrderInput = Partial<
+  Pick<Order, "orderedAt" | "purpose"> & OrderItemFabric & OrderAmounts
+> & {
+  /** 納品日（工場→店）。null で消す */
+  dueDate?: IsoDate | null;
+  /** お渡し日（店→客）。null で消す */
+  deliveredAt?: IsoDate | null;
+};
 
-/** 誤操作の取り消し。受注済みまで戻す */
-export async function clearOrderDelivery(orderId: Uuid): Promise<void> {
-  const { error } = await supabase()
-    .from("orders")
-    .update({ delivered_at: null, status: "ordered" })
-    .eq("id", orderId);
+/**
+ * 注文の更新。
+ *
+ * もとは markOrderDelivered / clearOrderDelivery の 2 本で、納品日だけが
+ * 後から動かせる唯一の値だった。発注書から日付を読むようになって
+ * 「納品にする」という操作自体が要らなくなったので、日付も他の項目と同じく
+ * ただの編集に畳んである。
+ *
+ * status はフォームに出さず**お渡し日から決める**。入っていれば納品済、
+ * 空なら受注。人に選ばせると、日付と状態が食い違った行が必ず生まれる。
+ *
+ * 担当外を指定しても RLS が 0 行にするだけで、エラーにもならない。
+ */
+export async function updateOrder(id: Uuid, patch: UpdateOrderInput): Promise<void> {
+  const map: Record<string, string> = {
+    orderedAt: "ordered_at",
+    dueDate: "due_date",
+    deliveredAt: "delivered_at",
+    purpose: "purpose",
+    fabricProductNumber: "fabric_product_number",
+    fabricColorNumber: "fabric_color_number",
+    fabricColorName: "fabric_color_name",
+    fabricComposition: "fabric_composition",
+    subtotalAmount: "subtotal_amount",
+    surchargeAmount: "surcharge_amount",
+    taxAmount: "tax_amount",
+    totalAmount: "total_amount",
+  };
+
+  const row: Record<string, unknown> = {};
+  for (const [key, column] of Object.entries(map)) {
+    const value = (patch as Record<string, unknown>)[key];
+    if (value === undefined) continue;
+    row[column] = value === "" ? null : value;
+  }
+
+  // お渡し日に触れたときだけ状態を追随させる。触れていない更新
+  // （金額の直しなど）で状態が動くと、納品済の注文が受注へ戻る。
+  if ("deliveredAt" in patch) {
+    row.status = patch.deliveredAt ? "delivered" : "ordered";
+  }
+
+  if (Object.keys(row).length === 0) return;
+
+  const { error } = await supabase().from("orders").update(row).eq("id", id);
   if (error) throw error;
   bump();
 }

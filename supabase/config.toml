@@ -116,18 +116,18 @@ port = 54324
 # sender_name = "Admin"
 
 [storage]
-# 使わない。名刺画像も着装写真も保存しない判断のため（削除請求への対応を
-# DB だけで完結させ、保持する個人情報を減らす）。必要になったら true に戻す。
-enabled = false
+# 着装写真だけを持つ。名刺画像は引き続き保存しない（読み取ったら捨てる）。
+#
+# もとは「画像を一切保存しない」判断で無効にしていた。削除請求への対応を
+# DB だけで完結させるためだったが、その代わりに削除を 2 段にした —
+# deleteCustomer() が Storage の {customerId}/ を消してから
+# delete_customer() を呼ぶ（lib/data/customers.ts）。
+#
+# バケットの実体は 20260812140000_order_photos.sql が作る。本番にも同じものが
+# 要るので、ここの [storage.buckets] ではなくマイグレーションで持つ。
+enabled = true
 # The maximum file size allowed (e.g. "5MB", "500KB").
 file_size_limit = "50MiB"
-
-# Uncomment to configure local storage buckets
-# [storage.buckets.images]
-# public = false
-# file_size_limit = "50MiB"
-# allowed_mime_types = ["image/png", "image/jpeg"]
-# objects_path = "./images"
 
 # Allow connections via S3 compatible clients
 [storage.s3_protocol]

@@ -32,16 +32,16 @@ import type { CustomerFact, Uuid } from "@/lib/types";
 import { formatDateDot } from "@/lib/utils/date";
 
 /**
- * 人となりと記録。
+ * パーソナルとメモ。
  *
  * 見え方は 2 つあるが、DB では同じ 1 テーブル。ラベルが付いていれば上のチップ、
- * 付いていなければ下の記録リストに出る。
+ * 付いていなければ下のメモリストに出る。
  *
  * **分けて持たないのが要点。**分けるとスタッフに「これは趣味欄か、メモか」を
  * 毎回選ばせることになり、速いほう（自由記述）へ情報が逃げて確定検索から漏れる。
  * 現れ方は「ゴルフ好きなのに案内が来なかった人が 7 名いる」で、誰も気づけない。
  *
- * 消す口は記録リストの ✕ だけにしてある。チップにも置くと、同じ 1 行に
+ * 消す口はメモリストの ✕ だけにしてある。チップにも置くと、同じ 1 行に
  * 入り口が 2 つできて「どちらで消したか」が分からなくなる。
  */
 export function PersonalityPanel({ customerId }: { customerId: Uuid }) {
@@ -158,7 +158,7 @@ function AddLabelDialog({
     <Dialog open={open} onOpenChange={(next) => !next && close()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>人となりを足す</DialogTitle>
+          <DialogTitle>パーソナルを足す</DialogTitle>
           <DialogDescription>
             すでにある語なら候補から選んでください。表記が揺れると、同じ趣味の方が
             ひとまとまりで引けなくなります。
@@ -225,7 +225,7 @@ function AddLabelDialog({
 }
 
 /**
- * 記録。ラベルの付いていない走り書きも、付いている行も時系列で並べる。
+ * メモ。ラベルの付いていない走り書きも、付いている行も時系列で並べる。
  *
  * 上のチップが「3 秒で読む要約」で、こちらが経緯。同じ行が両方に出るのは
  * 意図したもので、片方だけ見ても困らないようにしてある。
@@ -276,12 +276,12 @@ export function RecordsPanel({ customerId }: { customerId: Uuid }) {
           disabled={pending || !body.trim()}
         >
           <Plus className="size-3.5" />
-          記録する
+          メモする
         </Button>
       </div>
 
       {rows.length === 0 ? (
-        <p className="py-2 text-sm text-muted-foreground">まだ記録がありません。</p>
+        <p className="py-2 text-sm text-muted-foreground">まだメモがありません。</p>
       ) : (
         <ul className="flex flex-col">
           {rows.map((fact) => (
@@ -305,7 +305,7 @@ export function RecordsPanel({ customerId }: { customerId: Uuid }) {
                 size="icon"
                 className="size-8 shrink-0"
                 onClick={() => void remove(fact.id)}
-                aria-label="この記録を消す"
+                aria-label="このメモを消す"
               >
                 <X className="size-3.5" />
               </Button>

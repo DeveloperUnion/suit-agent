@@ -2,6 +2,7 @@ import type { Customer, CustomerAnniversary, IsoDate, Staff, Uuid } from "@/lib/
 import { supabase } from "@/lib/supabase/client";
 import { bump } from "@/lib/store/revision";
 import { getCurrentStaffId, getViewingStaffId } from "@/lib/auth/current-staff";
+import { removeCustomerPhotos } from "@/lib/data/order-photos";
 import { INDUSTRIES } from "@/lib/constants/industries";
 import { PREFECTURES } from "@/lib/constants/prefectures";
 
@@ -47,7 +48,6 @@ const CUSTOMER_COLUMNS = `
   embroideryName:embroidery_name,
   companyName:company_name, department, jobTitle:job_title, industry,
   familyInfo:family_info,
-  photoConsent:photo_consent, nightContactOk:night_contact_ok,
   staffId:staff_id, createdAt:created_at
 `;
 
@@ -226,6 +226,9 @@ export async function listAnniversaries(customerId: Uuid): Promise<CustomerAnniv
  *
  * 画面からは「今この顧客に何があるか」の全体が渡ってくるので、
  * 消えたものだけを DELETE し、残りを upsert する。
+ *
+ * 誕生日の行は app.sync_birthday_anniversary() が生年月日から作る。ここで
+ * 消すこともできるが、生年月日を次に編集したときに作り直される。
  */
 export async function saveAnniversaries(
   customerId: Uuid,
@@ -333,6 +336,24 @@ export async function updateCustomer(id: Uuid, patch: Partial<Customer>): Promis
 }
 
 /**
+ * 顧客の物理削除。
+ *
+ * **Storage を先に消してから RPC を呼ぶ。** SQL 関数から Storage には手が
+ * 届かないので、順序を逆にすると顧客だけ消えて着装写真が孤児として残る。
+ * 写真の削除に失敗したらここで throw し、DB には触らない。
+ *
+ * DB 側は public.delete_customer()（SECURITY DEFINER）が担当する。
+ * テーブルへの delete 権限は付いていないので、消す口はこの 1 本だけ。
+ */
+export async function deleteCustomer(id: Uuid): Promise<void> {
+  await removeCustomerPhotos(id);
+
+  const { error } = await supabase().rpc("delete_customer", { p_customer_id: id });
+  if (error) throw error;
+  bump();
+}
+
+/**
  * 顧客の登録。
  *
  * staffId を渡さない。customers.staff_id の default が
@@ -370,8 +391,6 @@ function toRow(patch: Partial<Customer>): Record<string, unknown> {
     jobTitle: "job_title",
     industry: "industry",
     familyInfo: "family_info",
-    photoConsent: "photo_consent",
-    nightContactOk: "night_contact_ok",
     staffId: "staff_id",
     createdAt: "created_at",
   };

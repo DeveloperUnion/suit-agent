@@ -199,7 +199,7 @@ export async function proposeFact(
     };
   }
   return {
-    reply: `${nameOf(ref.name)}の人となりに${plan.labelNames.join("・")}を足します。`,
+    reply: `${nameOf(ref.name)}のパーソナルに${plan.labelNames.join("・")}を足します。`,
     action: {
       kind: "add_fact",
       customer: ref,

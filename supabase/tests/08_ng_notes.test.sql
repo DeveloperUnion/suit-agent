@@ -10,7 +10,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(8);
+select plan(7);
 
 
 -- ── 道具 ────────────────────────────────────────────────
@@ -61,18 +61,6 @@ select pg_temp.make_staff(:'b_uid',     'NG-B',    'n-b@example.com')           
 
 insert into public.customers (id, name, name_kana, staff_id)
 values (:'cust_a', '時枝 正', 'トキエダ タダシ', :'a_id');
-
-
--- ── 同意の既定 ──────────────────────────────────────────
---
--- 設定し忘れが「まだ許可を得ていない」に倒れる向きに揃えてある。
--- 逆向きだと、同意が無い人の写真を使う事故が無音で起きる。
-
-select is(
-  (select photo_consent or night_contact_ok from public.customers where id = :'cust_a'),
-  false,
-  '同意は既定でどちらも不可（fail-safe）'
-);
 
 
 -- ── 権限マトリクス ──────────────────────────────────────

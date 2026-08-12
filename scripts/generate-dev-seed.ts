@@ -74,7 +74,7 @@ push(`insert into public.customers (`);
 push(`  id, name, name_kana, birth_date, gender, phone, email, address,`);
 push(`  residence_prefecture, embroidery_name,`);
 push(`  company_name, department, job_title, industry,`);
-push(`  family_info, photo_consent, night_contact_ok,`);
+push(`  family_info,`);
 push(`  staff_id, created_at`);
 push(`) values`);
 push(
@@ -85,7 +85,7 @@ push(
         lit(c.phone), lit(c.email), lit(c.address), lit(c.residencePrefecture),
         lit(c.embroideryName),
         lit(c.companyName), lit(c.department), lit(c.jobTitle), lit(c.industry),
-        lit(c.familyInfo), lit(c.photoConsent), lit(c.nightContactOk),
+        lit(c.familyInfo),
         lit(staffId(c.staffId)), lit(c.createdAt),
       ].join(", ")})`,
     )
@@ -94,7 +94,7 @@ push(
 push(`on conflict (id) do nothing;`);
 push(``);
 
-// ── 人となりと記録 ──
+// ── パーソナルとメモ ──
 //
 // ラベルは店舗で共通なので、全顧客ぶんを畳んでから 1 回で入れる。
 // id はラベル名から決まる（同じ語なら常に同じ uuid）ので、
@@ -321,7 +321,7 @@ writeFileSync(OUT, lines.join("\n"));
 console.log(
   `supabase/dev-seed.sql を生成しました:\n` +
     `  顧客 ${db.customers.length} / 記念日 ${db.anniversaries.length}\n` +
-    `  人となり ${db.facts.length}（うちラベル無し ${db.facts.filter((f) => !f.label).length}）` +
+    `  パーソナル ${db.facts.length}（うちラベル無し ${db.facts.filter((f) => !f.label).length}）` +
     ` / NG ${db.ngNotes.length}\n` +
     `  注文 ${db.orders.length} / 明細 ${db.orderItems.length} / 採寸票 ${db.measurementSheets.length}\n` +
     `  アプローチ解決 ${db.approachTasks.length} / 売上目標 ${db.revenueTargets.length}`,

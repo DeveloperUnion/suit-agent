@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
-import { ArrowLeft, FileUp } from "lucide-react";
+import { ArrowLeft, FileUp, MoreHorizontal, Trash2 } from "lucide-react";
 
 import { useAgentContext } from "@/components/agent/agent-provider";
 import { DaysSinceDelivery } from "@/components/common/days-since-delivery";
+import { CustomerDeleteDialog } from "@/components/customer/customer-delete-dialog";
 import { ApproachesTab } from "@/components/customer/tabs/approaches-tab";
 import { MeasurementTab } from "@/components/customer/tabs/measurement-tab";
 import { OrdersTab } from "@/components/customer/tabs/orders-tab";
@@ -15,6 +16,12 @@ import { OrderSheetImportDialog } from "@/components/measurement/order-sheet-imp
 import { OrderCreateDialog } from "@/components/order/order-create-dialog";
 import { SilhouetteThumb } from "@/components/silhouette/silhouette-thumb";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -40,6 +47,7 @@ export function CustomerDetailView({
   const [sheetOpen, setSheetOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   /** 取り込んだ直後に、その票を開いた状態で採寸ビューへ戻すため */
   const [sheetId, setSheetId] = useState<string | undefined>();
   const [tab, setTab] = useState(
@@ -149,7 +157,7 @@ export function CustomerDetailView({
             寸法・補正・生地・日付が 1 枚で揃うぶん、注文と採寸が同時に片付く。
             紙がまだ無いときの手入力は、取り込み画面の中のリンクから開く。
           */}
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
               className="h-11 gap-1.5 sm:h-10"
@@ -158,6 +166,29 @@ export function CustomerDetailView({
               <FileUp className="size-4" />
               <span className="hidden sm:inline">発注書を取り込む</span>
             </Button>
+
+            {/*
+              削除はメニューの奥に置く。主動線の隣に裸のボタンとして出すと、
+              取り込みボタンの押し間違いが「元に戻せない削除」になる。
+            */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-11 sm:size-10"
+                  aria-label="このカルテの操作"
+                >
+                  <MoreHorizontal className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>
+                  <Trash2 className="size-4" />
+                  この顧客を削除
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>
@@ -218,6 +249,13 @@ export function CustomerDetailView({
         open={orderOpen}
         onOpenChange={setOrderOpen}
         onOpenMeasurement={() => setSheetOpen(true)}
+      />
+
+      <CustomerDeleteDialog
+        customerId={customer.id}
+        customerName={customer.name}
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
       />
     </div>
   );

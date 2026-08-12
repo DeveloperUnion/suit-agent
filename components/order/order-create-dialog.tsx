@@ -271,6 +271,7 @@ export function OrderCreateDialog({
                 />
               </div>
               <div className="flex flex-col gap-1.5">
+                {/* 工場から店に届く日。お渡し日は紙が出てから編集で入れる */}
                 <Label htmlFor="arrived-at">納品日</Label>
                 <Input
                   id="arrived-at"

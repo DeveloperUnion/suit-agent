@@ -5,7 +5,7 @@ import { Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { EditableSection, FormField } from "@/components/common/editable-section";
-import { EmptyState, Field } from "@/components/common/field";
+import { Field } from "@/components/common/field";
 import { HandlingPanel } from "@/components/customer/handling-panel";
 import { PersonalityPanel, RecordsPanel } from "@/components/customer/personality-panel";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,7 @@ import {
   type CustomerListItem,
 } from "@/lib/data/customers";
 import { useQuery } from "@/lib/hooks/use-query";
-import type { AnniversaryType } from "@/lib/types";
+import type { AnniversaryType, Uuid } from "@/lib/types";
 import { daysUntilNextAnniversary, formatDateLong } from "@/lib/utils/date";
 
 const INPUT = "h-11 bg-card";
@@ -46,11 +46,7 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
   return (
     <div className="flex flex-col gap-8">
       {/* 取りこぼしが許されない情報は 1 箇所にまとめ、他の項目に埋もれさせない */}
-      <HandlingPanel
-        customerId={customer.id}
-        photoConsent={customer.photoConsent}
-        nightContactOk={customer.nightContactOk}
-      />
+      <HandlingPanel customerId={customer.id} />
 
       <div className="grid gap-x-8 gap-y-6 lg:grid-cols-2">
         {/* ── 連絡先 ── */}
@@ -246,13 +242,13 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
           )}
         />
 
-        {/* ── 人となり ── */}
+        {/* ── パーソナル ── */}
         {/*
-          チップは表示だけ。「＋」で足せるが、消す口は下の「記録」に 1 つだけ置いてある。
+          チップは表示だけ。「＋」で足せるが、消す口は下の「メモ」に 1 つだけ置いてある。
           同じ 1 行に入り口を 2 つ作ると、どちらで消したのかが分からなくなる。
         */}
         <EditableSection
-          title="人となり"
+          title="パーソナル"
           className="lg:col-span-2"
           initial={() => ({ familyInfo: customer.familyInfo ?? "" })}
           onSave={(v) => save({ familyInfo: v.familyInfo || undefined }, "家族構成")}
@@ -275,10 +271,22 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
         />
 
         {/* ── 記念日 ── */}
+        {/*
+          誕生日の行は基本情報の生年月日から DB のトリガーが作る。ここで消せるが、
+          生年月日を次に編集したときに作り直される。
+
+          id を落とさずに渡すのが要点。落とすと saveAnniversaries が全行を
+          delete + insert し、uuid が振り直される。approach_resolutions が
+          anniversary:{id}:{年} で解決を覚えているので、スキップした誕生日の判断が
+          結婚記念日へ移る、といった無音の誤りが起きる。
+        */}
         <EditableSection
           title="記念日"
           initial={() =>
             (anniversaries ?? []).map((a) => ({
+              // 「足す」で増えた行にはまだ id が無い。saveAnniversaries はそれを
+              // 新規として扱う（id?: Uuid を受ける設計になっている）
+              id: a.id as Uuid | undefined,
               type: a.type,
               date: a.date,
               label: a.label,
@@ -381,7 +389,9 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
                 variant="outline"
                 size="sm"
                 className="h-10 w-fit gap-1.5"
-                onClick={() => setAll([...entries, { type: "other", date: "", label: "" }])}
+                onClick={() =>
+                  setAll([...entries, { id: undefined, type: "other", date: "", label: "" }])
+                }
               >
                 <Plus className="size-3.5" />
                 記念日を追加
@@ -391,9 +401,9 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
         />
 
         {/*
-          記録 — ラベルの付いていない走り書きも、付いている行もここに並ぶ。
-          もとは「メモ」の textarea で、上書きすると前の内容が消えていた。
-          追記式にしたので日付と記録者が残る。
+          メモ — ラベルの付いていない走り書きも、付いている行もここに並ぶ。
+          もとは textarea 1 枚で、上書きすると前の内容が消えていた。
+          追記式にしたので日付と書いた人が残る。
 
           営業管理（初回来店日・流入経路・タグ）は畳んだ。3 つとも表示専用で、
           集計にもトリガーにも出てこなかった。紹介は「高橋様のご紹介」と
@@ -402,19 +412,13 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
         <section className="flex flex-col gap-1 lg:col-span-2">
           <div className="flex items-center gap-2 border-b border-border pb-1.5">
             <span className="h-3 w-0.5 shrink-0 bg-brand" />
-            <h3 className="flex-1 font-heading text-sm font-medium tracking-wide">記録</h3>
+            <h3 className="flex-1 font-heading text-sm font-medium tracking-wide">メモ</h3>
           </div>
           <div className="pt-2">
             <RecordsPanel customerId={customer.id} />
           </div>
         </section>
       </div>
-
-      {!customer.companyName && !customer.familyInfo && (
-        <EmptyState>
-          この顧客はまだ氏名と連絡先しか登録されていません。各セクションの「編集」から、聞けたことを少しずつ足していけます。
-        </EmptyState>
-      )}
     </div>
   );
 }

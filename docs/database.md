@@ -56,14 +56,16 @@ hosokawa@example.com / shirahige@example.com / nozaki@example.com / admin@kenset
 ```
 supabase/
   migrations/*.sql     実行可能な正。手で書く（db diff は関数・ポリシーを取りこぼす）
-  masters.sql          生成物。採寸マスタと人となりの見出し。本番にも要る（後述）
+  masters.sql          生成物。採寸マスタとパーソナルの見出し。本番にも要る（後述）
   dev-seed.sql         生成物。モックの 50 顧客。ローカル専用
   seed.sql             管理者 4 名と auth.users。ローカル専用
   tests/*.sql          pgTAP。db:test で回る
-  config.toml          Storage / Realtime は無効（使わないと決めた）
+  config.toml          Storage は着装写真のためだけに有効。Realtime は無効
 scripts/
   generate-masters.mts   lib/constants/* → supabase/masters.sql
   generate-dev-seed.ts   lib/mock/seed.ts → supabase/dev-seed.sql
+.github/workflows/
+  db.yml               PR で検証し、main へのマージで本番へ反映する（後述）
 ```
 
 ### マスタは「デプロイ手順」であって seed でも migration でもない
@@ -81,6 +83,54 @@ npm run db:masters:check                    # CI。生成し直して差分ゼ�
 
 正は `lib/constants/` の `measurement-fields.ts` / `adjustments.ts` / `facts.ts`。
 DB はミラーで、DB 側で直したものは次の生成で消える。
+
+---
+
+## CI（`.github/workflows/db.yml`）
+
+**どの DB が相手かを取り違えると事故になるので、そこから書く。**
+
+| | 手元の Docker | CI ランナーの中 | 本番 |
+|---|---|---|---|
+| 誰が触る | 自分だけ。**CI は来ない** | `verify` ジョブ | `deploy` ジョブ |
+| DB | `supabase start` した自分のコンテナ | ジョブごとに新品を立て、終われば VM ごと捨てる | 本番プロジェクト |
+| 流すもの | 今まで通り自分で `db:reset` | `db:reset` → `db:test` | `db push` → `masters.sql` |
+| データ | 消えない | **消えるものが最初から無い** | **消えない** |
+
+`db:reset` は使い捨ての DB にしか流れない。本番に流れるのは `db push`（記録の無い
+migration を追記するだけ）と、冪等な `masters.sql` の 2 つで、どちらも既存の行を消さない。
+**`deploy` に `db reset` は書かない。**
+
+`verify`（PR と main への push）:
+
+- **適用済みの migration を書き換えていないこと。**`db push` は一度当てたファイルを
+  二度流さないので、書き換えると**手元の `db:reset` は緑のまま本番にだけ入らない**。
+  merge-base との差分で `M`/`D`/`R` を見て落とす
+- `db:reset` → `db:test` → `db:masters:check`。3 つめは `lib/constants/*` を直して
+  `npm run db:masters` を忘れた PR を止める
+
+`app` は Docker が要らないので別ジョブで並走する（`lint` と `typecheck`）。
+`typecheck` が `next typegen && tsc --noEmit` なのは、`next-env.d.ts` と `.next/types`
+が生成物で git に入っていないため。`tsc` だけを打つと型が丸ごと見つからずに落ちる。
+
+`deploy` は `needs: verify`。**main への直 push でも、まっさらからの reset と pgTAP を
+通したコミットしか本番に触れない。**
+
+### 本番の credential を CI に置くことについて
+
+`SUPABASE_DB_URL`（`production` environment secret）は `postgres` ロールなので、
+このリポジトリで置かないと決めている `service_role` キーより強い。migration を
+自動で当てる以上これは避けられないが、等価交換ではないので抑えを書いておく。
+
+- repository secret ではなく **`production` environment に閉じる**。PR のジョブからは見えない
+- `deploy` は `needs: verify`。検証が緑のコミットしか本番に触れない
+- ワークフローで `$SUPABASE_DB_URL` を echo しない
+- 承認を挟みたくなったら Settings → Environments → production に reviewer を 1 人足すだけで、
+  コードを変えずに「マージ後、人が Approve するまで止まる」に切り替わる
+
+接続文字列は **Session pooler（ポート 5432）**を Dashboard の Connect からそのまま写す。
+直結ホスト `db.<ref>.supabase.co` は IPv6 専用で、GitHub Actions のランナーは IPv4 しか
+持たないので届かない。Transaction pooler（6543）は DDL に使えない。
 
 ---
 
@@ -200,14 +250,16 @@ dev-seed の事実で「アウトドア系が好きな人」のような曖昧�
 チップに、メモが 1 行ずつの追記リストになった。性質が違うので、
 1 画面ずつ壁打ちしながら進めている。
 
-### Phase 2 — 人となりとエージェント基盤
+### Phase 2 — パーソナルとエージェント基盤
 
 - [x] `fact_categories` / `fact_labels` / `fact_aliases` / `customer_facts` / `search_chunks`
 - [x] `lib/ai/` の ESLint ルール（`supabase().from(` を禁止）
 - [x] `customers` の 8 列を落として facts へ移す。**`memo` も facts に入れた**
-      （`label_id` が null の行）。カルテは「人となり（チップ）」と
-      「記録（1 行ずつ追記）」の 2 面になったが、DB では同じ 1 テーブル
+      （`label_id` が null の行）。カルテは「パーソナル（チップ）」と
+      「メモ（1 行ずつ追記）」の 2 面になったが、DB では同じ 1 テーブル
 - [x] `customer_ng_notes` テーブルと `photo_consent` / `night_contact_ok` への分割
+      （同意 2 列は Phase 3 で落とした。一度も使われず、注意事項の枠の
+      下半分を占めていただけだった）
 - [ ] 埋め込みのバックフィル（`app/api/cron/embed`、`worker_role`）。
       **`worker_role` は nologin のまま置いてある。**Cron が何のロールで接続するかは
       ここで決める（本命は LOGIN + 専用パスワード。`BYPASSRLS` は与えない）
@@ -224,8 +276,12 @@ dev-seed の事実で「アウトドア系が好きな人」のような曖昧�
 
 ### Phase 3 — 運用
 
+- [x] `public.delete_customer()`（顧客の物理削除。テーブルへの delete 権限は
+      付けず、この関数 1 本に閉じる。`change_log` は削除の事実だけ残す。
+      実体の写真はクライアントが Storage から先に消す）
+- [x] `app.sync_birthday_anniversary()`（生年月日 → 誕生日の記念日）
+- [x] `order_photos` と `order-photos` バケット（着装写真）
 - `app.deactivate_staff()`（退職時の引き継ぎ。いまは無効化だけで引き継ぎは手作業）
-- `app.purge_customer()`（削除請求。`change_log` のマスキングまで）
 - `customer_assignments`（引き継ぎ履歴）
 - `alterations`
 
@@ -233,9 +289,14 @@ dev-seed の事実で「アウトドア系が好きな人」のような曖昧�
 
 Tokyo リージョン。**まだ店舗には渡していない。**手順書ではなく、いまの状態として書く。
 
-- [x] `supabase link` → `supabase db push`（migration 13 本）
+- [x] `supabase link` → `supabase db push`（migration 13 本）。**手作業でやったのは
+      ここまで。**以降は main へマージすると `deploy` ジョブが流す
 - [x] `psql`（実際は SQL Editor）で `supabase/masters.sql`。**migration では入らない**ので、
-      スキーマを push するたびにこれも流す
+      スキーマを push するたびにこれも流す。この順序も `deploy` ジョブに入れてある
+- [ ] **`deploy` ジョブの有効化。**いまは `.github/workflows/db.yml` の `if:` に
+      `false &&` を書いて止めてある。外す前に、下の Pro プラン（日次バックアップ）と
+      `production` environment の `SUPABASE_DB_URL` を入れる。
+      **戻す先が無い状態で自動反映を有効にしない**
 - [x] 1 人目の管理者を SQL Editor から 1 行。管理者がいないと管理者を作れないため、
       ここだけは手作業。**2 人目以降は設定画面から名前とメールを登録するだけ**で、
       本人がサインインすると `auth.users` が作られ `auth_user_id` はトリガーが埋まる
@@ -330,6 +391,15 @@ Vercel の環境変数は 3 つ。**`SUPABASE_SERVICE_ROLE_KEY` は置かない*
 - **`worker_role` は `extensions` スキーマの USAGE を持たない。**pgTAP の `is()` も
   そこにあるので、`set role worker_role` した状態では判定関数を呼べない。
   数えるところだけをそのロールで走らせ、`\gset` で持ち帰ってから判定する
+- **適用済みの migration を書き換えても、ローカルは緑のまま通る。**`db:reset` は
+  まっさらから流すので直した内容が反映されるが、本番の `db push` は
+  `supabase_migrations.schema_migrations` に記録のあるファイルを二度流さない。
+  **どこにもエラーが出ないまま本番だけが古い**という形で現れる。
+  → CI に merge-base との差分検査を入れて落としている
+- **Supabase の直結ホストは IPv6 専用。**`db.<ref>.supabase.co` は AAAA しか返さず、
+  GitHub Actions のランナーは IPv4 しか持たないので接続が張れない
+  （名前解決は通るのでタイムアウトとして出る）。CI からは Session pooler を使う。
+  Transaction pooler（6543）は prepared statement を張れないので DDL には使えない
 
 ---
 

@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
  * 店が実際に持っているのは税込の1本だけだった。4欄を残すと、0 が3つ並んだ
  * ところに人が数字を入れる形になり、どれが正なのか毎回迷う。
  *
- * 割増を分けて持つかは審議中（todo.md）。DB には4列が残っている。
+ * 割増を分けて持つかは審議中（docs/todo.md）。DB には4列が残っている。
  */
 export function AmountField({
   value,

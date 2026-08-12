@@ -110,8 +110,10 @@ export type OrderItemFabric = Pick<
 export type CreateOrderInput = {
   customerId: Uuid;
   orderedAt: IsoDate;
-  /** 納品日。工場から店に届いた日。お渡し日は markOrderDelivered() で入れる */
+  /** 納品日（工場→店） */
   arrivedAt?: IsoDate;
+  /** お渡し日（店→客）。紙に書かれていないことがあるので任意 */
+  deliveredAt?: IsoDate;
   purpose: OrderPurpose;
   /** どの寸法で作るか。リピートは前回の採寸票をそのまま使うことが多い */
   measurementSheetId?: Uuid;
@@ -140,7 +142,10 @@ export async function createOrder(input: CreateOrderInput): Promise<Uuid> {
       order_number: `J1-${seq}-${Math.floor(Math.random() * 900) + 100}`,
       ordered_at: input.orderedAt,
       arrived_at: input.arrivedAt ?? null,
-      status: "ordered",
+      // お渡し日が入っていれば、登録した時点でもう渡してある。
+      // 取り込んだ直後に「お渡しにする」を押させる意味がない。
+      delivered_at: input.deliveredAt ?? null,
+      status: input.deliveredAt ? "delivered" : "ordered",
       purpose: input.purpose,
       fabric_product_number: input.fabric.fabricProductNumber ?? null,
       fabric_color_number: input.fabric.fabricColorNumber ?? null,
@@ -173,45 +178,65 @@ export async function createOrder(input: CreateOrderInput): Promise<Uuid> {
   return orderId;
 }
 
-// ── お渡しの記録 ────────────────────────────────
+// ── 注文の更新 ──────────────────────────────────
 
 /**
- * お渡しを記録する。
+ * 後から直せる項目。
  *
- * お渡し日は「お渡し後フォロー（着心地確認）」トリガーの起点。
- * 空のままでも納品日で代用されるが（v_customers）、実際に渡した日と
- * 工場から届いた日は数日ずれるので、分かった時点で入れてもらう。
+ * 明細（order_items）と採寸票の紐づけは入れない。採寸票と表裏なので、
+ * ここで触ると保有アイテム構成の集計（getOwnedItemSummary）と食い違う。
  */
-export async function markOrderDelivered(orderId: Uuid, deliveredAt: IsoDate): Promise<void> {
-  const { error } = await supabase()
-    .from("orders")
-    .update({ delivered_at: deliveredAt, status: "delivered" })
-    .eq("id", orderId);
-  if (error) throw error;
-  bump();
-}
-
-/** 誤操作の取り消し。受注済みまで戻す */
-export async function clearOrderDelivery(orderId: Uuid): Promise<void> {
-  const { error } = await supabase()
-    .from("orders")
-    .update({ delivered_at: null, status: "ordered" })
-    .eq("id", orderId);
-  if (error) throw error;
-  bump();
-}
+export type UpdateOrderInput = Partial<
+  Pick<Order, "orderedAt" | "purpose" | "totalAmount"> & OrderItemFabric
+> & {
+  /** 納品日（工場→店）。null で消す */
+  arrivedAt?: IsoDate | null;
+  /** お渡し日（店→客）。null で消す */
+  deliveredAt?: IsoDate | null;
+};
 
 /**
- * 売上金額の訂正。
+ * 注文の更新。
  *
- * 紙に金額欄が無い以上、取り込んだ直後は 0 円で残る。あとから台帳を見ながら
- * 入れる経路が無いと、売上の集計が永久に埋まらない。
+ * もとは markOrderDelivered / clearOrderDelivery の 2 本で、お渡し日だけが
+ * 後から動かせる唯一の値だった。発注書から日付を読むようになって
+ * 「お渡しにする」という操作自体が要らなくなったので、日付も他の項目と同じく
+ * ただの編集に畳んである。
+ *
+ * status はフォームに出さず**お渡し日から決める**。入っていればお渡し済、
+ * 空なら受注。人に選ばせると、日付と状態が食い違った行が必ず生まれる。
+ *
+ * 担当外を指定しても RLS が 0 行にするだけで、エラーにもならない。
  */
-export async function updateOrderAmount(orderId: Uuid, totalAmount: number): Promise<void> {
-  const { error } = await supabase()
-    .from("orders")
-    .update({ total_amount: totalAmount })
-    .eq("id", orderId);
+export async function updateOrder(id: Uuid, patch: UpdateOrderInput): Promise<void> {
+  const map: Record<string, string> = {
+    orderedAt: "ordered_at",
+    arrivedAt: "arrived_at",
+    deliveredAt: "delivered_at",
+    purpose: "purpose",
+    fabricProductNumber: "fabric_product_number",
+    fabricColorNumber: "fabric_color_number",
+    fabricColorName: "fabric_color_name",
+    fabricComposition: "fabric_composition",
+    totalAmount: "total_amount",
+  };
+
+  const row: Record<string, unknown> = {};
+  for (const [key, column] of Object.entries(map)) {
+    const value = (patch as Record<string, unknown>)[key];
+    if (value === undefined) continue;
+    row[column] = value === "" ? null : value;
+  }
+
+  // お渡し日に触れたときだけ状態を追随させる。触れていない更新
+  // （金額の直しなど）で状態が動くと、お渡し済の注文が受注へ戻る。
+  if ("deliveredAt" in patch) {
+    row.status = patch.deliveredAt ? "delivered" : "ordered";
+  }
+
+  if (Object.keys(row).length === 0) return;
+
+  const { error } = await supabase().from("orders").update(row).eq("id", id);
   if (error) throw error;
   bump();
 }

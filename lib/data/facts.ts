@@ -3,11 +3,11 @@ import { supabase } from "@/lib/supabase/client";
 import { bump } from "@/lib/store/revision";
 
 /**
- * 人となりと記録。
+ * パーソナルとメモ。
  *
  * 1 つのテーブルに 2 つの見え方がある。
  *   ラベルあり … カルテ上部のチップ。「ゴルフが趣味な人」を全員引くための語彙
- *   ラベルなし … 下の記録リスト。走り書き。語彙にならない話の置き場
+ *   ラベルなし … 下のメモリスト。走り書き。語彙にならない話の置き場
  *
  * **分けて持たないのが要点。**分けるとスタッフに「これはどっちの箱か」を毎回
  * 選ばせることになり、速いほう（自由記述）へ情報が逃げて確定検索から漏れる。
@@ -40,7 +40,7 @@ const toFact = (r: FactRow): CustomerFact => ({
   label: r.label ?? undefined,
 });
 
-/** カルテ 1 枚ぶん。古い順に並べる（下に足されていくほうが記録として読みやすい） */
+/** カルテ 1 枚ぶん。古い順に並べる（下に足されていくほうがメモとして読みやすい） */
 export async function listFacts(customerId: Uuid): Promise<CustomerFact[]> {
   const { data, error } = await supabase()
     .from("customer_facts")
@@ -55,7 +55,7 @@ export async function listFacts(customerId: Uuid): Promise<CustomerFact[]> {
 }
 
 /**
- * 記録を 1 行足す。
+ * メモを 1 行足す。
  *
  * labelId を渡せばチップになり、渡さなければ走り書きになる。
  * source は既定で manual — 会話から来たものだけが agent を名乗る。

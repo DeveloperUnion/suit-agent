@@ -304,7 +304,7 @@ function buildAll(): Built {
     // 顧客の担当。同じ顧客の採寸・受注・送信もこの人が行った想定にする
     const staffId = pick(STAFF).id;
 
-    // 人となり。移行後の姿を直接作る（もとは hobbies / preferences / tags の 3 列だった）。
+    // パーソナル。移行後の姿を直接作る（もとは hobbies / preferences / tags の 3 列だった）。
     // ラベルになる語だけをチップにし、ならないものは走り書きとして本文だけ持つ。
     const colors = minimal ? [] : pickSome(["ネイビー", "チャコール", "グレー", "ブラウン"], int(1, 2));
     const patterns = minimal ? [] : pickSome(["無地", "ストライプ", "チェック"], 1);
@@ -312,9 +312,10 @@ function buildAll(): Built {
     const scenes = minimal ? [] : pickSome(SCENES, int(1, 3));
     const hobbies = minimal ? [] : pickSome(HOBBIES, int(1, 2));
 
-    // もとの tags は 3 種類が混ざっていた。事実はラベルへ、同意は列へ、
-    // 「紹介元」は意味を持っていなかったので捨てる。
-    const oldTags = minimal ? [] : pickSome(["紹介元", "式典多め", "出張多い", "写真OK", "夜間連絡可"], int(0, 2));
+    // もとの tags は 3 種類が混ざっていた。事実はラベルへ、
+    // 「紹介元」は意味を持っていなかったので捨てる。同意（写真OK・夜間連絡可）は
+    // 列にしたあと一度も使われず、Phase 3 で落とした。
+    const oldTags = minimal ? [] : pickSome(["式典多め", "出張多い"], int(0, 2));
 
     // 初回購入日は顧客の列としては持たない（表示されるだけだった）。
     // 記念日としては意味があるので customer_anniversaries に残す。
@@ -337,8 +338,6 @@ function buildAll(): Built {
       jobTitle: minimal ? undefined : pick(JOB_TITLES) || undefined,
       industry: minimal ? undefined : industry,
       familyInfo: minimal ? undefined : pick(["妻・長男（中学生）", "妻・長女（小学生）・次女", "独身", "妻のみ", "妻・長男・次男"]),
-      photoConsent: oldTags.includes("写真OK"),
-      nightContactOk: oldTags.includes("夜間連絡可"),
       staffId,
       createdAt: daysAgo(int(30, 1700)),
     };
@@ -380,7 +379,6 @@ function buildAll(): Built {
       customer.embroideryName = "T.TOKIEDA";
       customer.familyInfo = "妻・長男（高校生）・長女（中学生）";
       customer.staffId = "staff-1";
-      customer.photoConsent = true;
 
       // 自動生成ぶんを捨てて、壁打ちで見ていた内容に置き換える
       facts.length = factsBefore;
@@ -412,16 +410,10 @@ function buildAll(): Built {
 
     customers.push(customer);
 
-    // 記念日
-    if (customer.birthDate) {
-      anniversaries.push({
-        id: `anv-${id}-b`,
-        customerId: id,
-        type: "birthday",
-        date: customer.birthDate,
-        label: "誕生日",
-      });
-    }
+    // 記念日。
+    // 誕生日はここで作らない — customers を insert した時点で
+    // app.sync_birthday_anniversary() が birth_date から作る。ここでも作ると
+    // 同じ顧客に誕生日が 2 行並ぶ。
     if (firstPurchase) {
       anniversaries.push({
         id: `anv-${id}-f`,

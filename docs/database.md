@@ -228,34 +228,42 @@ dev-seed の事実で「アウトドア系が好きな人」のような曖昧�
 - `customer_assignments`（引き継ぎ履歴）
 - `alterations`
 
-### 本番へ出すとき
+### 本番（`torico-agent`）
 
-- Supabase プロジェクトを作り `supabase link` → `supabase db push`
-- **`psql "$DATABASE_URL" -f supabase/masters.sql`**（採寸マスタ。migration では入らない）
-- 1 人目の管理者だけ SQL Editor から 1 行入れる（管理者がいないと管理者を作れないため）。
-  **2 人目以降は設定画面から名前とメールを登録するだけ。**本人がサインイン画面で
-  メールを入れると `auth.users` が作られ、`auth_user_id` はトリガーが埋める
-- **Authentication → Sign In / Providers の「新規サインアップ」は有効のまま**にする。
-  招待制の門番は GoTrue のフラグではなく DB のトリガー
-  （`app.guard_auth_user_is_staff`）に移してある。フラグを切ると、
-  **設定画面から追加したスタッフが誰もサインインできなくなる**
-- **Authentication の設定を `config.toml` に合わせる**（ローカルの config は本番に
-  反映されない）— セルフサインアップを止め、Site URL と Redirect URLs に本番ドメインを入れる。
-  ここが漏れるとリンクが `localhost` へ向いて、本番の初回ログインだけが通らない。
-  **メールのプロバイダ自体は有効のまま**にすること（切ると既存ユーザーへの
-  リンク送信まで止まる）
-- **カスタム SMTP を設定する。**組み込みのメールは 2 通/時で、これを外す手段が
-  他に無い（後述の罠）。Google Workspace の SMTP なら DNS を触らずに通せる。
-  最終的には Resend などで `noreply@<自分のドメイン>` にする —
-  差出人が `noreply@mail.app.supabase.io` のままだと、受け取る側には
-  フィッシングと区別がつかない
-- Vercel の環境変数は 3 つ。**`SUPABASE_SERVICE_ROLE_KEY` は置かない**
+Tokyo リージョン。**まだ店舗には渡していない。**手順書ではなく、いまの状態として書く。
 
-  | | |
-  |---|---|
-  | `NEXT_PUBLIC_SUPABASE_URL` | `https://<ref>.supabase.co` |
-  | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Project Settings → API Keys の anon / publishable |
-  | `GEMINI_API_KEY` | 採寸票・名刺の読み取り。`app/api/extract/*` だけが読む（NEXT_PUBLIC を付けない） |
+- [x] `supabase link` → `supabase db push`（migration 13 本）
+- [x] `psql`（実際は SQL Editor）で `supabase/masters.sql`。**migration では入らない**ので、
+      スキーマを push するたびにこれも流す
+- [x] 1 人目の管理者を SQL Editor から 1 行。管理者がいないと管理者を作れないため、
+      ここだけは手作業。**2 人目以降は設定画面から名前とメールを登録するだけ**で、
+      本人がサインインすると `auth.users` が作られ `auth_user_id` はトリガーが埋まる
+- [x] Vercel にデプロイ（`torico-agent.vercel.app`）
+- [ ] **カスタム SMTP。**組み込みのメールは 2 通/時で、外す手段が他に無い（後述の罠）。
+      **本番の初回ログインで実際にこれを踏んで止まっている。**
+      Google Workspace の SMTP なら DNS を触らずに通せる。最終的には Resend などで
+      `noreply@<自分のドメイン>` にする — 差出人が `noreply@mail.app.supabase.io` の
+      ままだと、受け取る側にはフィッシングと区別がつかない
+- [ ] Site URL と Redirect URLs に本番ドメイン。**パス無しの形とワイルドカードの両方**を
+      入れる（アプリは `emailRedirectTo` に origin をそのまま渡す）。
+      ここが漏れるとリンクが `localhost` へ向いて、本番の初回ログインだけが通らない
+- [ ] Pro プラン。1 週間触らないとプロジェクトが停止するのと、日次バックアップのため。
+      **メールの上限とは無関係**（課金しても外れない）
+
+設定で間違えやすいのは 2 つ。どちらも**切ってはいけない**もの:
+
+| | |
+|---|---|
+| Sign In / Providers の**新規サインアップ** | **有効のまま。**招待制の門番は GoTrue のフラグではなく DB のトリガー（`app.guard_auth_user_is_staff`）に移してある。切ると設定画面から追加したスタッフが誰もサインインできない |
+| **Email プロバイダ** | **有効のまま。**切ると既存ユーザーへのリンク送信まで止まる（ローカルで踏んだ罠と同じ構造） |
+
+Vercel の環境変数は 3 つ。**`SUPABASE_SERVICE_ROLE_KEY` は置かない**
+
+| | |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://<ref>.supabase.co` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Project Settings → API Keys の anon / publishable |
+| `GEMINI_API_KEY` | 採寸票・名刺の読み取り。`app/api/extract/*` だけが読む（NEXT_PUBLIC を付けない） |
 
 ---
 

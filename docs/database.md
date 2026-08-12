@@ -244,8 +244,13 @@ dev-seed の事実で「アウトドア系が好きな人」のような曖昧�
   ここが漏れるとリンクが `localhost` へ向いて、本番の初回ログインだけが通らない。
   **メールのプロバイダ自体は有効のまま**にすること（切ると既存ユーザーへの
   リンク送信まで止まる）
-- Vercel の環境変数は `NEXT_PUBLIC_SUPABASE_URL` と `NEXT_PUBLIC_SUPABASE_ANON_KEY` の 2 つだけ。
-  **`SUPABASE_SERVICE_ROLE_KEY` は置かない**
+- Vercel の環境変数は 3 つ。**`SUPABASE_SERVICE_ROLE_KEY` は置かない**
+
+  | | |
+  |---|---|
+  | `NEXT_PUBLIC_SUPABASE_URL` | `https://<ref>.supabase.co` |
+  | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Project Settings → API Keys の anon / publishable |
+  | `GEMINI_API_KEY` | 採寸票・名刺の読み取り。`app/api/extract/*` だけが読む（NEXT_PUBLIC を付けない） |
 
 ---
 

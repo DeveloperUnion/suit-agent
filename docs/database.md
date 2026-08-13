@@ -18,7 +18,7 @@ Homebrew の PostgreSQL では代用できない — **`security_invoker` は PG
 open -a Docker            # 起動を待つ
 supabase start            # 初回はイメージの取得で数分
 npm run db:reset          # 全 migration → masters → seed → dev-seed
-npm run db:test           # pgTAP 107 件
+npm run db:test           # pgTAP 164 件
 ```
 
 `db:reset` を毎回通すのが要点。「途中から足した migration」ではなく
@@ -156,11 +156,15 @@ migration を追記するだけ）と、冪等な `masters.sql` の 2 つで、�
 | `..._drop_consent_columns` | 同意 2 列（`photo_consent` / `night_contact_ok`）の削除 |
 | `..._birthday_anniversary` | `app.sync_birthday_anniversary()`（生年月日 → 誕生日） |
 | `..._handover_and_similar_customers` | `due_date` → `arrived_at` / `v_customers` の起点を `coalesce(delivered_at, arrived_at)` に / `anniversary_lead_days` / `public.find_similar_customers()` のラッパ |
+| `..._agent_message_guard` | 会話を追記のみに（提案の中身は変えられず、適用は一度だけ） |
+| `..._search_customers` | `search_chunks.embedding` を `halfvec` に・**HNSW を落とす** / `search_customers()` / `customer_dossier()` / `find_customers_by_name()` |
+| `..._worker_login` | `worker_role` に LOGIN と `extensions` の usage |
+| `..._agent_plans` | `fact_vocabulary()` / `plan_fact_add()` |
 | `..._drop_order_photos` | 着装写真の撤回。バケット・表・関数・ポリシーを落とし、`delete_customer()` を写真抜きで差し替え |
 | `..._order_amount_breakdown` | 使わなかった金額 3 列を落とし、売上区分の内訳 4 列（すべて nullable）を足す |
 
-pgTAP 141 件。構造ガード（RLS 付け忘れ・`security_invoker` 忘れ）は
-**わざと違反を作って検出することを確認済み**。
+pgTAP 167 件。構造ガード（RLS 付け忘れ・`security_invoker` 忘れ）と、
+`lib/ai/` の import 制限は**わざと違反を作って検出することを確認済み**。
 
 アプリ側は `lib/data/*` 8 ファイルが supabase-js を見る。認証は
 `lib/auth/current-staff.ts`、購読は `lib/store/revision.ts`（書き込み後に
@@ -259,6 +263,24 @@ RLS を採った最大の論拠は「境界を DB が持つので API 層が要�
 - [x] `customer_ng_notes` テーブルと `photo_consent` / `night_contact_ok` への分割
       （同意 2 列は Phase 3 で落とした。一度も使われず、注意事項の枠の
       下半分を占めていただけだった）
+- [x] **埋め込みのバックフィル**（`app/api/cron/embed`、`worker_role`）。
+      `worker_role` は **LOGIN + 専用パスワード**にした。`BYPASSRLS` は与えていないので、
+      越境できるのは facts の回で明示したポリシーの範囲（`search_chunks` の読み書きと、
+      本文を組み立てるための `customer_facts` / `fact_labels` の select）だけ。
+      本番のパスワードの設定手順は下の「本番」節
+- [x] **`app.search_customers()`** — 確定検索と意味検索を 1 本の関数で両方走らせる。
+      確定検索はラベル・別名・本文の一致を **LIMIT なしで全件**。意味検索は別枠。
+      **HNSW は張らない** — 近似索引は RLS のフィルタが後に来るので、他スタッフの顧客が
+      k 枠を食い潰して自分の顧客が黙って落ちる。索引が無ければ「先に自担当へ絞ってから
+      距離を計算する」形になり、取りこぼしが構造的に起きない（`halfvec` で走査は半分）
+- [x] **会話を `MODELS.chat` に差し替えた。**`lib/ai/` から `lib/data/*` の import も
+      禁止した（ESLint。わざと違反を作って検出することを確認済み）。読み取りは RPC、
+      書き込みは `lib/data/agent-apply.ts` の適用ハンドラに寄せてある
+- [x] 埋め込みは**二重**にする — 書き込み直後の fire-and-forget（`addFact` が
+      `/api/embed` を叩き、結果を待たない）と Cron のバックフィル。
+      片方だけだと「その顧客だけ検索に出てこない」が無音で起きる。
+      **未処理のキューは持たない** — `customer_facts left join search_chunks` が
+      null の集合をそのまま使うので、事実が存在する限り必ず拾われる
 - [x] `public.delete_customer()`（顧客の物理削除。テーブルへの delete 権限は
       付けず、この関数 1 本に閉じる。`change_log` は削除の事実だけ残す。
       写真をやめたので、削除はこの関数 1 本で完結する）
@@ -290,6 +312,24 @@ Pro プラン / 予算アラート）。
       ここだけは手作業。**2 人目以降は設定画面から名前とメールを登録するだけ**で、
       本人がサインインすると `auth.users` が作られ `auth_user_id` はトリガーが埋まる
 - [x] Vercel にデプロイ（`torico-agent.vercel.app`）
+- [ ] **`worker_role` のパスワードと環境変数。**この 2 つは
+      migration では終わらない（パスワードを git に置けないため）。
+      **マージして migration が本番へ入ってから**、SQL Editor で 1 回:
+
+      ```sql
+      alter role worker_role with password '<openssl rand -hex 24 の出力>';
+      ```
+
+      そのうえで Vercel に 3 つ。`OPENAI_API_KEY` / `CRON_SECRET`（`openssl rand -hex 32`）/
+      `WORKER_DATABASE_URL`。接続は **Session pooler（ポート 5432）**で、
+      **ユーザー名はロール名だけでは通らない** — Supavisor は
+      `<ロール>.<プロジェクトref>` を要求する（`postgres.<ref>` と同じ規則）:
+
+      ```
+      postgresql://worker_role.<ref>:<パスワード>@aws-0-<region>.pooler.supabase.com:5432/postgres
+      ```
+
+      直結ホストは IPv6 専用で Vercel から届かず、Transaction pooler（6543）は使わない
 
 設定で間違えやすいのは 2 つ。どちらも**切ってはいけない**もの:
 

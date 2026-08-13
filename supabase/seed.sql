@@ -76,3 +76,15 @@ begin
   end loop;
 end
 $$;
+
+
+-- ── 埋め込みワーカーのパスワード（ローカル専用） ────────
+--
+-- worker_role には migration で LOGIN を与えてあるが、パスワードは
+-- git に置けない（本番は SQL Editor から手で設定する）。
+-- ここは `supabase db reset` でしか流れないので、開発用の値でよい。
+-- ローカルの postgres/postgres と同じ性質のもの。
+--
+--   WORKER_DATABASE_URL=postgresql://worker_role:worker@127.0.0.1:54322/postgres
+
+alter role worker_role with password 'worker';

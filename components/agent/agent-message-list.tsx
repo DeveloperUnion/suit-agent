@@ -4,15 +4,21 @@ import { ArrowDown, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { AgentActionCard } from "@/components/agent/agent-action-card";
-import type { AgentCustomerRef, AgentMessage } from "@/lib/types";
+import type { AgentAction, AgentCustomerRef, AgentMessage } from "@/lib/types";
 import { useStickToBottom } from "@/lib/hooks/use-stick-to-bottom";
 import { cn } from "@/lib/utils";
 
-const EXAMPLES = ["時枝さんゴルフが趣味らしい", "ゴルフが趣味な人だれだっけ"];
+const EXAMPLES = [
+  "時枝さんゴルフが趣味らしい",
+  "ゴルフが趣味な人だれだっけ",
+  "時枝さんってどんな人だっけ",
+  "時枝さん電話番号が変わったって",
+];
 
 export function AgentMessageList({
   messages,
   pending,
+  progress,
   keyboardHeight,
   onApply,
   onPickCustomer,
@@ -21,10 +27,13 @@ export function AgentMessageList({
 }: {
   messages: AgentMessage[];
   pending: boolean;
+  /** いま何をしているか。空なら「考えています」に倒す */
+  progress: string;
   /** キーボードで容器が縮んだ瞬間にも最新へ寄せ直すため、依存として受け取る */
   keyboardHeight: number;
-  onApply: (message: AgentMessage) => Promise<void> | void;
-  onPickCustomer: (customer: AgentCustomerRef, labels: string[], body: string) => void;
+  /** カードの上で編集された action がそのまま渡る（部分承認） */
+  onApply: (message: AgentMessage, action: AgentAction) => Promise<void> | void;
+  onPickCustomer: (customer: AgentCustomerRef) => void;
   onNavigate: (href: string) => void;
   onPickExample: (text: string) => void;
 }) {
@@ -75,7 +84,12 @@ export function AgentMessageList({
                   key={message.id}
                   className={cn("flex flex-col gap-2", mine ? "items-end" : "items-start")}
                 >
-                  {/* 吹き出しの見た目はメッセージタブと揃える。別物のチャットに見せない */}
+                  {/* 吹き出しの見た目はメッセージタブと揃える。別物のチャットに見せない。
+                      **markdown を描かない。**ここは素のテキストのまま出すこと。
+                      カルテの自由記述はモデルの文脈に入るので、描画側がリンクや
+                      画像を解釈した瞬間に「仕込んだ文字列で情報を外へ運ぶ」経路が
+                      開く（実害が報告されている形はほぼ全部これ）。読みやすさが
+                      要るなら whitespace-pre-wrap の範囲で足す */}
                   <p
                     className={cn(
                       "max-w-[min(34rem,88%)] whitespace-pre-wrap rounded-md px-3.5 py-2.5 text-sm leading-relaxed",
@@ -91,7 +105,7 @@ export function AgentMessageList({
                       <AgentActionCard
                         action={message.action}
                         applied={Boolean(message.appliedAt)}
-                        onApply={() => onApply(message)}
+                        onApply={(action) => onApply(message, action)}
                         onPickCustomer={onPickCustomer}
                         onNavigate={onNavigate}
                       />
@@ -103,11 +117,15 @@ export function AgentMessageList({
 
             {pending && (
               <li className="flex flex-col items-start gap-2">
-                <p className="flex items-center gap-1.5 rounded-md rounded-tl-sm border border-border bg-card px-3.5 py-2.5">
-                  <Dot delay="0ms" />
-                  <Dot delay="150ms" />
-                  <Dot delay="300ms" />
-                  <span className="sr-only">応答を作成しています</span>
+                {/* 何をしているかを出す。スマホで無音の 4 秒は「固まった」に見える。
+                    道具を呼ぶ前は言えることが無いので「考えています」に倒す */}
+                <p className="flex items-center gap-2 rounded-md rounded-tl-sm border border-border bg-card px-3.5 py-2.5 text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <Dot delay="0ms" />
+                    <Dot delay="150ms" />
+                    <Dot delay="300ms" />
+                  </span>
+                  <span aria-live="polite">{progress || "考えています"}</span>
                 </p>
               </li>
             )}

@@ -34,6 +34,34 @@ const eslintConfig = defineConfig([
           message:
             "lib/ai/ からテーブルを直接読まない。app.search_customers() を supabase().rpc() で呼ぶこと。",
         },
+        {
+          // サーバ側はリクエストごとのクライアントを ctx.supabase で持ち回るので、
+          // 呼び出しの形が変わる。同じ穴を塞ぐ。
+          selector:
+            "CallExpression[callee.property.name='from'][callee.object.property.name='supabase']",
+          message:
+            "lib/ai/ からテーブルを直接読まない。app.search_customers() を .rpc() で呼ぶこと。",
+        },
+      ],
+
+      // 読み取りの経路を lib/data/* からも切る。
+      //
+      // lib/data/* は listCustomers のような「画面のための」関数を持っており、
+      // そこには上限や並び順が入っている。エージェントがそれを使うと、
+      // 網羅性の担保（app.search_customers の中にある）を迂回した経路が
+      // 静かに生まれる。**書き込み側（適用ハンドラ）は lib/data/agent-apply.ts**
+      // に置いてあり、あちらは人が「適用」を押したあとにしか動かない。
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/lib/data/*", "../data/*", "./data/*"],
+              message:
+                "lib/ai/ から lib/data/* を読まない。読み取りは RPC、書き込みは lib/data/agent-apply.ts（適用ハンドラ）へ。",
+            },
+          ],
+        },
       ],
     },
   },

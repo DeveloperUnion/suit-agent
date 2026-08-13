@@ -457,8 +457,20 @@ export type AgentAction =
       categoryKey: string;
       /** 聞き取った言い回し。そのまま body になる */
       body: string;
+      quote?: string;
     }
-  | { kind: "search_result"; keyword: string; customers: AgentCustomerRef[] }
+  | {
+      kind: "search_result";
+      keyword: string;
+      customers: AgentCustomerRef[];
+      /**
+       * 該当した人数。customers.length と同じだが、別に持つ。
+       * モデルが散文にする過程で列挙を削っても、数字だけは削れない形にしておく。
+       */
+      exactCount: number;
+      /** 「近いもの」。該当者ではないので枠を分ける（同じ配列に混ぜない） */
+      similar?: { customer: AgentCustomerRef; content: string }[];
+    }
   /** 誰の話か決められなかった。候補を出して選ばせる */
   | {
       kind: "ask_customer";
@@ -467,7 +479,62 @@ export type AgentAction =
       pendingLabels: string[];
       /** 聞き取った言い回し。相手が決まったら、そのまま提案の body になる */
       body: string;
+    }
+  /** 注意事項。カルテの一番上に無条件で出る枠なので、パーソナルとは別扱い */
+  | { kind: "add_ng_note"; customer: AgentCustomerRef; body: string; quote?: string }
+  | {
+      kind: "update_customer";
+      customer: AgentCustomerRef;
+      /** 現在値を必ず添える。「何が何に変わるか」を見ずに押させない */
+      changes: { field: CustomerFieldKey; label: string; before?: string; after: string }[];
+      quote?: string;
+    }
+  | {
+      kind: "add_anniversary";
+      customer: AgentCustomerRef;
+      anniversary: { type: AnniversaryType; date: IsoDate; label?: string };
+      quote?: string;
+    }
+  /** 「その情報もう違う」。行は消えず、無効化して履歴が残る */
+  | {
+      kind: "invalidate_fact";
+      customer: AgentCustomerRef;
+      facts: { id: Uuid; label?: string; body: string }[];
+      quote?: string;
+    }
+  /**
+   * 「連絡した」「スキップ」。立っているアプローチをまとめて畳む。
+   * 理由は持たない — 何が立っているかは resolveApproach が評価し直すので、
+   * 提案時点の文言を持つと、押すまでの間に変わったときに嘘になる。
+   */
+  | {
+      kind: "resolve_approach";
+      customer: AgentCustomerRef;
+      status: ApproachStatus;
+      quote?: string;
     };
+
+/**
+ * 会話から書き換えてよい顧客の列。
+ *
+ * **氏名（name）と担当（staffId）は入れない。**前者は名寄せの軸で、
+ * 聞き違いで書き換わると別人のカルテになる。後者は RLS の境界そのもの。
+ * どちらも会話ではなく画面から直す。
+ */
+export type CustomerFieldKey =
+  | "nameKana"
+  | "birthDate"
+  | "gender"
+  | "phone"
+  | "email"
+  | "address"
+  | "residencePrefecture"
+  | "embroideryName"
+  | "companyName"
+  | "department"
+  | "jobTitle"
+  | "industry"
+  | "familyInfo";
 
 export type AgentMessage = {
   id: Uuid;

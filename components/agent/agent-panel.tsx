@@ -10,8 +10,8 @@ import { Button } from "@/components/ui/button";
 import { AgentComposer } from "@/components/agent/agent-composer";
 import { AgentMessageList } from "@/components/agent/agent-message-list";
 import { useAgent } from "@/components/agent/agent-provider";
-import { interpret, proposeFact } from "@/lib/ai/agent";
-import { applyFactAdd } from "@/lib/ai/agent-tools";
+import { interpret } from "@/lib/ai/agent";
+import { actionCustomerName, appliedMessage, applyAgentAction } from "@/lib/data/agent-apply";
 import {
   appendAgentMessage,
   clearAgentMessages,
@@ -21,7 +21,7 @@ import {
 import { useIsDesktop } from "@/lib/hooks/use-media-query";
 import { useQuery } from "@/lib/hooks/use-query";
 import { useVisualViewport } from "@/lib/hooks/use-visual-viewport";
-import type { AgentCustomerRef, AgentMessage } from "@/lib/types";
+import type { AgentAction, AgentCustomerRef, AgentMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -39,6 +39,8 @@ export function AgentPanel() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const composingRef = useRef(false);
   const [pending, setPending] = useState(false);
+  // いま何をしているか。道具を呼ぶたびに差し替わる
+  const [progress, setProgress] = useState("");
 
   // 書き込みは必ず mutateDb を通るので、追記も削除もこの購読だけで反映される
   const loader = useCallback(() => listAgentMessages(), []);
@@ -47,37 +49,66 @@ export function AgentPanel() {
   // スマホだけ visual viewport の実測を当てる。iOS はキーボードで dvh が変わらない
   const viewport = useVisualViewport(open && !isDesktop);
 
+  // 依存は id だけ。contextRef ごと依存にすると、名前だけ変わった同じ顧客でも作り直る
+  const contextCustomerId = contextRef?.id;
+
   const send = useCallback(
     async (text: string) => {
       setPending(true);
-      await appendAgentMessage({ role: "user", body: text });
-      const turn = await interpret(text, { customerId: contextRef?.id });
-      await appendAgentMessage({ role: "assistant", body: turn.reply, action: turn.action });
-      setPending(false);
+      setProgress("");
+      try {
+        await appendAgentMessage({ role: "user", body: text });
+        // 履歴は送る前のものを渡す。いま打った 1 行は text として別に渡すので、
+        // 両方入れると同じ発話が 2 回並ぶ。
+        const turn = await interpret(text, {
+          customerId: contextCustomerId,
+          history: messages,
+          // 途中経過は state に置くだけで DB には書かない。確定した 1 件だけを
+          // agent_messages に入れる
+          onProgress: setProgress,
+        });
+        await appendAgentMessage({ role: "assistant", body: turn.reply, action: turn.action });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "うまく聞き取れませんでした");
+      } finally {
+        // finally が要る。ここを抜かすと、失敗したとき入力欄が
+        // disabled のまま固まり、閉じて開き直すまで打てなくなる
+        setPending(false);
+        setProgress("");
+      }
     },
-    [contextRef?.id],
+    [contextCustomerId, messages],
   );
 
-  const apply = useCallback(async (message: AgentMessage) => {
-    const action = message.action;
-    if (action?.kind !== "add_fact") return;
+  /**
+   * 提案を書き込む。
+   *
+   * 受け取る action はカードの上で編集されたもの（外したラベルが落ちている）。
+   * 提案時のスナップショットではなく、**人が見て押した内容**をそのまま書く。
+   */
+  const apply = useCallback(async (message: AgentMessage, action: AgentAction) => {
     try {
-      await applyFactAdd(action.customer.id, action.labelNames, action.categoryKey, action.body);
+      await applyAgentAction(action);
     } catch {
       toast.error("カルテに残せませんでした");
       return;
     }
-    await markAgentActionApplied(message.id);
-    toast.success("パーソナルを更新しました", { description: action.customer.name });
+    try {
+      await markAgentActionApplied(message.id);
+    } catch {
+      // 適用は一度きり（agent_messages のトリガー）。二度押しはここで落ちるが、
+      // 書き込み自体は上で終わっているので、成功として畳んでよい。
+      // 押したか分からず もう一度押す、は普通に起きる。
+    }
+    toast.success(appliedMessage(action), { description: actionCustomerName(action) });
   }, []);
 
-  /** 同姓の候補から選ばれたとき。改めて提案を作り直す */
+  /** 同姓の候補から選ばれたとき。誰の話かを言い直して、もう一度考えさせる */
   const pickCustomer = useCallback(
-    async (customer: AgentCustomerRef, labels: string[], body: string) => {
-      const { reply, action } = await proposeFact(customer.id, labels, body);
-      await appendAgentMessage({ role: "assistant", body: reply, action });
+    async (customer: AgentCustomerRef) => {
+      await send(`${customer.name} さんのことです`);
     },
-    [],
+    [send],
   );
 
   /**
@@ -223,6 +254,7 @@ export function AgentPanel() {
           <AgentMessageList
             messages={messages ?? []}
             pending={pending}
+            progress={progress}
             keyboardHeight={viewport?.height ?? 0}
             onApply={apply}
             onPickCustomer={pickCustomer}

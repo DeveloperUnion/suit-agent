@@ -23,7 +23,13 @@ npm run dev        # http://localhost:3000
 npm run build
 npm run lint
 npm run typecheck
+npm run eval       # アシスタントの回帰テスト。dev サーバとローカル DB が要る
 ```
+
+`eval` は実 API を叩くので **CI には入れていない**。鍵と課金と非決定性を持ち込む
+と 1 ヶ月で無効化され、無効化された門は門が無いより悪い。プロンプトかモデルを
+触る前後で手で回し、**前回との差**を見るためのもの。単一のスコアは出さない
+（集計が 0.94 でも「電話番号だけ 2 割捏造」を隠せる）。
 
 `.env.local` に要るものは 2 段に分かれる。**Supabase の 2 つが無いと画面が
 1 枚も出ない**（`lib/supabase/client.ts` がその場で例外を投げる）。

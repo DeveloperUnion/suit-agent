@@ -10,14 +10,14 @@
  * **CI には入れない。**実 API を叩くので鍵と課金と非決定性を持ち込むことになり、
  * 1 ヶ月で無効化される。無効化された門は、門が無いより悪い。
  *
- * ローカルの DB と dev-seed が前提。手元でサインインしなくてよいように、
- * ローカルの JWT_SECRET でトークンを 1 枚作る（`supabase status -o env` の値）。
- * 本番の鍵ではこれは動かないし、動かす必要も無い。
+ * ローカルの DB と dev-seed が前提。トークンは**人と同じ経路**で取る —
+ * Magic Link を要求し、Mailpit に届いたメールからリンクの token_hash を拾って
+ * verify する。JWT を自作しないのは、ローカルの GoTrue が ES256 で署名して
+ * いるからで、HS256 で作ったものは getClaims に弾かれる。ついでに
+ * 「staff に行があるメールしか通らない」という門番そのものの検査になる。
  */
 
-import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { execSync } from "node:child_process";
 
 type Expectation = {
   kind: string | null;
@@ -28,47 +28,64 @@ type Expectation = {
 };
 type Case = { id: string; utterance: string; expect: Expectation };
 
-/** 判定の 4 分類。合計ではなく、この内訳を見る */
-type Verdict = "match" | "mismatch" | "omission" | "hallucination";
+/**
+ * 判定の分類。合計ではなく、この内訳を見る。
+ *
+ * **error を match に混ぜない。**混ぜると、鍵が切れて全部落ちている状態で
+ * 「否定ケースは全部 ✓」という嘘の合格が出る（実際に一度出した）。
+ */
+type Verdict = "match" | "mismatch" | "omission" | "hallucination" | "error";
 
 const BASE = process.env.EVAL_BASE_URL ?? "http://localhost:3000";
+const SUPABASE = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:54321";
+const MAILPIT = process.env.EVAL_MAILPIT_URL ?? "http://127.0.0.1:54324";
 /** dev-seed の管理者。担当顧客がいる人なら誰でもよい */
 const STAFF_EMAIL = process.env.EVAL_STAFF_EMAIL ?? "hosokawa@example.com";
 
-function base64url(input: Buffer | string): string {
-  return Buffer.from(input)
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
+async function json<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, init);
+  return (await res.json()) as T;
 }
 
-/** ローカルの JWT_SECRET で HS256 のトークンを作る */
-function mintToken(secret: string, sub: string): string {
-  const header = base64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
-  const now = Math.floor(Date.now() / 1000);
-  const payload = base64url(
-    JSON.stringify({
-      sub,
-      aud: "authenticated",
-      role: "authenticated",
-      iat: now,
-      exp: now + 3600,
-      session_id: "00000000-0000-4000-8000-000000000000",
-      aal: "aal1",
-      iss: `${process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:54321"}/auth/v1`,
-    }),
+/**
+ * 人と同じ経路でサインインする。
+ * Magic Link を要求 → Mailpit で受け取る → リンクの token_hash で verify。
+ */
+async function signIn(anonKey: string): Promise<string> {
+  const headers = { apikey: anonKey, "Content-Type": "application/json" };
+  const latest = async () =>
+    (await json<{ messages: { ID: string }[] }>(`${MAILPIT}/api/v1/messages?limit=1`)).messages[0]
+      ?.ID;
+
+  const before = await latest();
+  await fetch(`${SUPABASE}/auth/v1/otp`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ email: STAFF_EMAIL, create_user: false }),
+  });
+
+  let id: string | undefined;
+  for (let i = 0; i < 25; i++) {
+    await new Promise((r) => setTimeout(r, 400));
+    id = await latest();
+    if (id && id !== before) break;
+  }
+  if (!id || id === before) throw new Error(`Mailpit にメールが届きません（${MAILPIT}）`);
+
+  const mail = await json<{ Text?: string }>(`${MAILPIT}/api/v1/message/${id}`);
+  const tokenHash = /token=([0-9a-f]+)/.exec(mail.Text ?? "")?.[1];
+  if (!tokenHash) throw new Error("メールからトークンを取り出せません");
+
+  const verified = await json<{ access_token?: string; msg?: string }>(
+    `${SUPABASE}/auth/v1/verify`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ type: "magiclink", token_hash: tokenHash }),
+    },
   );
-  const signature = base64url(createHmac("sha256", secret).update(`${header}.${payload}`).digest());
-  return `${header}.${payload}.${signature}`;
-}
-
-function psql(sql: string): string {
-  const url = process.env.EVAL_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
-  return execSync(`psql "${url}" -At -c "${sql.replace(/"/g, '\\"')}"`, {
-    encoding: "utf8",
-    env: { ...process.env, PATH: `/opt/homebrew/opt/libpq/bin:${process.env.PATH ?? ""}` },
-  }).trim();
+  if (!verified.access_token) throw new Error(`サインインできません: ${verified.msg}`);
+  return verified.access_token;
 }
 
 function judge(expect: Expectation, action: Record<string, unknown> | undefined): Verdict {
@@ -92,22 +109,12 @@ function judge(expect: Expectation, action: Record<string, unknown> | undefined)
 }
 
 async function main() {
-  const secret = process.env.SUPABASE_JWT_SECRET;
-  if (!secret) {
-    console.error(
-      "SUPABASE_JWT_SECRET が要ります。`supabase status -o env` の JWT_SECRET を渡してください。",
-    );
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!anonKey) {
+    console.error("NEXT_PUBLIC_SUPABASE_ANON_KEY が要ります（.env.local を読ませてください）。");
     process.exit(1);
   }
-
-  const authUserId = psql(
-    `select auth_user_id from public.staff where email = '${STAFF_EMAIL}'`,
-  );
-  if (!authUserId) {
-    console.error(`${STAFF_EMAIL} が staff にいません。npm run db:reset を先に。`);
-    process.exit(1);
-  }
-  const token = mintToken(secret, authUserId);
+  const token = await signIn(anonKey);
 
   const cases = JSON.parse(
     readFileSync(new URL("../lib/ai/eval/cases.json", import.meta.url), "utf8"),
@@ -119,6 +126,7 @@ async function main() {
     const startedAt = Date.now();
     let action: Record<string, unknown> | undefined;
     let reply = "";
+    let failed = false;
     try {
       const res = await fetch(`${BASE}/api/agent`, {
         method: "POST",
@@ -134,12 +142,15 @@ async function main() {
       action = json.action;
       reply = json.reply ?? "";
     } catch (error) {
+      failed = true;
       reply = `エラー: ${error instanceof Error ? error.message : String(error)}`;
     }
 
     rows.push({
       id: c.id,
-      verdict: judge(c.expect, action),
+      // 落ちたものを判定に混ぜない。混ぜると、全部落ちている状態で
+      // 「否定ケースは全部 ✓」という嘘の合格が出る
+      verdict: failed ? "error" : judge(c.expect, action),
       got: (action?.kind as string | undefined) ?? "—",
       ms: Date.now() - startedAt,
       reply: reply.replace(/\s+/g, " ").slice(0, 60),
@@ -153,6 +164,7 @@ async function main() {
     mismatch: "✗ 取り違え",
     omission: "✗ 出さなかった",
     hallucination: "✗ 出しすぎ",
+    error: "! 落ちた",
   };
   for (const r of rows) {
     console.log(`${mark[r.verdict].padEnd(14)} ${r.id.padEnd(26)} ${r.got.padEnd(18)} ${r.ms}ms`);
@@ -166,6 +178,7 @@ async function main() {
   console.log(`出さなかった  ${count("omission")}`);
   // ここが 0 でないまま出さない。**捏造だけは頻度の問題ではない。**
   console.log(`出しすぎ      ${count("hallucination")}   ← 0 であること`);
+  console.log(`落ちた        ${count("error")}`);
   const p50 = [...rows].sort((a, b) => a.ms - b.ms)[Math.floor(rows.length / 2)]?.ms;
   console.log(`所要 中央値   ${p50}ms`);
 }

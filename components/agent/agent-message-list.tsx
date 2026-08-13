@@ -4,11 +4,16 @@ import { ArrowDown, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { AgentActionCard } from "@/components/agent/agent-action-card";
-import type { AgentCustomerRef, AgentMessage } from "@/lib/types";
+import type { AgentAction, AgentCustomerRef, AgentMessage } from "@/lib/types";
 import { useStickToBottom } from "@/lib/hooks/use-stick-to-bottom";
 import { cn } from "@/lib/utils";
 
-const EXAMPLES = ["時枝さんゴルフが趣味らしい", "ゴルフが趣味な人だれだっけ"];
+const EXAMPLES = [
+  "時枝さんゴルフが趣味らしい",
+  "ゴルフが趣味な人だれだっけ",
+  "時枝さんってどんな人だっけ",
+  "時枝さん電話番号が変わったって",
+];
 
 export function AgentMessageList({
   messages,
@@ -23,8 +28,9 @@ export function AgentMessageList({
   pending: boolean;
   /** キーボードで容器が縮んだ瞬間にも最新へ寄せ直すため、依存として受け取る */
   keyboardHeight: number;
-  onApply: (message: AgentMessage) => Promise<void> | void;
-  onPickCustomer: (customer: AgentCustomerRef, labels: string[], body: string) => void;
+  /** カードの上で編集された action がそのまま渡る（部分承認） */
+  onApply: (message: AgentMessage, action: AgentAction) => Promise<void> | void;
+  onPickCustomer: (customer: AgentCustomerRef) => void;
   onNavigate: (href: string) => void;
   onPickExample: (text: string) => void;
 }) {
@@ -96,7 +102,7 @@ export function AgentMessageList({
                       <AgentActionCard
                         action={message.action}
                         applied={Boolean(message.appliedAt)}
-                        onApply={() => onApply(message)}
+                        onApply={(action) => onApply(message, action)}
                         onPickCustomer={onPickCustomer}
                         onNavigate={onNavigate}
                       />

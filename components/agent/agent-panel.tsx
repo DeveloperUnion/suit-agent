@@ -10,8 +10,8 @@ import { Button } from "@/components/ui/button";
 import { AgentComposer } from "@/components/agent/agent-composer";
 import { AgentMessageList } from "@/components/agent/agent-message-list";
 import { useAgent } from "@/components/agent/agent-provider";
-import { interpret, proposeFact } from "@/lib/ai/agent";
-import { applyFactAdd } from "@/lib/ai/agent-tools";
+import { interpret } from "@/lib/ai/agent";
+import { actionCustomerName, appliedMessage, applyAgentAction } from "@/lib/data/agent-apply";
 import {
   appendAgentMessage,
   clearAgentMessages,
@@ -21,7 +21,7 @@ import {
 import { useIsDesktop } from "@/lib/hooks/use-media-query";
 import { useQuery } from "@/lib/hooks/use-query";
 import { useVisualViewport } from "@/lib/hooks/use-visual-viewport";
-import type { AgentCustomerRef, AgentMessage } from "@/lib/types";
+import type { AgentAction, AgentCustomerRef, AgentMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -55,24 +55,30 @@ export function AgentPanel() {
       setPending(true);
       try {
         await appendAgentMessage({ role: "user", body: text });
-        const turn = await interpret(text, { customerId: contextCustomerId });
+        // 履歴は送る前のものを渡す。いま打った 1 行は text として別に渡すので、
+        // 両方入れると同じ発話が 2 回並ぶ。
+        const turn = await interpret(text, { customerId: contextCustomerId, history: messages });
         await appendAgentMessage({ role: "assistant", body: turn.reply, action: turn.action });
-      } catch {
-        toast.error("うまく聞き取れませんでした。もう一度お願いします");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "うまく聞き取れませんでした");
       } finally {
         // finally が要る。ここを抜かすと、失敗したとき入力欄が
         // disabled のまま固まり、閉じて開き直すまで打てなくなる
         setPending(false);
       }
     },
-    [contextCustomerId],
+    [contextCustomerId, messages],
   );
 
-  const apply = useCallback(async (message: AgentMessage) => {
-    const action = message.action;
-    if (action?.kind !== "add_fact") return;
+  /**
+   * 提案を書き込む。
+   *
+   * 受け取る action はカードの上で編集されたもの（外したラベルが落ちている）。
+   * 提案時のスナップショットではなく、**人が見て押した内容**をそのまま書く。
+   */
+  const apply = useCallback(async (message: AgentMessage, action: AgentAction) => {
     try {
-      await applyFactAdd(action.customer.id, action.labelNames, action.categoryKey, action.body);
+      await applyAgentAction(action);
     } catch {
       toast.error("カルテに残せませんでした");
       return;
@@ -84,20 +90,15 @@ export function AgentPanel() {
       // 書き込み自体は上で終わっているので、成功として畳んでよい。
       // 押したか分からず もう一度押す、は普通に起きる。
     }
-    toast.success("パーソナルを更新しました", { description: action.customer.name });
+    toast.success(appliedMessage(action), { description: actionCustomerName(action) });
   }, []);
 
-  /** 同姓の候補から選ばれたとき。改めて提案を作り直す */
+  /** 同姓の候補から選ばれたとき。誰の話かを言い直して、もう一度考えさせる */
   const pickCustomer = useCallback(
-    async (customer: AgentCustomerRef, labels: string[], body: string) => {
-      try {
-        const { reply, action } = await proposeFact(customer.id, labels, body);
-        await appendAgentMessage({ role: "assistant", body: reply, action });
-      } catch {
-        toast.error("提案を作り直せませんでした");
-      }
+    async (customer: AgentCustomerRef) => {
+      await send(`${customer.name} さんのことです`);
     },
-    [],
+    [send],
   );
 
   /**

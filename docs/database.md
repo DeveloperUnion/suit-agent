@@ -18,7 +18,7 @@ Homebrew の PostgreSQL では代用できない — **`security_invoker` は PG
 open -a Docker            # 起動を待つ
 supabase start            # 初回はイメージの取得で数分
 npm run db:reset          # 全 migration → masters → seed → dev-seed
-npm run db:test           # pgTAP 107 件
+npm run db:test           # pgTAP 164 件
 ```
 
 `db:reset` を毎回通すのが要点。「途中から足した migration」ではなく
@@ -152,9 +152,13 @@ migration を追記するだけ）と、冪等な `masters.sql` の 2 つで、�
 | `..._revoke_anon` | `anon` の権限を全部剥がす / `authenticated` の TRUNCATE / 既定 ACL |
 | `..._staff_gate` | `auth.users` のトリガー 2 本（招待の門番と自動紐付け） |
 | `..._handover_and_similar_customers` | `due_date` → `arrived_at` / `v_customers` の起点を `coalesce(delivered_at, arrived_at)` に / `anniversary_lead_days` / `public.find_similar_customers()` のラッパ |
+| `..._agent_message_guard` | 会話を追記のみに（提案の中身は変えられず、適用は一度だけ） |
+| `..._search_customers` | `search_chunks.embedding` を `halfvec` に・**HNSW を落とす** / `search_customers()` / `customer_dossier()` / `find_customers_by_name()` |
+| `..._worker_login` | `worker_role` に LOGIN と `extensions` の usage |
+| `..._agent_plans` | `fact_vocabulary()` / `plan_fact_add()` |
 
-pgTAP 107 件。構造ガード（RLS 付け忘れ・`security_invoker` 忘れ）は
-**わざと違反を作って検出することを確認済み**。
+pgTAP 164 件。構造ガード（RLS 付け忘れ・`security_invoker` 忘れ）と、
+`lib/ai/` の import 制限は**わざと違反を作って検出することを確認済み**。
 
 アプリ側は `lib/data/*` 8 ファイルが supabase-js を見る。認証は
 `lib/auth/current-staff.ts`、購読は `lib/store/revision.ts`（書き込み後に
@@ -279,9 +283,9 @@ dev-seed の事実で「アウトドア系が好きな人」のような曖昧�
       指示する解は採らない**（RLS を採ったのと同じ理由で、作法は必ず破れる）。
       確定検索は**ラベル一致と本文の全文一致の両方**を LIMIT なしで返す —
       走り書きに「ゴルフ」と書かれた顧客を落とさないため
-- [ ] 会話を `MODELS.chat` に差し替える（いまは `lib/ai/agent.ts` のパターン照合）。
-      このとき `lib/ai/` から `lib/data/*` の import も禁止する
-      （`agent-tools.ts` が丸ごと書き換わるので、それまでは入れられない）
+- [x] 会話を `MODELS.chat` に差し替えた。`lib/ai/` から `lib/data/*` の import も
+      禁止した（ESLint。わざと違反を作って検出することを確認済み）。読み取りは RPC、
+      書き込みは `lib/data/agent-apply.ts` の適用ハンドラに寄せてある
 - [x] 埋め込みは**二重**にする — 書き込み直後の fire-and-forget（`addFact` が
       `/api/embed` を叩き、結果を待たない）と Cron のバックフィル。
       片方だけだと「その顧客だけ検索に出てこない」が無音で起きる。

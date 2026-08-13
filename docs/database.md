@@ -276,8 +276,15 @@ dev-seed の事実で「アウトドア系が好きな人」のような曖昧�
       ```
 
       ローカルは `supabase/seed.sql` が `worker` を入れる（`db reset` でしか流れない）。
+
       接続は **Session pooler（ポート 5432）**。直結ホストは IPv6 専用で Vercel から
-      届かず、Transaction pooler（6543）は使わない
+      届かず、Transaction pooler（6543）は使わない。**ユーザー名はロール名だけでは
+      通らない** — Supavisor は `<ロール>.<プロジェクトref>` を要求する
+      （`postgres.<ref>` と同じ規則）:
+
+      ```
+      postgresql://worker_role.<ref>:<パスワード>@aws-0-<region>.pooler.supabase.com:5432/postgres
+      ```
 - [x] `app.search_customers()` — 確定検索と意味検索を 1 本の関数で両方走らせる。
       **ツールを 2 本に分けて「網羅が要るときは確定検索を使え」とプロンプトで
       指示する解は採らない**（RLS を採ったのと同じ理由で、作法は必ず破れる）。
@@ -286,6 +293,20 @@ dev-seed の事実で「アウトドア系が好きな人」のような曖昧�
 - [x] 会話を `MODELS.chat` に差し替えた。`lib/ai/` から `lib/data/*` の import も
       禁止した（ESLint。わざと違反を作って検出することを確認済み）。読み取りは RPC、
       書き込みは `lib/data/agent-apply.ts` の適用ハンドラに寄せてある
+- [ ] **初期投入を流し切る。**Cron は 1 起動あたり 1,000 件で、日次だと 6.6 万件に
+      66 日かかる。本番の初回だけは手で回して終わらせる（冪等なので何度でも安全）:
+
+      ```bash
+      # remaining が 0 になるまで繰り返す。相手は本番。
+      while true; do
+        r=$(curl -s -H "Authorization: Bearer $CRON_SECRET" https://<本番>/api/cron/embed)
+        echo "$r"; echo "$r" | grep -q '"remaining":0' && break
+      done
+      ```
+
+      Vercel が Pro 以上なら `vercel.json` の `"17 3 * * *"` を `"17 * * * *"` に
+      戻してよい（Hobby は 1 日 1 回までで、それより短い式はデプロイが失敗する）
+
 - [x] 埋め込みは**二重**にする — 書き込み直後の fire-and-forget（`addFact` が
       `/api/embed` を叩き、結果を待たない）と Cron のバックフィル。
       片方だけだと「その顧客だけ検索に出てこない」が無音で起きる。

@@ -18,7 +18,7 @@ Homebrew の PostgreSQL では代用できない — **`security_invoker` は PG
 open -a Docker            # 起動を待つ
 supabase start            # 初回はイメージの取得で数分
 npm run db:reset          # 全 migration → masters → seed → dev-seed
-npm run db:test           # pgTAP 164 件
+npm run db:test           # pgTAP 175 件
 ```
 
 `db:reset` を毎回通すのが要点。「途中から足した migration」ではなく
@@ -162,8 +162,9 @@ migration を追記するだけ）と、冪等な `masters.sql` の 2 つで、�
 | `..._agent_plans` | `fact_vocabulary()` / `plan_fact_add()` |
 | `..._drop_order_photos` | 着装写真の撤回。バケット・表・関数・ポリシーを落とし、`delete_customer()` を写真抜きで差し替え |
 | `..._order_amount_breakdown` | 使わなかった金額 3 列を落とし、売上区分の内訳 4 列（すべて nullable）を足す |
+| `..._revenue_target_delete` | `revenue_targets` の DELETE を開ける（境界は INSERT / UPDATE と同じ） |
 
-pgTAP 167 件。構造ガード（RLS 付け忘れ・`security_invoker` 忘れ）と、
+pgTAP 175 件。構造ガード（RLS 付け忘れ・`security_invoker` 忘れ）と、
 `lib/ai/` の import 制限は**わざと違反を作って検出することを確認済み**。
 
 アプリ側は `lib/data/*` 8 ファイルが supabase-js を見る。認証は
@@ -186,7 +187,12 @@ pgTAP 167 件。構造ガード（RLS 付け忘れ・`security_invoker` 忘れ�
 - **UPDATE ポリシーには `USING` と `WITH CHECK` の両方を書く。**片方だけだと
   「自分の顧客を他人へ押し付ける」が通る
 - **顧客・採寸票・スタッフ・注文は物理削除できない。**PITR を入れない
-  （+$100/月）判断の裏返しで、「消えない」ことを設計で担保している
+  （+$100/月）判断の裏返しで、「消えない」ことを設計で担保している。
+  **`revenue_targets` はこの原則の対象ではない**（記録ではなく設定に近く、
+  「未設定」を行が無いことで表しているので消せないと未設定に戻せない）
+- **`revenue_targets` の 3 つの書き込みポリシーは同じ条件に揃える。**
+  `staff_id = app.current_staff_id() or app.is_admin()`。片方だけ直すと、
+  「読めるが書けない」画面の出し分け（`canEdit`）と食い違う
 - **`orders.total_amount` と内訳（`amount_*`）に CHECK もトリガーも張らない。**
   合計が正で、内訳は任意。**「その他」区分を作らない判断なので、4 つの和が
   合計に届かないのが既定の状態**。和で縛ると、区分に当てはまらない売上が

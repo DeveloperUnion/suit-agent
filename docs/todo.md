@@ -116,18 +116,6 @@ origin をそのまま渡す）。ここが漏れるとリンクが `localhost` 
 
 ---
 
-## 売上目標の 0 クリアが権限エラーで落ちる
-
-`saveRevenueTargets()`（`lib/data/settings.ts`）は金額 0 以下の行を `.delete()` で
-消しているが、`revenue_targets` は `revoke delete`
-（`supabase/migrations/20260811083444_approach_and_targets.sql`）。
-0 を保存すると permission denied で throw する。
-
-「未設定（null）」と「目標 0 円」を区別する設計は正しいので、消し方を変える。
-DELETE を開けるか、`amount` を nullable にして null で未設定を表すか。
-
----
-
 ## `alterations`（お直し）
 
 テーブルごと未着手。

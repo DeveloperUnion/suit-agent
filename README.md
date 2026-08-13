@@ -13,7 +13,9 @@
 連絡そのものはこのシステムの担当ではない。**送信機能を持たない**（後述）。
 
 データは Supabase。画面は `lib/data/*` だけを見て、境界は RLS が持つ。
-設計と手順は `docs/database.md` と `docs/database-design.md`。
+このファイルは**いまどう動くか**だけを書く。やり残しは `docs/todo.md`、
+運用費は `docs/cost.md`、DB の手順と設計は `docs/database.md` /
+`docs/database-design.md`。境界は `docs/README.md`。
 
 ## 動かす
 
@@ -387,7 +389,10 @@ AI が返せるのは `AgentAction` だけで、実際に書くのは
 
 ```
 app/                画面（App Router）
-  api/extract/      発注書・名刺の読み取り（唯一のサーバ側）
+  api/agent/        会話（tool loop）
+  api/extract/      発注書・名刺の読み取り
+  api/embed/        書き込み直後の埋め込み
+  api/cron/embed/   埋め込みのバックフィル（Cron）
 components/
   agent/            AI アシスタント（FAB・パネル・提案カード）
   common/           帳票の部品（Field、EditableSection など）
@@ -398,14 +403,16 @@ components/
   settings/         業務ルールの設定画面
   ui/               shadcn/ui
 lib/
-  ai/               アシスタントの解釈（フィクスチャ）、名刺・発注書の読み取り（Gemini）
+  ai/               会話（tool loop）、名刺・発注書の読み取り、埋め込み
   auth/             ログイン中のスタッフ、表示中のスタッフ
   constants/        マスタ（採寸項目・補正・都道府県・業種・パーソナルの見出し・ラベル）
   data/             データアクセス。画面が見るのはここだけ
   hooks/            クエリと購読、設定、音声入力、追従スクロールなど
   mock/seed.ts      シード。supabase/dev-seed.sql を生成する素
-  supabase/         supabase-js のクライアント
+  api/              サーバ側の口（門番と、ブラウザから叩く側）
+  db/               worker_role の接続（search_chunks へ書く唯一の経路）
+  supabase/         supabase-js のクライアント（ブラウザ / サーバ）
   types/index.ts    ドメインの型
 supabase/           migration・マスタ・シード・pgTAP（docs/database.md）
-docs/               DB の設計と手順、クライアント資料の所在（実体は private/）
+docs/               DB の設計と手順、やり残し、運用費（案内は docs/README.md）
 ```

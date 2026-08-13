@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 
-import { MAX_UPLOAD_BYTES } from "@/lib/ai/extraction";
+import { MAX_UPLOAD_BYTES, type ExtractionUsage } from "@/lib/ai/extraction";
 import { MODELS } from "@/lib/ai/models";
 
 /**
@@ -46,6 +46,9 @@ export class ExtractionError extends Error {
  * 受け取ったファイルを Gemini に渡し、schema に従った JSON を返させる。
  *
  * PDF はネイティブに読めるので変換しない（画像化すると手書きの細部が落ちる）。
+ *
+ * 読み取った中身と一緒に実使用トークンを返す。呼び出し側が捨てても構わないが、
+ * ここで拾っておかないと実費を突き合わせる手段が事業者のコンソールしか無くなる。
  */
 export async function runExtraction<T>({
   file,
@@ -55,7 +58,7 @@ export async function runExtraction<T>({
   file: File;
   prompt: string;
   schema: Record<string, unknown>;
-}): Promise<T> {
+}): Promise<{ data: T; usage?: ExtractionUsage }> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new ExtractionError("GEMINI_API_KEY が設定されていません。", 500);
@@ -93,11 +96,23 @@ export async function runExtraction<T>({
     throw new ExtractionError("読み取り結果が空でした。", 502);
   }
 
+  let parsed: T;
   try {
-    return JSON.parse(text) as T;
+    parsed = JSON.parse(text) as T;
   } catch {
     throw new ExtractionError("読み取り結果を解釈できませんでした。", 502);
   }
+
+  // usage は無くても取り込みは成立するので、欠けていても例外にしない
+  const usage = interaction.usage;
+  return {
+    data: parsed,
+    usage: usage && {
+      inputTokens: usage.total_input_tokens,
+      outputTokens: usage.total_output_tokens,
+      thoughtTokens: usage.total_thought_tokens,
+    },
+  };
 }
 
 export { MODEL as EXTRACTION_MODEL };

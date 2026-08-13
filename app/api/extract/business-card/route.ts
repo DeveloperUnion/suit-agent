@@ -8,6 +8,7 @@ import {
 } from "@/lib/ai/gemini";
 import { errorResponse, requireStaff } from "@/lib/api/auth";
 import type { BusinessCardExtraction } from "@/lib/ai/extract-business-card";
+import type { ExtractionUsage } from "@/lib/ai/extraction";
 
 /**
  * 名刺の読み取り。
@@ -73,12 +74,13 @@ export async function POST(request: Request) {
   }
 
   let raw: Pick<BusinessCardExtraction, "fields">;
+  let usage: ExtractionUsage | undefined;
   try {
-    raw = await runExtraction<Pick<BusinessCardExtraction, "fields">>({
+    ({ data: raw, usage } = await runExtraction<Pick<BusinessCardExtraction, "fields">>({
       file,
       prompt: PROMPT,
       schema: SCHEMA,
-    });
+    }));
   } catch (error) {
     const status = error instanceof ExtractionError ? error.status : 500;
     const message = error instanceof Error ? error.message : "読み取りに失敗しました。";
@@ -88,6 +90,7 @@ export async function POST(request: Request) {
   const extraction: BusinessCardExtraction = {
     source: EXTRACTION_MODEL,
     elapsedMs: Math.round(performance.now() - startedAt),
+    usage,
     fields: raw.fields ?? {},
   };
 

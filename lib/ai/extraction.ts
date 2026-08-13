@@ -30,10 +30,27 @@ export const CONFIDENCE_WARN = 0.7;
  */
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 
+/**
+ * 1 回の読み取りで実際に使ったトークン数。
+ *
+ * 費用の見積もりを実測で裏取りするために持つ。見積もりが外れるのはほぼ出力側で、
+ * その内訳が thinking なのか本文なのかで打ち手が変わるため、thought を別に残す。
+ *
+ * 省略可なのは、API が usage を返さない場合があるのと、これを足す前に
+ * 読み取った記録には入っていないため。読めなくても取り込みは成立する。
+ */
+export type ExtractionUsage = {
+  inputTokens?: number;
+  outputTokens?: number;
+  /** thinking の分。outputTokens に含まれる（Gemini は出力として課金する） */
+  thoughtTokens?: number;
+};
+
 export type ExtractionMeta = {
   /** 読み取ったモデル名 */
   source: string;
   elapsedMs: number;
+  usage?: ExtractionUsage;
 };
 
 export function isLowConfidence(field?: { confidence: number }): boolean {

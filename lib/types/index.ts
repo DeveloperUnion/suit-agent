@@ -323,14 +323,33 @@ export type Order = {
   fabricComposition?: string;
 
   /**
-   * 売上金額（税込）。
+   * 売上金額（税込）。**これが正。**
    *
    * かつては紙の右上と同じ4欄（売上・割増・消費税・合計）で持っていたが、
    * 紙のその欄は事実上いつも空欄で、店が入れるのは税込の1本だけだった。
-   * 割増を分けて持つかは審議中（docs/todo.md）。DB には 4 列が残っていて、
-   * 使っているのは total_amount だけ。
+   * 割増を分けて持つ案は「分けない」で決着し、使われなかった3列は落とした。
+   * 代わりに置いたのが下の内訳で、あちらは軸が違う（税ではなく売上区分）。
    */
   totalAmount: number;
+
+  /*
+   * 売上区分ごとの内訳。**すべて任意。**分かるときだけ入れる。
+   *
+   * 「その他」区分は作らない判断なので、**4つの和が totalAmount に届かないのは
+   * 正常な状態**。合わないことを警告してはいけない。区分の並びとラベルは
+   * lib/constants/labels.ts の AMOUNT_CATEGORIES に集約してある。
+   *
+   * 採寸の ItemTypeId（jacket / pants / vest / shirt / coat）とは別の軸。
+   * 「スーツ」は上下一式の売上区分で、対応するアイテム種別の id は無い。
+   */
+  /** 内訳・スーツ */
+  amountSuit?: number;
+  /** 内訳・コート */
+  amountCoat?: number;
+  /** 内訳・小物 */
+  amountAccessory?: number;
+  /** 内訳・シャツ */
+  amountShirt?: number;
 
   /**
    * 受注した人。顧客の担当（Customer.staffId）とは別物で、こちらは
@@ -349,33 +368,12 @@ export type Order = {
  *
  * 生地も金額も注文単位（Order 側）で持つ。紙が原反NO を 1 つしか持たず、
  * 明細ごとの金額欄も無いため、ここに置くと同じ値が明細の数だけ重複する。
- *
- * 着装写真も明細には持たない。紙が原反NO を 1 つしか持たないのと同じ理由で、
- * 写真も「その注文で仕立てた一式」に付く。行は OrderPhoto。
+ * 金額の内訳（Order.amountSuit ほか）も同じ理由で注文単位。
  */
 export type OrderItem = {
   id: Uuid;
   orderId: Uuid;
   itemTypeId: ItemTypeId;
-};
-
-/**
- * 着装写真。
- *
- * 実体は order-photos バケット（非公開）で、この行はその索引。
- * 読み出しは常に署名 URL なので、URL を持ち回っても期限で切れる。
- *
- * 「画像を一切保存しない」という当初の判断はここで反転している。代わりに
- * 削除を 2 段にした — deleteCustomer() が Storage を消してから
- * delete_customer() を呼ぶので、削除請求は DB と Storage の両方で完結する。
- */
-export type OrderPhoto = {
-  id: Uuid;
-  orderId: Uuid;
-  customerId: Uuid;
-  /** {customerId}/{orderId}/{uuid}.jpg */
-  storagePath: string;
-  createdAt: IsoDate;
 };
 
 export type Alteration = {

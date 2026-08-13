@@ -116,15 +116,15 @@ port = 54324
 # sender_name = "Admin"
 
 [storage]
-# 着装写真だけを持つ。名刺画像は引き続き保存しない（読み取ったら捨てる）。
+# **アプリは画像を 1 枚も保存しない。**名刺も発注書も読み取ったら捨て、
+# 着装写真も持たない（20260813090000_drop_order_photos.sql で戻した）。
+# 顧客の画像を持たなければ、削除請求への対応は delete_customer() 1 本で完結する
+# — SQL から Storage には手が届かないので、持った瞬間に削除が 2 段になる。
 #
-# もとは「画像を一切保存しない」判断で無効にしていた。削除請求への対応を
-# DB だけで完結させるためだったが、その代わりに削除を 2 段にした —
-# deleteCustomer() が Storage の {customerId}/ を消してから
-# delete_customer() を呼ぶ（lib/data/customers.ts）。
-#
-# バケットの実体は 20260812140000_order_photos.sql が作る。本番にも同じものが
-# 要るので、ここの [storage.buckets] ではなくマイグレーションで持つ。
+# **それでも有効のままにしてある。**ここを false にすると storage スキーマごと
+# 作られず、適用済みの 20260812140000_order_photos.sql（storage.buckets を触る）が
+# 流れなくなって db:reset が落ちる。当てた migration は書き換えられないので、
+# ローカルでも storage スキーマだけは要る。本番は managed なので元から有る。
 enabled = true
 # The maximum file size allowed (e.g. "5MB", "500KB").
 file_size_limit = "50MiB"

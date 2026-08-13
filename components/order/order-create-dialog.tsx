@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Ruler } from "lucide-react";
 import { toast } from "sonner";
 
-import { AmountField } from "@/components/order/amount-field";
+import { AmountSection } from "@/components/order/amount-section";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,7 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ORDER_PURPOSE_LABEL } from "@/lib/constants/labels";
+import { ORDER_PURPOSE_LABEL, type OrderAmountBreakdown } from "@/lib/constants/labels";
 import { ITEM_TYPE_MAP } from "@/lib/constants/measurement-fields";
 import { listSheets } from "@/lib/data/measurements";
 import { createOrder, type OrderItemFabric } from "@/lib/data/orders";
@@ -59,6 +59,7 @@ export function OrderCreateDialog({
   const [purpose, setPurpose] = useState<OrderPurpose>("business");
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [totalAmount, setTotalAmount] = useState(0);
+  const [breakdown, setBreakdown] = useState<OrderAmountBreakdown>({});
   const [saving, setSaving] = useState(false);
 
   const sheetsLoader = useCallback(() => listSheets(customerId), [customerId]);
@@ -75,6 +76,7 @@ export function OrderCreateDialog({
       setSelected(Object.fromEntries(ITEM_TYPES.map((type) => [type, type !== "vest"])));
       setFabric({});
       setTotalAmount(0);
+      setBreakdown({});
     });
     return () => {
       alive = false;
@@ -82,7 +84,8 @@ export function OrderCreateDialog({
   }, [open, customerId]);
 
   const selectedItems = ITEM_TYPES.filter((t) => selected[t]);
-  const canSubmit = selectedItems.length > 0;
+  // 金額は必須。parseAmount が負数も非数も 0 に丸めるので、判定はこれ 1 つで足りる。
+  const canSubmit = selectedItems.length > 0 && totalAmount > 0;
 
   const setFabricField = (patch: Partial<OrderItemFabric>) =>
     setFabric((current) => ({ ...current, ...patch }));
@@ -98,6 +101,7 @@ export function OrderCreateDialog({
       measurementSheetId: sheetId || undefined,
       fabric,
       totalAmount,
+      breakdown,
       items: selectedItems.map((type) => ({ itemTypeId: type })),
     });
     setSaving(false);
@@ -297,11 +301,17 @@ export function OrderCreateDialog({
                 </Select>
               </div>
             </div>
+          </Step>
 
-            {/* 取り込みと同じ1欄。どちらから入れても同じ形で残す */}
-            <div className="mt-4">
-              <AmountField id="order-amount" value={totalAmount} onChange={setTotalAmount} />
-            </div>
+          {/* ⑤ 金額。取り込みと同じ形にする。どちらから入れても同じものが残る */}
+          <Step number={5} title="金額" note="内訳は分かるときだけで構いません">
+            <AmountSection
+              id="order-amount"
+              value={totalAmount}
+              onChange={setTotalAmount}
+              breakdown={breakdown}
+              onBreakdownChange={setBreakdown}
+            />
           </Step>
         </div>
 

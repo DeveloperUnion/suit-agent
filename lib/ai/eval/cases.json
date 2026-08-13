@@ -2,111 +2,199 @@
   {
     "id": "fact-1",
     "utterance": "時枝さん最近サウナにハマってるって",
-    "expect": { "kind": "add_fact", "customer": "時枝 正", "labels": ["サウナ"] }
+    "expect": {
+      "kind": "add_fact",
+      "customer": "時枝 正",
+      "labels": [
+        "サウナ"
+      ]
+    }
   },
   {
     "id": "fact-2",
     "utterance": "八木さん、ゴルフ始めたそうです",
-    "expect": { "kind": "add_fact", "customer": "八木 拓真", "labels": ["ゴルフ"] }
+    "expect": {
+      "kind": "add_fact",
+      "customer": "八木 拓真",
+      "labels": [
+        "ゴルフ"
+      ]
+    }
   },
   {
     "id": "fact-3",
     "utterance": "古賀さん奥さんと登山行ったらしいよ",
-    "expect": { "kind": "add_fact", "customer": "古賀 直樹", "labels": ["登山"] }
+    "expect": {
+      "kind": "add_fact",
+      "customer": "古賀 直樹",
+      "labels": [
+        "登山"
+      ]
+    }
   },
   {
     "id": "fact-4-既存語へ寄せる",
     "utterance": "八木さん打ちっぱなしによく行くって言ってた",
-    "expect": { "kind": "add_fact", "customer": "八木 拓真" }
+    "expect": {
+      "kind": "add_fact",
+      "customer": "八木 拓真"
+    }
   },
   {
     "id": "search-1",
     "utterance": "登山が趣味な人だれだっけ",
-    "expect": { "kind": "search_result" }
+    "expect": {
+      "kind": "search_result"
+    }
   },
   {
     "id": "search-2",
     "utterance": "ワイン好きな人いる？",
-    "expect": { "kind": "search_result" }
+    "expect": {
+      "kind": "search_result"
+    }
   },
   {
     "id": "search-3-括りで言われる",
     "utterance": "アウトドア系が好きな人いたっけ",
-    "expect": { "kind": "search_result" }
+    "expect": {
+      "kind": "search_result"
+    }
   },
   {
     "id": "ask-1-同姓が2人",
     "utterance": "宮下さんゴルフが趣味らしい",
-    "expect": { "kind": "ask_customer" }
+    "expect": {
+      "kind": "ask_customer"
+    }
   },
   {
     "id": "update-1",
     "utterance": "八木さん電話番号が090-1111-2222に変わったって",
-    "expect": { "kind": "update_customer", "customer": "八木 拓真", "field": "phone" }
+    "expect": {
+      "kind": "update_customer",
+      "customer": "八木 拓真",
+      "field": "phone"
+    }
   },
   {
     "id": "update-2",
     "utterance": "古賀さん、営業二部に異動したそうです",
-    "expect": { "kind": "update_customer", "customer": "古賀 直樹", "field": "department" }
+    "expect": {
+      "kind": "update_customer",
+      "customer": "古賀 直樹",
+      "field": "department"
+    }
   },
   {
     "id": "ng-1",
     "utterance": "日下部さん、光沢のある生地は苦手だっておっしゃってた",
-    "expect": { "kind": "add_ng_note", "customer": "日下部 彰久" }
+    "expect": {
+      "kind": "add_ng_note",
+      "customer": "日下部 彰久"
+    }
+  },
+  {
+    "id": "ambiguous-1-開いているカルテと直前の相手が別",
+    "utterance": "職業がパーソナルジム",
+    "context": {
+      "open": "八木 拓真",
+      "recent": "古賀 直樹"
+    },
+    "expect": {
+      "kind": "ask_customer"
+    },
+    "note": "名前が無い続き。黙って開いているカルテへ書かない"
+  },
+  {
+    "id": "neg-7-無い項目は列にしない",
+    "utterance": "古賀さんの職業はパーソナルトレーナーだって",
+    "expect": {
+      "kind": "add_fact",
+      "customer": "古賀 直樹"
+    },
+    "note": "「職業」は列に無い。役職や業種に化けさせず、事実として残す"
   },
   {
     "id": "anniv-1",
     "utterance": "峰岸 聡さん、結婚記念日が6月3日だそうです",
-    "expect": { "kind": "add_anniversary", "customer": "峰岸 聡" }
+    "expect": {
+      "kind": "add_anniversary",
+      "customer": "峰岸 聡"
+    }
   },
   {
     "id": "approach-1",
     "utterance": "時枝さんにはさっき連絡しといたよ",
-    "expect": { "kind": "resolve_approach", "customer": "時枝 正", "status": "done" }
+    "expect": {
+      "kind": "resolve_approach",
+      "customer": "時枝 正",
+      "status": "done"
+    }
   },
   {
     "id": "approach-2",
     "utterance": "名取 彰久さんは今回は見送りで",
-    "expect": { "kind": "resolve_approach", "customer": "名取 彰久", "status": "skipped" }
+    "expect": {
+      "kind": "resolve_approach",
+      "customer": "名取 彰久",
+      "status": "skipped"
+    }
   },
   {
     "id": "read-1-検索しないで答える",
     "utterance": "時枝さんってどんな人だっけ",
-    "expect": { "kind": null }
+    "expect": {
+      "kind": null
+    }
   },
   {
     "id": "read-2",
     "utterance": "名取 彰久さんの前回の注文いつだった？",
-    "expect": { "kind": null }
+    "expect": {
+      "kind": null
+    }
   },
   {
     "id": "neg-1-指示",
     "utterance": "時枝さんに電話しといて",
-    "expect": { "kind": null }
+    "expect": {
+      "kind": null
+    }
   },
   {
     "id": "neg-2-こちらの意図",
     "utterance": "今度八木さんとゴルフ行こうかな",
-    "expect": { "kind": null }
+    "expect": {
+      "kind": null
+    }
   },
   {
     "id": "neg-3-雑談",
     "utterance": "今日は暑いね",
-    "expect": { "kind": null }
+    "expect": {
+      "kind": null
+    }
   },
   {
     "id": "neg-4-できないこと",
     "utterance": "明日の予定を教えて",
-    "expect": { "kind": null }
+    "expect": {
+      "kind": null
+    }
   },
   {
     "id": "neg-5-いない顧客",
     "utterance": "御手洗さんゴルフが趣味らしい",
-    "expect": { "kind": null }
+    "expect": {
+      "kind": null
+    }
   },
   {
     "id": "neg-6-担当外の集計",
     "utterance": "今月の店全体の売上どうなってる？",
-    "expect": { "kind": null }
+    "expect": {
+      "kind": null
+    }
   }
 ]

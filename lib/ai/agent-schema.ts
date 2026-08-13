@@ -126,7 +126,10 @@ export const AGENT_TOOLS: Tool[] = [
   ),
   fn(
     "propose_update_customer",
-    "顧客の項目の書き換えを提案する（連絡先・勤務先・居住地など）。氏名と担当は変えられない。",
+    "顧客の**決まった項目**の書き換えを提案する（連絡先・勤務先・居住地など）。" +
+      "氏名と担当は変えられない。" +
+      "**項目に無いことはここで扱わない。**「職業」「仕事の内容」「何をしている人か」は" +
+      "どの項目にも当たらないので propose_add_fact（分類は work）で残すこと。",
     {
       customerId,
       changes: {
@@ -137,6 +140,15 @@ export const AGENT_TOOLS: Tool[] = [
           properties: {
             field: {
               type: "string",
+              // 名前だけでは取り違える。役職と業種と会社名は、日本語で言われると
+              // どれも「仕事のこと」に見える
+              description:
+                "nameKana=フリガナ / birthDate=生年月日 / gender=性別 / phone=電話 / " +
+                "email=メール / address=住所 / residencePrefecture=居住地の都道府県 / " +
+                "embroideryName=ネーム刺繍 / companyName=勤務先の会社名 / department=部署 / " +
+                "jobTitle=役職（部長・課長など社内での肩書き。**職業ではない**） / " +
+                "industry=業種（勤務先が属する業界。**その人の職業ではない**） / " +
+                "familyInfo=ご家族のこと",
               enum: [
                 "nameKana",
                 "birthDate",

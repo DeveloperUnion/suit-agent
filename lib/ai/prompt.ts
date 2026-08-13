@@ -82,12 +82,36 @@ export function systemPrompt(vocabulary: { label: string; category: string }[]):
 }
 
 /**
- * いま開いているカルテ。
+ * いま誰の話をしているか。
  *
  * system ではなく user 側に置く。画面ごとに変わる値を system に混ぜると、
  * キャッシュが毎回外れる。
+ *
+ * **「開いているカルテ」だけでは足りない。**カルテを開いたまま別の人の話を
+ * することが普通にあり（「古賀さんはジムをやってる」→「職業が〜」）、
+ * そのとき名前の無い続きが**黙って開いているカルテのほうへ行く**。
+ * カードに名前は出るが、押す前に気づける保証は無い。
+ * 2 つが食い違うときは推測させず、聞き返させる。
  */
-export function contextLine(customer?: { id: string; name: string }): string {
-  if (!customer) return "（いまカルテは開いていません。誰の話かは名前で言われます）";
-  return `いま開いているカルテ: ${customer.name}（id: ${customer.id}）`;
+export function contextLine(
+  open?: { id: string; name: string },
+  recent?: { id: string; name: string },
+): string {
+  const lines: string[] = [];
+  lines.push(
+    open
+      ? `いま開いているカルテ: ${open.name}（id: ${open.id}）`
+      : "いまカルテは開いていません。",
+  );
+  if (recent) lines.push(`直前のやり取りで話していた相手: ${recent.name}（id: ${recent.id}）`);
+
+  if (recent && open && recent.id !== open.id) {
+    lines.push(
+      "**この 2 人は別人です。**名前を言われていない用件がこの直後に来たら、" +
+        "どちらか決めつけず propose_ask_customer で聞き返してください。",
+    );
+  } else if (!recent && !open) {
+    lines.push("誰の話かは名前で言われます。");
+  }
+  return lines.join("\n");
 }

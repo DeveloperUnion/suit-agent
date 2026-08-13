@@ -35,6 +35,7 @@ type Body = {
   text?: string;
   history?: { role: "user" | "assistant"; body: string }[];
   contextCustomerId?: string | null;
+  recentCustomerId?: string | null;
   viewingStaffId?: string | null;
 };
 
@@ -157,12 +158,23 @@ export async function POST(request: Request) {
           return (await dossierOf(cid)) ?? { error: "そのカルテは開けませんでした。" };
 
         case "propose_add_fact": {
-          const labels = Array.isArray(args.labels) ? (args.labels as string[]) : [];
+          const labels = (Array.isArray(args.labels) ? (args.labels as string[]) : []).filter(
+            (l) => typeof l === "string" && l.trim().length > 0,
+          );
+          // **「語が来なかった」と「すでに入っている」を混ぜない。**
+          // どちらも「提案は作れません」で返していたので、モデルがそれを
+          // 「すでに登録済みです」と読み、DB に無いことを断言して返していた。
+          if (labels.length === 0) {
+            return { error: "labels が空です。足す語を 1 つ以上渡してください。" };
+          }
           const plan = await planFactAdd(ctx, { customerId: cid, labels });
           const ref = await refOf(cid);
           if (!plan || !ref) return { error: "そのカルテは開けませんでした。" };
           if (plan.labelNames.length === 0) {
-            return { alreadyHas: plan.alreadyHas, note: "すでに入っているので提案は作りません。" };
+            return {
+              alreadyHas: plan.alreadyHas,
+              note: `渡された語はすべて ${ref.name} さんに登録済みです（${plan.alreadyHas.join("・")}）。提案は作りません。`,
+            };
           }
           action = {
             kind: "add_fact",
@@ -192,8 +204,16 @@ export async function POST(request: Request) {
           const incoming = Array.isArray(args.changes)
             ? (args.changes as { field: CustomerFieldKey; value: string }[])
             : [];
+          // 項目名が違うのか、値が同じなのかを分ける。混ぜると
+          // 「変わる項目がありません」→「すでに登録済みです」と読まれる。
+          const unknown = incoming.filter((c) => !(c.field in CUSTOMER_FIELD_LABELS));
+          if (unknown.length > 0) {
+            return {
+              error: `${unknown.map((c) => c.field).join("・")} という項目はありません。` +
+                "「職業」「仕事の内容」はどの項目にも当たらないので、propose_add_fact（分類は work）で残してください。",
+            };
+          }
           const changes = incoming
-            .filter((c) => c.field in CUSTOMER_FIELD_LABELS)
             .map((c) => ({
               field: c.field,
               label: CUSTOMER_FIELD_LABELS[c.field],
@@ -202,7 +222,15 @@ export async function POST(request: Request) {
               after: c.value,
             }))
             .filter((c) => c.before !== c.after);
-          if (changes.length === 0) return { note: "変わる項目がありません。" };
+          if (changes.length === 0) {
+            return {
+              note: `${ref.name} さんのその項目は、すでに同じ値です。提案は作りません。`,
+              current: incoming.map((c) => ({
+                field: c.field,
+                value: dossier.customer[c.field] ?? null,
+              })),
+            };
+          }
           action = { kind: "update_customer", customer: ref, changes, quote };
           return { changes };
         }
@@ -273,12 +301,16 @@ export async function POST(request: Request) {
     const contextCustomer = body.contextCustomerId
       ? ((await dossierOf(body.contextCustomerId))?.customer ?? undefined)
       : undefined;
+    const recentCustomer =
+      body.recentCustomerId && body.recentCustomerId !== body.contextCustomerId
+        ? ((await dossierOf(body.recentCustomerId))?.customer ?? undefined)
+        : undefined;
 
     const input: ResponseInput = [
       ...(body.history ?? [])
         .slice(-HISTORY_TURNS)
         .map((m) => ({ role: m.role, content: m.body }) as const),
-      { role: "user" as const, content: `${contextLine(contextCustomer)}\n\n${text}` },
+      { role: "user" as const, content: `${contextLine(contextCustomer, recentCustomer)}\n\n${text}` },
     ];
 
     const system = systemPrompt(await factVocabulary(ctx));

@@ -26,7 +26,13 @@ type Expectation = {
   field?: string;
   status?: string;
 };
-type Case = { id: string; utterance: string; expect: Expectation };
+type Case = {
+  id: string;
+  utterance: string;
+  expect: Expectation;
+  /** 「開いているカルテ」と「直前に話していた相手」。氏名で書き、実行時に id へ直す */
+  context?: { open?: string; recent?: string };
+};
 
 /**
  * 判定の分類。合計ではなく、この内訳を見る。
@@ -153,6 +159,24 @@ async function main() {
   }
   const token = await signIn(anonKey);
 
+  /** 氏名 → id。会話と同じ RPC を使うので、名寄せの挙動もここで一度通る */
+  const idCache = new Map<string, string>();
+  const idOf = async (name: string): Promise<string | undefined> => {
+    if (!idCache.has(name)) {
+      const hits = await json<{ id: string; name: string }[]>(
+        `${SUPABASE}/rest/v1/rpc/find_customers_by_name`,
+        {
+          method: "POST",
+          headers: { apikey: anonKey, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ p_query: name }),
+        },
+      );
+      const hit = hits.find((h) => h.name === name) ?? hits[0];
+      if (hit) idCache.set(name, hit.id);
+    }
+    return idCache.get(name);
+  };
+
   const cases = JSON.parse(
     readFileSync(new URL("../lib/ai/eval/cases.json", import.meta.url), "utf8"),
   ) as Case[];
@@ -168,7 +192,12 @@ async function main() {
       const res = await fetch(`${BASE}/api/agent`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ text: c.utterance, history: [] }),
+        body: JSON.stringify({
+          text: c.utterance,
+          history: [],
+          contextCustomerId: c.context?.open ? await idOf(c.context.open) : null,
+          recentCustomerId: c.context?.recent ? await idOf(c.context.recent) : null,
+        }),
       });
       if (!res.ok || !res.body) {
         const detail = (await res.json().catch(() => ({}))) as { message?: string };

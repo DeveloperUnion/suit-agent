@@ -1,4 +1,5 @@
-import { postExtraction, type ExtractedField, type ExtractionMeta } from "@/lib/ai/extraction";
+import type { ExtractedField, ExtractionMeta } from "@/lib/ai/extraction";
+import { postExtraction } from "@/lib/api/client";
 
 /**
  * 名刺の読み取り。

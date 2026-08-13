@@ -60,6 +60,19 @@ export async function getCurrentStaffId(): Promise<Uuid | null> {
   return (await getCurrentStaff())?.id ?? null;
 }
 
+/**
+ * サーバー側（app/api/*）を叩くときに載せるトークン。
+ *
+ * ブラウザは Supabase を直接見るのでトークンを意識しなくてよいが、
+ * Route Handler だけは別で、これを Authorization に載せないと 401 で弾かれる。
+ * getSession() は端末の中を見るだけでネットワークに出ない（期限が近ければ
+ * ここで更新される）。
+ */
+export async function getAccessToken(): Promise<string | null> {
+  const { data } = await supabase().auth.getSession();
+  return data.session?.access_token ?? null;
+}
+
 /** 管理者かどうか。切り替え UI を出すかの判定に使う */
 export async function isAdmin(): Promise<boolean> {
   return (await getCurrentStaff())?.role === "admin";

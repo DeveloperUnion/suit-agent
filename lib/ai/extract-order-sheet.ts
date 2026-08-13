@@ -1,5 +1,6 @@
 import type { ItemTypeId } from "@/lib/types";
-import { postExtraction, type ExtractedField, type ExtractionMeta } from "@/lib/ai/extraction";
+import type { ExtractedField, ExtractionMeta } from "@/lib/ai/extraction";
+import { postExtraction } from "@/lib/api/client";
 
 /**
  * 工場発注書の読み取り。

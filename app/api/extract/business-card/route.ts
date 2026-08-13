@@ -6,6 +6,7 @@ import {
   OMIT_RULE,
   runExtraction,
 } from "@/lib/ai/gemini";
+import { errorResponse, requireStaff } from "@/lib/api/auth";
 import type { BusinessCardExtraction } from "@/lib/ai/extract-business-card";
 
 /**
@@ -56,6 +57,14 @@ ${CONFIDENCE_RULE}
 
 export async function POST(request: Request) {
   const startedAt = performance.now();
+
+  // ここが無いと Gemini のキーを世界中に配ることになる。読み取りは
+  // ファイルを 1 枚投げれば動くので、URL を知られた時点で叩かれる。
+  try {
+    await requireStaff(request);
+  } catch (error) {
+    return errorResponse(error);
+  }
 
   const form = await request.formData();
   const file = form.get("file");

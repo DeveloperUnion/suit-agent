@@ -16,8 +16,8 @@ export const MODELS = {
   /** 採寸票・名刺の読み取り（PDF と画像）。手書きを読ませるのでここは慎重に替える */
   extraction: "gemini-3.6-flash",
 
-  /** 接客の合間の会話。Phase 2 で lib/ai/agent.ts のパターン照合と入れ替える */
-  chat: "gpt5.6luna",
+  /** 接客の合間の会話（Responses API）。lib/ai/agent.ts のパターン照合と入れ替えた */
+  chat: "gpt-5.6-luna",
 
   /** パーソナルの意味検索。Matryoshka で EMBEDDING_DIMENSIONS まで切り詰めて使う */
   embedding: "gemini-embedding-001",
@@ -29,10 +29,28 @@ export const MODELS = {
  * **`search_chunks.embedding` の `vector(N)` と必ず一致させること。**
  * ずれると挿入時に落ちる（無音にはならない）。
  *
- * 1536 なのはモデルの都合ではなく pgvector の都合。HNSW インデックスは
- * 2000 次元までしか張れないので、3072 次元のモデル（text-embedding-3-large、
- * gemini-embedding-001 の既定）はそのままでは索引化できない。
- * どちらも Matryoshka 表現なので、API 側の outputDimensionality / dimensions で
- * ここへ切り詰める。先頭を切り出すだけなので、精度の劣化はわずか。
+ * 1536 なのはモデルの都合ではなく、走査するバイト数の都合。
+ * 3072 次元のモデル（text-embedding-3-large、gemini-embedding-001 の既定）を
+ * Matryoshka でここへ切り詰めている（outputDimensionality / dimensions）。
+ * 先頭を切り出すだけなので精度の劣化はわずかで、代わりに 1 行が halfvec で
+ * 3KB に収まり、6.6 万行の全走査が数十ミリ秒で終わる。
+ *
+ * 当初は「HNSW が 2000 次元までだから」と書いていたが、**索引を張らないことに
+ * したのでその制約は効かない**（張るとしても halfvec は 4000 次元まで張れる）。
+ * 索引を張らない理由は supabase/migrations の search_customers の回に書いてある。
  */
 export const EMBEDDING_DIMENSIONS = 1536;
+
+/**
+ * 埋め込みの用途。**document と query で別の値を使う。**
+ *
+ * 実装が 2 箇所に分かれる（バックフィルは app/api/cron/embed、問い合わせ側は
+ * エージェントの検索ツール）ので、片方だけ直すと**無音で精度が落ちる**。
+ * 定数をここに置いて、両方が同じものを見るようにする。
+ */
+export const EMBEDDING_TASK_TYPES = {
+  /** search_chunks に入れる側 */
+  document: "RETRIEVAL_DOCUMENT",
+  /** 「アウトドア系が好きな人」の側 */
+  query: "RETRIEVAL_QUERY",
+} as const;

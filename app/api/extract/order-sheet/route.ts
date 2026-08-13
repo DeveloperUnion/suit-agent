@@ -6,6 +6,7 @@ import {
   OMIT_RULE,
   runExtraction,
 } from "@/lib/ai/gemini";
+import { errorResponse, requireStaff } from "@/lib/api/auth";
 import { ADJUSTMENT_MASTERS, adjustmentLabel } from "@/lib/constants/adjustments";
 import { ITEM_TYPES, fieldsForItemType } from "@/lib/constants/measurement-fields";
 import type { OrderSheetExtraction } from "@/lib/ai/extract-order-sheet";
@@ -150,6 +151,13 @@ ${CONFIDENCE_RULE}
 
 export async function POST(request: Request) {
   const startedAt = performance.now();
+
+  // ここが無いと Gemini のキーを世界中に配ることになる。
+  try {
+    await requireStaff(request);
+  } catch (error) {
+    return errorResponse(error);
+  }
 
   const form = await request.formData();
   const file = form.get("file");

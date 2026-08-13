@@ -47,15 +47,25 @@ export function AgentPanel() {
   // スマホだけ visual viewport の実測を当てる。iOS はキーボードで dvh が変わらない
   const viewport = useVisualViewport(open && !isDesktop);
 
+  // 依存は id だけ。contextRef ごと依存にすると、名前だけ変わった同じ顧客でも作り直る
+  const contextCustomerId = contextRef?.id;
+
   const send = useCallback(
     async (text: string) => {
       setPending(true);
-      await appendAgentMessage({ role: "user", body: text });
-      const turn = await interpret(text, { customerId: contextRef?.id });
-      await appendAgentMessage({ role: "assistant", body: turn.reply, action: turn.action });
-      setPending(false);
+      try {
+        await appendAgentMessage({ role: "user", body: text });
+        const turn = await interpret(text, { customerId: contextCustomerId });
+        await appendAgentMessage({ role: "assistant", body: turn.reply, action: turn.action });
+      } catch {
+        toast.error("うまく聞き取れませんでした。もう一度お願いします");
+      } finally {
+        // finally が要る。ここを抜かすと、失敗したとき入力欄が
+        // disabled のまま固まり、閉じて開き直すまで打てなくなる
+        setPending(false);
+      }
     },
-    [contextRef?.id],
+    [contextCustomerId],
   );
 
   const apply = useCallback(async (message: AgentMessage) => {
@@ -67,15 +77,25 @@ export function AgentPanel() {
       toast.error("カルテに残せませんでした");
       return;
     }
-    await markAgentActionApplied(message.id);
+    try {
+      await markAgentActionApplied(message.id);
+    } catch {
+      // 適用は一度きり（agent_messages のトリガー）。二度押しはここで落ちるが、
+      // 書き込み自体は上で終わっているので、成功として畳んでよい。
+      // 押したか分からず もう一度押す、は普通に起きる。
+    }
     toast.success("パーソナルを更新しました", { description: action.customer.name });
   }, []);
 
   /** 同姓の候補から選ばれたとき。改めて提案を作り直す */
   const pickCustomer = useCallback(
     async (customer: AgentCustomerRef, labels: string[], body: string) => {
-      const { reply, action } = await proposeFact(customer.id, labels, body);
-      await appendAgentMessage({ role: "assistant", body: reply, action });
+      try {
+        const { reply, action } = await proposeFact(customer.id, labels, body);
+        await appendAgentMessage({ role: "assistant", body: reply, action });
+      } catch {
+        toast.error("提案を作り直せませんでした");
+      }
     },
     [],
   );

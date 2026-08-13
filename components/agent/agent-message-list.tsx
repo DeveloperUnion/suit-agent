@@ -75,7 +75,12 @@ export function AgentMessageList({
                   key={message.id}
                   className={cn("flex flex-col gap-2", mine ? "items-end" : "items-start")}
                 >
-                  {/* 吹き出しの見た目はメッセージタブと揃える。別物のチャットに見せない */}
+                  {/* 吹き出しの見た目はメッセージタブと揃える。別物のチャットに見せない。
+                      **markdown を描かない。**ここは素のテキストのまま出すこと。
+                      カルテの自由記述はモデルの文脈に入るので、描画側がリンクや
+                      画像を解釈した瞬間に「仕込んだ文字列で情報を外へ運ぶ」経路が
+                      開く（実害が報告されている形はほぼ全部これ）。読みやすさが
+                      要るなら whitespace-pre-wrap の範囲で足す */}
                   <p
                     className={cn(
                       "max-w-[min(34rem,88%)] whitespace-pre-wrap rounded-md px-3.5 py-2.5 text-sm leading-relaxed",

@@ -278,20 +278,64 @@ export async function POST(request: Request) {
       { role: "user" as const, content: `${contextLine(contextCustomer)}\n\n${text}` },
     ];
 
-    const turn = await runTurn({
-      system: systemPrompt(await factVocabulary(ctx)),
-      input,
-      tools: AGENT_TOOLS,
-      handle,
-      // スタッフごとに分ける。同じ人の続けての問い合わせが温まったまま返る
-      cacheKey: `agent:${caller.userId}`,
-      });
+    const system = systemPrompt(await factVocabulary(ctx));
 
-    return Response.json({
-      reply: turn.reply,
-      action,
-      source: MODELS.chat,
-      elapsedMs: Math.round(performance.now() - startedAt),
+    /**
+     * 進捗を流す。
+     *
+     * 道具を 2〜3 本回すと数秒かかる。**無音の 4 秒はスマホでは「固まった」に
+     * 見える。**返答の文字を 1 文字ずつ流すより、「カルテを読んでいます」が
+     * 先に出るほうが接客の合間には効く。
+     *
+     * 途中経過は画面の state に置くだけで、DB には書かない。確定した 1 件だけを
+     * agent_messages に入れる（購読は自プロセスのカウンタなので、
+     * 二重描画も競合も起こらない）。
+     *
+     * Node ランタイムのままで動く。Edge は要らない。
+     */
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const send = (event: Record<string, unknown>) =>
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+
+        try {
+          const turn = await runTurn({
+            system,
+            input,
+            tools: AGENT_TOOLS,
+            handle,
+            // スタッフごとに分ける。同じ人の続けての問い合わせが温まったまま返る
+            cacheKey: `agent:${caller.userId}`,
+            onToolStart: (name) => send({ type: "tool", name }),
+          });
+          send({
+            type: "done",
+            reply: turn.reply,
+            action,
+            source: MODELS.chat,
+            elapsedMs: Math.round(performance.now() - startedAt),
+          });
+        } catch (error) {
+          // ヘッダはもう出ているので status を変えられない。
+          // 失敗も同じ流れに乗せて、受け側で例外に戻す。
+          send({
+            type: "error",
+            message: error instanceof Error ? error.message : "応答を作れませんでした。",
+          });
+        } finally {
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        // no-transform が無いと、間に入るものが溜めてから流すことがある
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+      },
     });
   } catch (error) {
     if (error instanceof AgentError) {

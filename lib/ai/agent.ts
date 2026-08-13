@@ -1,7 +1,8 @@
 import type { AgentAction, AgentMessage, Uuid } from "@/lib/types";
 import type { ExtractionMeta } from "@/lib/ai/extraction";
 import { getViewingStaffId } from "@/lib/auth/current-staff";
-import { postApi } from "@/lib/api/client";
+import { postStream } from "@/lib/api/client";
+import { toolLabel } from "@/lib/ai/tool-labels";
 
 /**
  * 話しかけた内容の解釈。
@@ -25,6 +26,13 @@ export type AgentInterpretContext = {
   customerId?: Uuid;
   /** 直近のやり取り。「さっきの続き」を拾えるようにする */
   history?: AgentMessage[];
+  /**
+   * いま何をしているか。道具を呼ぶたびに鳴る。
+   *
+   * 道具を 2〜3 本回すと数秒かかり、**無音のままだとスマホでは「固まった」に
+   * 見える**。返答の文字より先に、これを出すほうが接客の合間には効く。
+   */
+  onProgress?: (label: string) => void;
 };
 
 /** モデルへ渡すターン数。画面の表示件数とは別で、ここは短くてよい */
@@ -34,8 +42,9 @@ export async function interpret(
   input: string,
   ctx: AgentInterpretContext = {},
 ): Promise<AgentTurn> {
-  return postApi<AgentTurn>("/api/agent", {
-    body: {
+  return postStream<AgentTurn>(
+    "/api/agent",
+    {
       text: input,
       contextCustomerId: ctx.customerId ?? null,
       // 管理者がスタッフを切り替えているときは、その人の顧客を見ている。
@@ -46,5 +55,8 @@ export async function interpret(
         body: m.body,
       })),
     },
-  });
+    (event) => {
+      if (event.type === "tool" && event.name) ctx.onProgress?.(toolLabel(event.name));
+    },
+  );
 }

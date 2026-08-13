@@ -47,6 +47,59 @@ export async function postApi<T>(endpoint: string, { body }: ApiRequest): Promis
   return (await response.json()) as T;
 }
 
+/**
+ * 途中経過が流れてくる口（Server-Sent Events）。
+ *
+ * 1 行 1 イベントの JSON を受け取り、`done` が来たらそれを返す。
+ * `error` は例外に戻す — 受け側が「成功したのに中身が無い」を扱わずに済む。
+ *
+ * 進捗を捨てて最後だけ待つこともできるが、それでは待ち時間が無音になる。
+ */
+export async function postStream<T>(
+  endpoint: string,
+  body: unknown,
+  onEvent: (event: { type: string; name?: string }) => void,
+): Promise<T> {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { ...(await authHeaders()), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok || !response.body) {
+    const detail = await response
+      .json()
+      .then((data: { message?: string }) => data.message)
+      .catch(() => undefined);
+    throw new Error(detail ?? "処理に失敗しました。");
+  }
+
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  let result: T | undefined;
+
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += value;
+
+    // イベントの区切りは空行。途中で切れた分は buffer に残して次へ回す
+    const chunks = buffer.split("\n\n");
+    buffer = chunks.pop() ?? "";
+    for (const chunk of chunks) {
+      const line = chunk.trim();
+      if (!line.startsWith("data:")) continue;
+      const event = JSON.parse(line.slice(5).trim()) as { type: string; message?: string };
+      if (event.type === "error") throw new Error(event.message ?? "応答を作れませんでした。");
+      if (event.type === "done") result = event as T;
+      else onEvent(event);
+    }
+  }
+
+  if (!result) throw new Error("応答が途中で切れました。");
+  return result;
+}
+
 /** 読み取り（OCR）。ファイルを 1 枚送って、確認画面の材料を受け取る */
 export async function postExtraction<T>(endpoint: string, file: File): Promise<T> {
   const body = new FormData();

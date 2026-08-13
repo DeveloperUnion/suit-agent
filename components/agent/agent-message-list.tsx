@@ -18,6 +18,7 @@ const EXAMPLES = [
 export function AgentMessageList({
   messages,
   pending,
+  progress,
   keyboardHeight,
   onApply,
   onPickCustomer,
@@ -26,6 +27,8 @@ export function AgentMessageList({
 }: {
   messages: AgentMessage[];
   pending: boolean;
+  /** いま何をしているか。空なら「考えています」に倒す */
+  progress: string;
   /** キーボードで容器が縮んだ瞬間にも最新へ寄せ直すため、依存として受け取る */
   keyboardHeight: number;
   /** カードの上で編集された action がそのまま渡る（部分承認） */
@@ -114,11 +117,15 @@ export function AgentMessageList({
 
             {pending && (
               <li className="flex flex-col items-start gap-2">
-                <p className="flex items-center gap-1.5 rounded-md rounded-tl-sm border border-border bg-card px-3.5 py-2.5">
-                  <Dot delay="0ms" />
-                  <Dot delay="150ms" />
-                  <Dot delay="300ms" />
-                  <span className="sr-only">応答を作成しています</span>
+                {/* 何をしているかを出す。スマホで無音の 4 秒は「固まった」に見える。
+                    道具を呼ぶ前は言えることが無いので「考えています」に倒す */}
+                <p className="flex items-center gap-2 rounded-md rounded-tl-sm border border-border bg-card px-3.5 py-2.5 text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <Dot delay="0ms" />
+                    <Dot delay="150ms" />
+                    <Dot delay="300ms" />
+                  </span>
+                  <span aria-live="polite">{progress || "考えています"}</span>
                 </p>
               </li>
             )}

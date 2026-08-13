@@ -39,6 +39,8 @@ export function AgentPanel() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const composingRef = useRef(false);
   const [pending, setPending] = useState(false);
+  // いま何をしているか。道具を呼ぶたびに差し替わる
+  const [progress, setProgress] = useState("");
 
   // 書き込みは必ず mutateDb を通るので、追記も削除もこの購読だけで反映される
   const loader = useCallback(() => listAgentMessages(), []);
@@ -53,11 +55,18 @@ export function AgentPanel() {
   const send = useCallback(
     async (text: string) => {
       setPending(true);
+      setProgress("");
       try {
         await appendAgentMessage({ role: "user", body: text });
         // 履歴は送る前のものを渡す。いま打った 1 行は text として別に渡すので、
         // 両方入れると同じ発話が 2 回並ぶ。
-        const turn = await interpret(text, { customerId: contextCustomerId, history: messages });
+        const turn = await interpret(text, {
+          customerId: contextCustomerId,
+          history: messages,
+          // 途中経過は state に置くだけで DB には書かない。確定した 1 件だけを
+          // agent_messages に入れる
+          onProgress: setProgress,
+        });
         await appendAgentMessage({ role: "assistant", body: turn.reply, action: turn.action });
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "うまく聞き取れませんでした");
@@ -65,6 +74,7 @@ export function AgentPanel() {
         // finally が要る。ここを抜かすと、失敗したとき入力欄が
         // disabled のまま固まり、閉じて開き直すまで打てなくなる
         setPending(false);
+        setProgress("");
       }
     },
     [contextCustomerId, messages],
@@ -244,6 +254,7 @@ export function AgentPanel() {
           <AgentMessageList
             messages={messages ?? []}
             pending={pending}
+            progress={progress}
             keyboardHeight={viewport?.height ?? 0}
             onApply={apply}
             onPickCustomer={pickCustomer}

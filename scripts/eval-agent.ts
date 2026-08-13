@@ -88,6 +88,43 @@ async function signIn(anonKey: string): Promise<string> {
   return verified.access_token;
 }
 
+type DoneEvent = {
+  type: string;
+  message?: string;
+  reply?: string;
+  action?: Record<string, unknown>;
+};
+
+/**
+ * SSE から done を取り出す。途中の tool イベントは eval では使わない。
+ *
+ * TextDecoderStream を挟まずに自分でデコードするのは、Node の型と DOM の型で
+ * ReadableStream の噛み合いが違い、キャストで誤魔化すことになるため。
+ */
+async function readStream(body: ReadableStream<Uint8Array>): Promise<DoneEvent> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let done: DoneEvent | undefined;
+
+  for (;;) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    buffer += decoder.decode(chunk.value, { stream: true });
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop() ?? "";
+    for (const part of parts) {
+      const line = part.trim();
+      if (!line.startsWith("data:")) continue;
+      const event = JSON.parse(line.slice(5).trim()) as DoneEvent;
+      if (event.type === "error") throw new Error(event.message ?? "応答を作れませんでした。");
+      if (event.type === "done") done = event;
+    }
+  }
+  if (!done) throw new Error("応答が途中で切れました。");
+  return done;
+}
+
 function judge(expect: Expectation, action: Record<string, unknown> | undefined): Verdict {
   const got = (action?.kind as string | undefined) ?? null;
   if (expect.kind === null) return got === null ? "match" : "hallucination";
@@ -133,14 +170,14 @@ async function main() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ text: c.utterance, history: [] }),
       });
-      const json = (await res.json()) as {
-        reply?: string;
-        action?: Record<string, unknown>;
-        message?: string;
-      };
-      if (!res.ok) throw new Error(json.message ?? `HTTP ${res.status}`);
-      action = json.action;
-      reply = json.reply ?? "";
+      if (!res.ok || !res.body) {
+        const detail = (await res.json().catch(() => ({}))) as { message?: string };
+        throw new Error(detail.message ?? `HTTP ${res.status}`);
+      }
+      // 応答は進捗つきの流れ（SSE）。最後の done だけを見る
+      const done = await readStream(res.body);
+      action = done.action;
+      reply = done.reply ?? "";
     } catch (error) {
       failed = true;
       reply = `エラー: ${error instanceof Error ? error.message : String(error)}`;

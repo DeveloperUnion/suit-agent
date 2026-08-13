@@ -43,12 +43,15 @@ export async function runTurn({
   tools,
   handle,
   cacheKey,
+  onToolStart,
 }: {
   system: string;
   input: ResponseInput;
   tools: Tool[];
   handle: ToolHandler;
   cacheKey: string;
+  /** 道具を呼ぶ直前に鳴る。画面へ「いま何をしているか」を流すために使う */
+  onToolStart?: (name: string) => void;
 }): Promise<TurnResult> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new AgentError("OPENAI_API_KEY が設定されていません。", 500);
@@ -103,6 +106,8 @@ export async function runTurn({
         });
         continue;
       }
+
+      onToolStart?.(call.name);
 
       let result: unknown;
       try {

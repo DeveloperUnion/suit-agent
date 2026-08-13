@@ -2,6 +2,11 @@ import type { IsoDate, ItemTypeId, Order, OrderItem, OrderPurpose, Uuid } from "
 import { supabase } from "@/lib/supabase/client";
 import { bump } from "@/lib/store/revision";
 import { ITEM_TYPE_MAP } from "@/lib/constants/measurement-fields";
+import {
+  AMOUNT_CATEGORIES,
+  type AmountCategoryKey,
+  type OrderAmountBreakdown,
+} from "@/lib/constants/labels";
 
 /**
  * 注文のデータアクセス。
@@ -22,6 +27,8 @@ const ORDER_COLUMNS = `
   fabricProductNumber:fabric_product_number, fabricColorNumber:fabric_color_number,
   fabricColorName:fabric_color_name, fabricComposition:fabric_composition,
   totalAmount:total_amount,
+  amountSuit:amount_suit, amountCoat:amount_coat,
+  amountAccessory:amount_accessory, amountShirt:amount_shirt,
   takenByStaffId:taken_by_staff_id,
   staff:taken_by_staff_id ( name ),
   items:order_items ( id, orderId:order_id, itemTypeId:item_type_id )
@@ -32,12 +39,38 @@ type OrderRow = Order & {
   items: OrderItem[];
 };
 
+const AMOUNT_COLUMNS: Record<AmountCategoryKey, string> = {
+  amountSuit: "amount_suit",
+  amountCoat: "amount_coat",
+  amountAccessory: "amount_accessory",
+  amountShirt: "amount_shirt",
+};
+
+/**
+ * 内訳を 4 列そろえて書き出す。**入っていない区分は NULL。**
+ *
+ * 0 で埋めない。「未入力」と「0 円で売れた」は別物で、埋めると
+ * 内訳を付けていない注文が「4 区分すべて 0 円」に見える。
+ */
+function amountColumns(breakdown: OrderAmountBreakdown = {}): Record<string, number | null> {
+  return Object.fromEntries(
+    AMOUNT_CATEGORIES.map(({ key }) => [AMOUNT_COLUMNS[key], breakdown[key] ?? null]),
+  );
+}
+
 function toView(row: OrderRow): OrderView {
   const { staff, ...order } = row;
   return {
     ...order,
     arrivedAt: order.arrivedAt ?? undefined,
     deliveredAt: order.deliveredAt ?? undefined,
+    // 内訳は NULL で返る。undefined に寄せておかないと、フォーム側の
+    // 「未入力かどうか」の判定（hasAmountBreakdown）が null を拾って
+    // 入っていない内訳を開いた状態で出してしまう。
+    amountSuit: order.amountSuit ?? undefined,
+    amountCoat: order.amountCoat ?? undefined,
+    amountAccessory: order.amountAccessory ?? undefined,
+    amountShirt: order.amountShirt ?? undefined,
     staffName: staff?.name ?? "—",
     items: row.items ?? [],
   };
@@ -122,6 +155,8 @@ export type CreateOrderInput = {
   fabric: OrderItemFabric;
   /** 売上金額（税込）。紙に金額欄は事実上入らないので、店が手で入れる */
   totalAmount: number;
+  /** 売上区分ごとの内訳。任意。和が totalAmount に届かなくてよい */
+  breakdown?: OrderAmountBreakdown;
 };
 
 /**
@@ -152,6 +187,7 @@ export async function createOrder(input: CreateOrderInput): Promise<Uuid> {
       fabric_color_name: input.fabric.fabricColorName ?? null,
       fabric_composition: input.fabric.fabricComposition ?? null,
       total_amount: input.totalAmount,
+      ...amountColumns(input.breakdown),
     })
     .select("id")
     .single();
@@ -193,6 +229,14 @@ export type UpdateOrderInput = Partial<
   arrivedAt?: IsoDate | null;
   /** お渡し日（店→客）。null で消す */
   deliveredAt?: IsoDate | null;
+  /**
+   * 売上区分の内訳。**渡したら 4 列すべてを書く**（入っていない区分は NULL）。
+   *
+   * 他の項目のように「キーが無ければ触らない」にしない。フォームの
+   * 「内訳をやめる」が {} を渡して全部消す操作になるので、区分単位の
+   * 部分更新と区別がつかなくなる。
+   */
+  breakdown?: OrderAmountBreakdown;
 };
 
 /**
@@ -227,6 +271,8 @@ export async function updateOrder(id: Uuid, patch: UpdateOrderInput): Promise<vo
     if (value === undefined) continue;
     row[column] = value === "" ? null : value;
   }
+
+  if (patch.breakdown) Object.assign(row, amountColumns(patch.breakdown));
 
   // お渡し日に触れたときだけ状態を追随させる。触れていない更新
   // （金額の直しなど）で状態が動くと、お渡し済の注文が受注へ戻る。

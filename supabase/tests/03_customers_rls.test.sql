@@ -353,11 +353,6 @@ values ('c1111111-1111-4111-8111-111111111111', 'wedding', '2005-06-01', '');
 insert into public.orders (id, customer_id, order_number, ordered_at, purpose, taken_by_staff_id)
 values ('d1111111-1111-4111-8111-111111111111',
         'c1111111-1111-4111-8111-111111111111', 'J1-100-100', '2026-01-10', 'business', :'a_id');
-insert into public.order_photos (order_id, customer_id, storage_path, created_by_staff_id)
-values ('d1111111-1111-4111-8111-111111111111',
-        'c1111111-1111-4111-8111-111111111111',
-        'c1111111-1111-4111-8111-111111111111/d1111111-1111-4111-8111-111111111111/x.jpg',
-        :'a_id');
 
 select pg_temp.login_as(:'a_uid');
 select lives_ok(
@@ -384,11 +379,9 @@ select is(
   + (select count(*) from public.customer_anniversaries
       where customer_id = 'c1111111-1111-4111-8111-111111111111')
   + (select count(*) from public.orders
-      where customer_id = 'c1111111-1111-4111-8111-111111111111')
-  + (select count(*) from public.order_photos
       where customer_id = 'c1111111-1111-4111-8111-111111111111'),
   0::bigint,
-  '★ 事実・注意事項・記念日・注文・着装写真も残らない'
+  '★ 事実・注意事項・記念日・注文も残らない'
 );
 
 select results_eq(

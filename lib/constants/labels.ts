@@ -37,6 +37,40 @@ export const ORDER_PURPOSE_LABEL: Record<OrderPurpose, string> = {
   casual: "カジュアル",
 };
 
+/**
+ * 売上金額の内訳。入力欄の並びも表示の並びもこれが決める。
+ *
+ * **採寸の ITEM_TYPE_MAP とは別の軸。**あちらは「何を採寸するか」
+ * （ジャケット / パンツ / ベスト / シャツ / コート）で、こちらは
+ * 「何がいくら売れたか」。スーツは上下一式なので採寸側に対応する id が無い。
+ *
+ * **「その他」は作らない。**区分に当てはまらない売上は内訳に現れず、
+ * 4つの和は合計（totalAmount）に届かないのが既定。合わないことを
+ * 警告してはいけない — 合計欄のほうが正だから。
+ */
+export const AMOUNT_CATEGORIES = [
+  { key: "amountSuit", label: "スーツ" },
+  { key: "amountCoat", label: "コート" },
+  { key: "amountAccessory", label: "小物" },
+  { key: "amountShirt", label: "シャツ" },
+] as const;
+
+/** 内訳の1区分のキー。Order の対応するフィールド名でもある */
+export type AmountCategoryKey = (typeof AMOUNT_CATEGORIES)[number]["key"];
+
+/** 内訳だけを抜き出した形。フォームと更新入力で使い回す */
+export type OrderAmountBreakdown = Partial<Record<AmountCategoryKey, number>>;
+
+/** 1区分でも入っていれば true。入力欄を開いた状態で出すかの判定に使う */
+export function hasAmountBreakdown(breakdown: OrderAmountBreakdown): boolean {
+  return AMOUNT_CATEGORIES.some(({ key }) => breakdown[key] !== undefined);
+}
+
+/** 入っている区分だけの合計。未入力（undefined）は 0 として扱わず飛ばす */
+export function sumAmountBreakdown(breakdown: OrderAmountBreakdown): number {
+  return AMOUNT_CATEGORIES.reduce((sum, { key }) => sum + (breakdown[key] ?? 0), 0);
+}
+
 /*
  * 内部値の post_delivery は変えない。approach_resolutions.trigger_key に埋まっていて、
  * 変えると対応済みの通知が全件立ち直す。表に出る呼び名だけを「お渡し」に寄せている。

@@ -60,7 +60,7 @@ export function CustomerDeleteDialog({
         <DialogHeader>
           <DialogTitle>{customerName} 様のカルテを削除します</DialogTitle>
           <DialogDescription>
-            採寸票・注文履歴・着装写真・パーソナル・メモ・注意事項・記念日・
+            採寸票・注文履歴・パーソナル・メモ・注意事項・記念日・
             アプローチの記録が、すべて一緒に消えます。
             <strong className="mt-2 block text-foreground">元に戻せません。</strong>
           </DialogDescription>

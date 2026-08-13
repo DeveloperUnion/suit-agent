@@ -60,7 +60,7 @@ supabase/
   dev-seed.sql         生成物。モックの 50 顧客。ローカル専用
   seed.sql             管理者 4 名と auth.users。ローカル専用
   tests/*.sql          pgTAP。db:test で回る
-  config.toml          Storage は着装写真のためだけに有効。Realtime は無効
+  config.toml          Storage は有効だが**使っていない**（後述）。Realtime は無効
 scripts/
   generate-masters.mts   lib/constants/* → supabase/masters.sql
   generate-dev-seed.ts   lib/mock/seed.ts → supabase/dev-seed.sql
@@ -140,7 +140,7 @@ migration を追記するだけ）と、冪等な `masters.sql` の 2 つで、�
 |---|---|
 | `..._app_schema_and_staff` | `app` スキーマ / `current_staff_id()` / `is_admin()` / `normalize_ja()` / `worker_role` / `staff` |
 | `..._customers` | `customers` / `customer_anniversaries` / `can_read_customer()` / `can_write_customer()` / `find_similar_customers()` |
-| `..._orders` | `orders`（金額4列・生地4列）/ `order_items` |
+| `..._orders` | `orders`（生地4列）/ `order_items` |
 | `..._measurements` | マスタ3表 / 採寸4表（複合 FK） |
 | `..._approach_and_targets` | `app_settings`（1 行）/ `approach_resolutions` / `revenue_targets` / `v_approach_inputs` |
 | `..._change_log` | `change_log` とトリガー |
@@ -151,6 +151,10 @@ migration を追記するだけ）と、冪等な `masters.sql` の 2 つで、�
 | `..._facts_migration` | 同意 2 列 / `customer_ng_notes` / 使わない 8 列の削除 / ビュー作り直し |
 | `..._revoke_anon` | `anon` の権限を全部剥がす / `authenticated` の TRUNCATE / 既定 ACL |
 | `..._staff_gate` | `auth.users` のトリガー 2 本（招待の門番と自動紐付け） |
+| `..._order_photos` | `order_photos` と `order-photos` バケット（**下の 2 本で撤回済み**） |
+| `..._customer_delete` | `public.delete_customer()`（顧客の物理削除） |
+| `..._drop_consent_columns` | 同意 2 列（`photo_consent` / `night_contact_ok`）の削除 |
+| `..._birthday_anniversary` | `app.sync_birthday_anniversary()`（生年月日 → 誕生日） |
 | `..._handover_and_similar_customers` | `due_date` → `arrived_at` / `v_customers` の起点を `coalesce(delivered_at, arrived_at)` に / `anniversary_lead_days` / `public.find_similar_customers()` のラッパ |
 | `..._agent_message_guard` | 会話を追記のみに（提案の中身は変えられず、適用は一度だけ） |
 | `..._search_customers` | `search_chunks.embedding` を `halfvec` に・**HNSW を落とす** / `search_customers()` / `customer_dossier()` / `find_customers_by_name()` |
@@ -275,9 +279,12 @@ RLS を採った最大の論拠は「境界を DB が持つので API 層が要�
       null の集合をそのまま使うので、事実が存在する限り必ず拾われる
 - [x] `public.delete_customer()`（顧客の物理削除。テーブルへの delete 権限は
       付けず、この関数 1 本に閉じる。`change_log` は削除の事実だけ残す。
-      実体の写真はクライアントが Storage から先に消す）
+      写真をやめたので、削除はこの関数 1 本で完結する）
 - [x] `app.sync_birthday_anniversary()`（生年月日 → 誕生日の記念日）
-- [x] `order_photos` と `order-photos` バケット（着装写真）
+- [x] 売上区分の内訳 4 列（スーツ / コート / 小物 / シャツ。すべて任意）
+- [x] ~~`order_photos` と `order-photos` バケット（着装写真）~~
+      **入れたあとに撤回した。**店が使わないと決めたので、
+      `..._drop_order_photos` で表もバケットも落としてある
 
 ## 本番（`torico-agent`）
 
@@ -285,7 +292,7 @@ Tokyo リージョン。**まだ店舗には渡していない。**手順書で�
 **渡す前に終わらせることは `docs/todo.md`**（カスタム SMTP / Redirect URLs /
 Pro プラン / 予算アラート）。
 
-- [x] `supabase link` → `supabase db push`（migration 13 本）。**手作業でやったのは
+- [x] `supabase link` → `supabase db push`。**手作業でやったのは
       ここまで。**以降は main へマージすると `deploy` ジョブが流す
 - [x] `psql`（実際は SQL Editor）で `supabase/masters.sql`。**migration では入らない**ので、
       スキーマを push するたびにこれも流す。この順序も `deploy` ジョブに入れてある

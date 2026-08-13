@@ -260,10 +260,21 @@ dev-seed の事実で「アウトドア系が好きな人」のような曖昧�
 - [x] `customer_ng_notes` テーブルと `photo_consent` / `night_contact_ok` への分割
       （同意 2 列は Phase 3 で落とした。一度も使われず、注意事項の枠の
       下半分を占めていただけだった）
-- [ ] 埋め込みのバックフィル（`app/api/cron/embed`、`worker_role`）。
-      **`worker_role` は nologin のまま置いてある。**Cron が何のロールで接続するかは
-      ここで決める（本命は LOGIN + 専用パスワード。`BYPASSRLS` は与えない）
-- [ ] `app.search_customers()` — 確定検索と意味検索を 1 本の関数で両方走らせる。
+- [x] 埋め込みのバックフィル（`app/api/cron/embed`、`worker_role`）。
+      **LOGIN + 専用パスワードにした。**`BYPASSRLS` は与えていないので、越境できるのは
+      facts の回で明示したポリシーの範囲（`search_chunks` の読み書きと、本文を
+      組み立てるための `customer_facts` / `fact_labels` の select）だけ。
+      パスワードは migration に書かない — git に入るため。**本番は SQL Editor で
+      1 回だけ設定し、接続文字列を Vercel の `WORKER_DATABASE_URL` に置く**:
+
+      ```sql
+      alter role worker_role with password '<生成した値>';
+      ```
+
+      ローカルは `supabase/seed.sql` が `worker` を入れる（`db reset` でしか流れない）。
+      接続は **Session pooler（ポート 5432）**。直結ホストは IPv6 専用で Vercel から
+      届かず、Transaction pooler（6543）は使わない
+- [x] `app.search_customers()` — 確定検索と意味検索を 1 本の関数で両方走らせる。
       **ツールを 2 本に分けて「網羅が要るときは確定検索を使え」とプロンプトで
       指示する解は採らない**（RLS を採ったのと同じ理由で、作法は必ず破れる）。
       確定検索は**ラベル一致と本文の全文一致の両方**を LIMIT なしで返す —
@@ -271,8 +282,11 @@ dev-seed の事実で「アウトドア系が好きな人」のような曖昧�
 - [ ] 会話を `MODELS.chat` に差し替える（いまは `lib/ai/agent.ts` のパターン照合）。
       このとき `lib/ai/` から `lib/data/*` の import も禁止する
       （`agent-tools.ts` が丸ごと書き換わるので、それまでは入れられない）
-- [ ] 埋め込みは**二重**にする — 書き込み直後の fire-and-forget と Cron のバックフィル。
-      片方だけだと「その顧客だけ検索に出てこない」が無音で起きる
+- [x] 埋め込みは**二重**にする — 書き込み直後の fire-and-forget（`addFact` が
+      `/api/embed` を叩き、結果を待たない）と Cron のバックフィル。
+      片方だけだと「その顧客だけ検索に出てこない」が無音で起きる。
+      **未処理のキューは持たない** — `customer_facts left join search_chunks` が
+      null の集合をそのまま使うので、事実が存在する限り必ず拾われる
 
 ### Phase 3 — 運用
 

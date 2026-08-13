@@ -9,7 +9,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(11);
+select plan(13);
 
 
 -- ── 道具 ────────────────────────────────────────────────
@@ -179,6 +179,43 @@ select is(
   (app.search_customers(array['ボルダリング'])->>'exactCount')::int,
   7,
   '同じ顧客が 2 つ該当しても 1 名として数える'
+);
+
+
+-- ── 意味検索も担当の境界を越えない ──────────────────────
+--
+-- 索引を張らないのは、まさにこれを「先に絞ってから距離を計算する」形で
+-- 構造的に守るため。HNSW を張ると走査が先・RLS が後になり、他人の顧客が
+-- 枠を食い潰して自分の顧客が黙って落ちる。
+
+select pg_temp.as_postgres();
+insert into public.search_chunks (fact_id, customer_id, content, embedding, embedding_model, embedded_at)
+select f.id, f.customer_id, f.body,
+       ('[' || array_to_string(array(select case when i = 1 then 1.0 else 0.0 end
+                                       from generate_series(1, 1536) i), ',') || ']')::extensions.halfvec,
+       'test-model', now()
+  from public.customer_facts f
+ where f.customer_id in ('e6c00000-0000-4000-8000-000000000003',   -- A の担当
+                         'e6c00000-0000-4000-8000-000000000099');  -- B の担当
+
+select pg_temp.login_as(:'a_uid');
+
+select is(
+  (select count(*)::int
+     from jsonb_array_elements(
+            app.search_customers('{}', null,
+              '[' || array_to_string(array(select case when i = 1 then 1.0 else 0.0 end
+                                             from generate_series(1, 1536) i), ',') || ']')->'similar') s
+    where s->>'name' = '他担当 太郎'),
+  0,
+  '意味検索にも他スタッフの顧客は出ない'
+);
+
+-- 「近い人はいません」と「まだ埋め込みが入っていません」を混ぜない。
+select is(
+  (app.search_customers('{}', null, null)->>'similarAvailable')::boolean,
+  false,
+  'ベクトルを渡さなければ similarAvailable は false（似た人がいない、とは言わない）'
 );
 
 

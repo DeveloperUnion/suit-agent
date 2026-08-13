@@ -25,16 +25,24 @@ npm run lint
 npm run typecheck
 ```
 
-`.env.local` に 3 つ要る。**Supabase の 2 つが無いと画面が 1 枚も出ない**
-（`lib/supabase/client.ts` がその場で例外を投げる）。Gemini のキーは
-発注書・名刺の読み取りだけに使うので、無くてもアプリは動き、取り込みを
-実行したときにエラーで止まる。
+`.env.local` に要るものは 2 段に分かれる。**Supabase の 2 つが無いと画面が
+1 枚も出ない**（`lib/supabase/client.ts` がその場で例外を投げる）。
+残りはサーバ側の機能ごとの鍵で、無くてもアプリは動き、その機能を使ったときに
+エラーで止まる。
 
 ```
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-GEMINI_API_KEY=...
+
+GEMINI_API_KEY=...          # 発注書・名刺の読み取りと、パーソナルの埋め込み
+OPENAI_API_KEY=...          # AI アシスタントの会話
+WORKER_DATABASE_URL=...     # 埋め込みの書き込み（worker_role。下記）
+CRON_SECRET=...             # 埋め込みバックフィルの Cron を守る合言葉
 ```
+
+`WORKER_DATABASE_URL` はローカルなら
+`postgresql://worker_role:worker@127.0.0.1:54322/postgres`（パスワードは
+`supabase/seed.sql` が入れる）。本番の作り方は `docs/database.md`。
 
 前の 2 つは `supabase status -o env` の出力。ローカルの DB の立て方は `docs/database.md`。
 

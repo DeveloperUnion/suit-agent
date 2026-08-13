@@ -15,6 +15,7 @@ import {
   type ToolContext,
 } from "@/lib/ai/agent-tools";
 import { CUSTOMER_FIELD_LABELS } from "@/lib/constants/customer-fields";
+import { factCategoryKey } from "@/lib/constants/facts";
 
 /**
  * 会話。
@@ -168,7 +169,9 @@ export async function POST(request: Request) {
             customer: ref,
             labelNames: plan.labelNames,
             newLabelNames: plan.newLabelNames,
-            categoryKey: typeof args.categoryKey === "string" ? args.categoryKey : "hobby",
+            // 存在しない分類は提案に載せない。載せると、適用を押した瞬間に
+            // 外部キー違反で落ちる（提案を作るところまでは通ってしまう）。
+            categoryKey: factCategoryKey(args.categoryKey),
             body: String(args.body ?? ""),
             quote,
           };

@@ -9,6 +9,7 @@ import {
 } from "@/lib/data/facts";
 import { listAnniversaries, saveAnniversaries, updateCustomer } from "@/lib/data/customers";
 import { resolveApproach } from "@/lib/data/approaches";
+import { factCategoryKey } from "@/lib/constants/facts";
 
 /**
  * 提案を実際に書き込む。**人が「適用」を押したあとにだけ呼ばれる。**
@@ -30,9 +31,12 @@ export async function applyAgentAction(action: AgentAction): Promise<void> {
     case "add_fact": {
       // 語は既存の表記へ寄せてある（DB が決めた値）。無い語だけここで作る。
       const labels = await listLabels();
+      // 分類はここでも正す。会話は残るので、**この直しより前に出た提案**が
+      // カルテに残っており、それを今日押されることがある。提案に載っている値を
+      // そのまま信じると、そのとき外部キー違反で落ちる。
+      const categoryKey = factCategoryKey(action.categoryKey);
       for (const name of action.labelNames) {
-        const label =
-          findLabel(labels, name) ?? (await createLabel({ name, categoryKey: action.categoryKey }));
+        const label = findLabel(labels, name) ?? (await createLabel({ name, categoryKey }));
         await addFact({
           customerId: action.customer.id,
           labelId: label.id,

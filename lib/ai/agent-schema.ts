@@ -1,5 +1,20 @@
 import type { Tool } from "openai/resources/responses/responses";
 
+import { FACT_CATEGORIES } from "@/lib/constants/facts";
+
+/**
+ * 分類の選択肢は**定数から作る。手で並べない。**
+ *
+ * 手で書いていたときは `hobby / preference / work / life` と説明文に並べていて、
+ * `life` は存在せず（正しくは `lifestyle`）、`scene` と `other` が抜けていた。
+ * モデルは素直に `life` を返し、**適用を押した瞬間に外部キー違反で落ちた**
+ * （提案を作るところまでは通るので、押すまで分からない）。
+ *
+ * 発注書の読み取りが `FIELD_KEYS` を定数から閉じているのと同じ理由で、
+ * ここも正（lib/constants/facts.ts）から生やす。
+ */
+const FACT_CATEGORY_KEYS = FACT_CATEGORIES.map((c) => c.key);
+
 /**
  * モデルに渡す道具の一覧。
  *
@@ -76,7 +91,9 @@ export const AGENT_TOOLS: Tool[] = [
   // ── 提案する（書き込まない） ──
   fn(
     "propose_add_fact",
-    "パーソナル（趣味・好み・人となり）への追記を提案する。既存の語に寄る形で返る。",
+    "パーソナル（趣味・好み・人となり）への追記を提案する。既存の語に寄る形で返る。" +
+      "**「苦手」「避けている」「前に断られた」は、好みに見えても propose_add_ng_note のほう。**" +
+      "こちらは接客の材料として引っ張り出すもの、あちらは外すと事故になるもの。",
     {
       customerId,
       labels: {
@@ -90,7 +107,10 @@ export const AGENT_TOOLS: Tool[] = [
       },
       categoryKey: {
         type: "string",
-        description: "新しい語を作るときの分類。hobby / preference / work / life のいずれか。",
+        enum: FACT_CATEGORY_KEYS,
+        description:
+          "新しい語を作るときの分類。既存の語に寄ったときは使われない。迷ったら other。" +
+          FACT_CATEGORIES.map((c) => ` ${c.key}=${c.label}`).join(""),
       },
       quote,
     },
@@ -98,8 +118,9 @@ export const AGENT_TOOLS: Tool[] = [
   ),
   fn(
     "propose_add_ng_note",
-    "注意事項への追記を提案する。カルテの一番上に無条件で出る枠なので、" +
-      "「これは絶対に外せない」ことだけに使う（断られた提案、避けている素材など）。",
+    "注意事項への追記を提案する。カルテの一番上に無条件で出る枠。" +
+      "**否定・禁止・忌避はすべてこちら**（「光沢のある生地は苦手」「ピークドラペルは断られた」" +
+      "「夜は電話しない」）。取りこぼすと次の接客で外すことになるので、迷ったらこちらへ倒す。",
     { customerId, body: { type: "string" }, quote },
     ["customerId", "body"],
   ),

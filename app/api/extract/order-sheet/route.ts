@@ -9,7 +9,7 @@ import {
 import { ADJUSTMENT_MASTERS, adjustmentLabel } from "@/lib/constants/adjustments";
 import { ITEM_TYPES, fieldsForItemType } from "@/lib/constants/measurement-fields";
 import type { OrderSheetExtraction } from "@/lib/ai/extract-order-sheet";
-import type { ExtractedField } from "@/lib/ai/extraction";
+import type { ExtractedField, ExtractionUsage } from "@/lib/ai/extraction";
 import type { ItemTypeId } from "@/lib/types";
 
 /**
@@ -37,7 +37,10 @@ type RawAdjustment = {
   valueConfidence?: number;
   rawLabel: string;
 };
-type RawExtraction = Omit<OrderSheetExtraction, "source" | "elapsedMs" | "sections" | "adjustments"> & {
+type RawExtraction = Omit<
+  OrderSheetExtraction,
+  "source" | "elapsedMs" | "usage" | "sections" | "adjustments"
+> & {
   sections?: RawSection[];
   adjustments?: RawAdjustment[];
 };
@@ -158,8 +161,13 @@ export async function POST(request: Request) {
   }
 
   let raw: RawExtraction;
+  let usage: ExtractionUsage | undefined;
   try {
-    raw = await runExtraction<RawExtraction>({ file, prompt: PROMPT, schema: SCHEMA });
+    ({ data: raw, usage } = await runExtraction<RawExtraction>({
+      file,
+      prompt: PROMPT,
+      schema: SCHEMA,
+    }));
   } catch (error) {
     const status = error instanceof ExtractionError ? error.status : 500;
     const message = error instanceof Error ? error.message : "読み取りに失敗しました。";
@@ -170,6 +178,7 @@ export async function POST(request: Request) {
     ...raw,
     source: EXTRACTION_MODEL,
     elapsedMs: Math.round(performance.now() - startedAt),
+    usage,
     sections: (raw.sections ?? []).map((section) => ({
       itemTypeId: section.itemTypeId,
       silhouette: section.silhouette,

@@ -13,7 +13,9 @@
 連絡そのものはこのシステムの担当ではない。**送信機能を持たない**（後述）。
 
 データは Supabase。画面は `lib/data/*` だけを見て、境界は RLS が持つ。
-設計と手順は `docs/database.md` と `docs/database-design.md`。
+このファイルは**いまどう動くか**だけを書く。やり残しは `docs/todo.md`、
+運用費は `docs/cost.md`、DB の手順と設計は `docs/database.md` /
+`docs/database-design.md`。境界は `docs/README.md`。
 
 ## 動かす
 
@@ -331,7 +333,7 @@ components/
   settings/         業務ルールの設定画面
   ui/               shadcn/ui
 lib/
-  ai/               アシスタントの解釈（フィクスチャ）、名刺・発注書の読み取り（Gemini）
+  ai/               アシスタントの解釈（パターン照合）、名刺・発注書の読み取り（Gemini）
   auth/             ログイン中のスタッフ、表示中のスタッフ
   constants/        マスタ（採寸項目・補正・都道府県・業種・パーソナルの見出し・ラベル）
   data/             データアクセス。画面が見るのはここだけ
@@ -340,5 +342,5 @@ lib/
   supabase/         supabase-js のクライアント
   types/index.ts    ドメインの型
 supabase/           migration・マスタ・シード・pgTAP（docs/database.md）
-docs/               DB の設計と手順、クライアント資料の所在（実体は private/）
+docs/               DB の設計と手順、やり残し、運用費（案内は docs/README.md）
 ```

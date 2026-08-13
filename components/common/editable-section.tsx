@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Pencil } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -22,6 +23,7 @@ export function EditableSection<T>({
   view,
   edit,
   onSave,
+  canEdit = true,
   className,
 }: {
   title: string;
@@ -30,17 +32,37 @@ export function EditableSection<T>({
   view: React.ReactNode;
   edit: (value: T, update: (patch: Partial<T>) => void, set: (value: T) => void) => React.ReactNode;
   onSave: (value: T) => Promise<void> | void;
+  /**
+   * false なら編集の入口ごと出さない（鉛筆も保存も消える）。
+   *
+   * **RLS が弾く操作のボタンを出さないため。**出しておくと押せてしまい、
+   * 通らないことが押したあとにしか分からない。読めるが書けない画面は
+   * 実際にある（売上目標は全員が見られて、他人のぶんは管理者しか書けない）。
+   */
+  canEdit?: boolean;
   className?: string;
 }) {
   const [draft, setDraft] = useState<T | null>(null);
   const [saving, setSaving] = useState(false);
 
+  /**
+   * **例外を必ず捕まえる。**捕まえないと setSaving(false) すら走らず、
+   * 保存ボタンが無効のまま編集画面が固まる（トーストも出ない）。
+   * RLS は権限の無い書き込みを例外で返すので、ここは実際に通る道。
+   *
+   * 失敗しても下書きは捨てない。打ち直させるほうが害が大きい。
+   */
   const handleSave = async () => {
     if (draft === null) return;
     setSaving(true);
-    await onSave(draft);
-    setSaving(false);
-    setDraft(null);
+    try {
+      await onSave(draft);
+      setDraft(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "保存できませんでした");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -48,7 +70,7 @@ export function EditableSection<T>({
       <div className="flex items-center gap-2 border-b border-border pb-1.5">
         <span className="h-3 w-0.5 shrink-0 bg-brand" />
         <h3 className="flex-1 font-heading text-sm font-medium tracking-wide">{title}</h3>
-        {draft === null && (
+        {draft === null && canEdit && (
           <button
             type="button"
             onClick={() => setDraft(initial())}

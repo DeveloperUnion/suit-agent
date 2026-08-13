@@ -35,8 +35,18 @@ export function RevenueTargetSettings() {
   // 読み込み後に決まるので state に同期せず、その場で導出する。
   // （書き込みの主体は DB の default が決めるので、ここで要るのは表示だけ）
   const [picked, setPicked] = useState<string | null>(null);
-  const staffId = picked ?? staff?.find((s) => s.isCurrent)?.id ?? "";
+  const me = staff?.find((s) => s.isCurrent);
+  const staffId = picked ?? me?.id ?? "";
   const setStaffId = setPicked;
+
+  /*
+   * 閲覧は全員、書き込みは「自分のぶん or 管理者」。DB のポリシーと同じ条件を
+   * ここにも書く（supabase/migrations/20260811083444_approach_and_targets.sql）。
+   *
+   * **通らない操作のボタンを出さない**ためで、権限の判定そのものではない。
+   * 権限は RLS が持っている — ここを消しても他人の目標は書けないままになる。
+   */
+  const canEdit = staffId !== "" && (staffId === me?.id || me?.role === "admin");
 
   const targetsLoader = useCallback(
     () => listRevenueTargets(staffId, year),
@@ -51,8 +61,10 @@ export function RevenueTargetSettings() {
   const { data: revenue } = useQuery(revenueLoader, [staffId, year]);
 
   const monthKey = (m: number) => `${year}-${String(m).padStart(2, "0")}`;
-  const targetOf = (m: number) =>
-    targets?.find((t) => t.month === monthKey(m))?.amount ?? 0;
+  /** 未設定は 0 で返す。画面が「未設定」と 0 円を区別しないため */
+  const targetOfMonth = (month: string) =>
+    targets?.find((t) => t.month === month)?.amount ?? 0;
+  const targetOf = (m: number) => targetOfMonth(monthKey(m));
 
   return (
     <div className="flex flex-col gap-4">
@@ -101,14 +113,23 @@ export function RevenueTargetSettings() {
             MONTHS.map((m) => [monthKey(m), targetOf(m) === 0 ? "" : String(targetOf(m))]),
           )
         }
+        canEdit={canEdit}
         onSave={async (draft) => {
-          await saveRevenueTargets(
-            staffId,
-            MONTHS.map((m) => ({
-              month: monthKey(m),
-              amount: parseAmount(draft[monthKey(m)] ?? ""),
-            })),
-          );
+          /*
+           * **変わった月だけ送る。**12 ヶ月ぶんを毎回送っていた頃は、
+           * 触っていない空欄が「0 になった＝未設定に戻せ」と解釈されて
+           * 削除に回り、1 つでも空欄があれば保存全体が落ちていた。
+           */
+          const changed = MONTHS.map((m) => ({
+            month: monthKey(m),
+            amount: parseAmount(draft[monthKey(m)] ?? ""),
+          })).filter(({ month, amount }) => amount !== targetOfMonth(month));
+
+          if (changed.length === 0) {
+            toast.success("変更はありません");
+            return;
+          }
+          await saveRevenueTargets(staffId, changed);
           toast.success(`${year}年の売上目標を保存しました`);
         }}
         view={

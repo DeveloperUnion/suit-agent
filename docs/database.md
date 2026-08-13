@@ -218,9 +218,7 @@ RLS を採った最大の論拠は「境界を DB が持つので API 層が要�
 
 ---
 
-## 次にやること
-
-### モデル名は `lib/ai/models.ts` にだけ書く
+## モデル名は `lib/ai/models.ts` にだけ書く
 
 用途ごとに事業者もモデルも違い、どれも半年で入れ替わる。呼び出し側に
 文字列を書かない。
@@ -229,28 +227,15 @@ RLS を採った最大の論拠は「境界を DB が持つので API 層が要�
 |---|---|
 | 紙・写真の読み取り | `gemini-3.6-flash` |
 | 会話 | `gpt5.6luna`（まだ呼んでいない。定数に置いてあるだけ） |
-| 埋め込み | `gemini-embedding-001`（**未確定**） |
+| 埋め込み | `gemini-embedding-001`（**未確定**。決め方は `docs/todo.md`） |
 
-**埋め込みだけは実装時に引き比べて決める。**候補は `gemini-embedding-001` 系と
-`text-embedding-3-large`。費用は論点にならない（初期投入 6.6 万チャンクで数セント）。
-dev-seed の事実で「アウトドア系が好きな人」のような曖昧な問いを両方に投げ、
-出てくる顔ぶれで選ぶ。
+替えるときに何が壊れるかは `lib/ai/models.ts` のコメントにある
+（読み取りはモデル名が `source` として過去の記録に残る／埋め込みは替えたら
+`search_chunks` を全行埋め込み直す）。単価と実費は `docs/cost.md`。
 
-どちらも既定は 3072 次元だが、**pgvector の HNSW は 2000 次元までしか索引化
-できない**ので、API 側（`outputDimensionality` / `dimensions`）で 1536 に
-切り詰めて使う。どちらも Matryoshka 表現なので先頭を切り出すだけで済む。
-`search_chunks.embedding_model` がどのモデルで作った行かを持っているが、
-**混在させたまま検索してはいけない**（ベクトル空間が違うので距離が意味を成さない）。
-替えるときは全行を埋め込み直す。
+## Phase 2 / 3 で済んだもの
 
-### Phase 1 との違い
-
-**Phase 2 は画面の作り替えを伴う。**Phase 1 は「画面を 1 行も変えずに DB 化する」が
-目標だった。こちらではカルテが 6 セクションに組み替わり、趣味欄が textarea から
-チップに、メモが 1 行ずつの追記リストになった。性質が違うので、
-1 画面ずつ壁打ちしながら進めている。
-
-### Phase 2 — パーソナルとエージェント基盤
+残りは `docs/todo.md`。
 
 - [x] `fact_categories` / `fact_labels` / `fact_aliases` / `customer_facts` / `search_chunks`
 - [x] `lib/ai/` の ESLint ルール（`supabase().from(` を禁止）
@@ -260,34 +245,17 @@ dev-seed の事実で「アウトドア系が好きな人」のような曖昧�
 - [x] `customer_ng_notes` テーブルと `photo_consent` / `night_contact_ok` への分割
       （同意 2 列は Phase 3 で落とした。一度も使われず、注意事項の枠の
       下半分を占めていただけだった）
-- [ ] 埋め込みのバックフィル（`app/api/cron/embed`、`worker_role`）。
-      **`worker_role` は nologin のまま置いてある。**Cron が何のロールで接続するかは
-      ここで決める（本命は LOGIN + 専用パスワード。`BYPASSRLS` は与えない）
-- [ ] `app.search_customers()` — 確定検索と意味検索を 1 本の関数で両方走らせる。
-      **ツールを 2 本に分けて「網羅が要るときは確定検索を使え」とプロンプトで
-      指示する解は採らない**（RLS を採ったのと同じ理由で、作法は必ず破れる）。
-      確定検索は**ラベル一致と本文の全文一致の両方**を LIMIT なしで返す —
-      走り書きに「ゴルフ」と書かれた顧客を落とさないため
-- [ ] 会話を `MODELS.chat` に差し替える（いまは `lib/ai/agent.ts` のパターン照合）。
-      このとき `lib/ai/` から `lib/data/*` の import も禁止する
-      （`agent-tools.ts` が丸ごと書き換わるので、それまでは入れられない）
-- [ ] 埋め込みは**二重**にする — 書き込み直後の fire-and-forget と Cron のバックフィル。
-      片方だけだと「その顧客だけ検索に出てこない」が無音で起きる
-
-### Phase 3 — 運用
-
 - [x] `public.delete_customer()`（顧客の物理削除。テーブルへの delete 権限は
       付けず、この関数 1 本に閉じる。`change_log` は削除の事実だけ残す。
       実体の写真はクライアントが Storage から先に消す）
 - [x] `app.sync_birthday_anniversary()`（生年月日 → 誕生日の記念日）
 - [x] `order_photos` と `order-photos` バケット（着装写真）
-- `app.deactivate_staff()`（退職時の引き継ぎ。いまは無効化だけで引き継ぎは手作業）
-- `customer_assignments`（引き継ぎ履歴）
-- `alterations`
 
-### 本番（`torico-agent`）
+## 本番（`torico-agent`）
 
 Tokyo リージョン。**まだ店舗には渡していない。**手順書ではなく、いまの状態として書く。
+**渡す前に終わらせることは `docs/todo.md`**（カスタム SMTP / Redirect URLs /
+Pro プラン / 予算アラート）。
 
 - [x] `supabase link` → `supabase db push`（migration 13 本）。**手作業でやったのは
       ここまで。**以降は main へマージすると `deploy` ジョブが流す
@@ -305,18 +273,6 @@ Tokyo リージョン。**まだ店舗には渡していない。**手順書で�
       ここだけは手作業。**2 人目以降は設定画面から名前とメールを登録するだけ**で、
       本人がサインインすると `auth.users` が作られ `auth_user_id` はトリガーが埋まる
 - [x] Vercel にデプロイ（`torico-agent.vercel.app`）
-- [ ] **カスタム SMTP。**組み込みのメールは 2 通/時で、外す手段が他に無い（後述の罠）。
-      **本番の初回ログインで実際にこれを踏んで止まっている。**
-      Google Workspace の SMTP なら DNS を触らずに通せる。最終的には Resend などで
-      `noreply@<自分のドメイン>` にする — 差出人が `noreply@mail.app.supabase.io` の
-      ままだと、受け取る側にはフィッシングと区別がつかない
-- [ ] Site URL と Redirect URLs に本番ドメイン。**パス無しの形とワイルドカードの両方**を
-      入れる（アプリは `emailRedirectTo` に origin をそのまま渡す）。
-      ここが漏れるとリンクが `localhost` へ向いて、本番の初回ログインだけが通らない
-- [ ] **Pro プラン。店舗に渡す前に必ず入れる。**1 週間触らないとプロジェクトが停止するのと、
-      日次バックアップのため。いまは実データがほぼ無いので `deploy` の有効化を先にしたが、
-      **店舗が使い始めたら戻す先が無い状態で自動反映を続けないこと**。
-      **メールの上限とは無関係**（課金しても外れない）
 
 設定で間違えやすいのは 2 つ。どちらも**切ってはいけない**もの:
 
@@ -332,6 +288,8 @@ Vercel の環境変数は 3 つ。**`SUPABASE_SERVICE_ROLE_KEY` は置かない*
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://<ref>.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Project Settings → API Keys の anon / publishable |
 | `GEMINI_API_KEY` | 採寸票・名刺の読み取り。`app/api/extract/*` だけが読む（NEXT_PUBLIC を付けない） |
+
+月々いくらかかるかは `docs/cost.md`。
 
 ---
 
@@ -407,17 +365,3 @@ Vercel の環境変数は 3 つ。**`SUPABASE_SERVICE_ROLE_KEY` は置かない*
   （名前解決は通るのでタイムアウトとして出る）。CI からは Session pooler を使う。
   Transaction pooler（6543）は prepared statement を張れないので DDL には使えない
 
----
-
-## 店舗に確認すること
-
-1. **下半身の補正コードの完全なリスト**（`lib/constants/adjustments.ts` に
-   「紙の一部のみ」と明記）。**code 28 / 39 の既定値**も
-2. **項目ごとの現実的な寸法範囲**（股下なら 60〜100 など）。
-   持たせれば OCR の「ありえるが間違っている」誤読を DB で止められる
-3. 個人情報の削除請求への対応手順（`app.purge_customer()` を誰が実行するか）
-4. 退職時の Supabase セッション失効の手順（DB からは実行できない）
-5. お渡し後フォローの節目を実際に動かしたくなるか。半年・1 年のまま何ヶ月か回して、
-   触られないなら定数に戻して `app_settings` ごと畳んでよい
-6. 流入経路を集計したくなるか。列ごと落として記録の自由記述に畳んだので、
-   集計するなら固定リストの列を改めて作る

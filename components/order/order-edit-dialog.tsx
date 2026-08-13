@@ -3,8 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { AmountField } from "@/components/order/amount-field";
-import { OrderPhotos } from "@/components/order/order-photos";
+import { AmountSection } from "@/components/order/amount-section";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,7 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ORDER_PURPOSE_LABEL } from "@/lib/constants/labels";
+import { ORDER_PURPOSE_LABEL, type OrderAmountBreakdown } from "@/lib/constants/labels";
 import { updateOrder, type OrderItemFabric, type OrderView } from "@/lib/data/orders";
 import type { OrderPurpose } from "@/lib/types";
 import { formatAmount } from "@/lib/utils/date";
@@ -55,6 +54,12 @@ export function OrderEditDialog({
     fabricComposition: order.fabricComposition,
   });
   const [totalAmount, setTotalAmount] = useState(order.totalAmount);
+  const [breakdown, setBreakdown] = useState<OrderAmountBreakdown>({
+    amountSuit: order.amountSuit,
+    amountCoat: order.amountCoat,
+    amountAccessory: order.amountAccessory,
+    amountShirt: order.amountShirt,
+  });
   const [saving, setSaving] = useState(false);
 
   // 初期値は useState だけで足りる。呼び出し側（orders-tab）が閉じるたびに
@@ -74,6 +79,7 @@ export function OrderEditDialog({
         purpose,
         ...fabric,
         totalAmount,
+        breakdown,
       });
       onOpenChange(false);
       toast.success("注文を更新しました");
@@ -93,7 +99,7 @@ export function OrderEditDialog({
             注文を編集 — {order.orderNumber}
           </DialogTitle>
           <DialogDescription className="sr-only">
-            受注日・納品日・お渡し日・用途・生地・金額・着装写真を直します。
+            受注日・納品日・お渡し日・用途・生地・金額を直します。
           </DialogDescription>
         </DialogHeader>
 
@@ -165,11 +171,13 @@ export function OrderEditDialog({
           </Section>
 
           <Section title="金額">
-            <AmountField id="edit-amount" value={totalAmount} onChange={setTotalAmount} />
-          </Section>
-
-          <Section title="着装写真">
-            <OrderPhotos orderId={order.id} customerId={order.customerId} />
+            <AmountSection
+              id="edit-amount"
+              value={totalAmount}
+              onChange={setTotalAmount}
+              breakdown={breakdown}
+              onBreakdownChange={setBreakdown}
+            />
           </Section>
         </div>
 
@@ -184,7 +192,11 @@ export function OrderEditDialog({
             <Button variant="outline" className="h-11" onClick={() => onOpenChange(false)}>
               キャンセル
             </Button>
-            <Button className="h-11" onClick={() => void handleSubmit()} disabled={saving}>
+            <Button
+              className="h-11"
+              onClick={() => void handleSubmit()}
+              disabled={saving || totalAmount <= 0}
+            >
               保存
             </Button>
           </span>

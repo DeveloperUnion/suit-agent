@@ -182,7 +182,9 @@ if (db.orders.length > 0) {
   push(`insert into public.orders (`);
   push(`  id, customer_id, order_number, ordered_at, arrived_at, delivered_at, status, purpose,`);
   push(`  fabric_product_number, fabric_color_number, fabric_color_name, fabric_composition,`);
-  push(`  total_amount, taken_by_staff_id`);
+  // 内訳は任意なので、入っていない区分は null で出す（lit が undefined を null にする）
+  push(`  total_amount, amount_suit, amount_coat, amount_accessory, amount_shirt,`);
+  push(`  taken_by_staff_id`);
   push(`) values`);
   push(
     db.orders
@@ -194,6 +196,8 @@ if (db.orders.length > 0) {
             lit(o.fabricProductNumber), lit(o.fabricColorNumber),
             lit(o.fabricColorName), lit(o.fabricComposition),
             o.totalAmount,
+            lit(o.amountSuit), lit(o.amountCoat),
+            lit(o.amountAccessory), lit(o.amountShirt),
             lit(staffId(o.takenByStaffId)),
           ].join(", ")})`,
       )

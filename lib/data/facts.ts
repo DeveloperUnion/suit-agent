@@ -1,5 +1,6 @@
 import type { CustomerFact, FactCategory, FactLabel, FactSource, Uuid } from "@/lib/types";
 import { supabase } from "@/lib/supabase/client";
+import { postApi } from "@/lib/api/client";
 import { bump } from "@/lib/store/revision";
 
 /**
@@ -65,15 +66,36 @@ export async function addFact(input: {
   body: string;
   labelId?: Uuid;
   source?: FactSource;
-}): Promise<void> {
-  const { error } = await supabase().from("customer_facts").insert({
-    customer_id: input.customerId,
-    label_id: input.labelId ?? null,
-    body: input.body,
-    source: input.source ?? "manual",
-  });
+}): Promise<Uuid> {
+  const { data, error } = await supabase()
+    .from("customer_facts")
+    .insert({
+      customer_id: input.customerId,
+      label_id: input.labelId ?? null,
+      body: input.body,
+      source: input.source ?? "manual",
+    })
+    .select("id")
+    .single();
   if (error) throw error;
   bump();
+
+  const id = (data as { id: Uuid }).id;
+  // 意味検索に載せる。**待たない。**埋め込みが遅くても、カルテに残った手応えは
+  // 先に返すべきで、ここが落ちても Cron のバックフィルが同じ行を拾う。
+  // 二重にしてあるのは、片方だけだと「その顧客だけ検索に出てこない」が
+  // 無音で起きるため。
+  void queueEmbedding(id);
+  return id;
+}
+
+async function queueEmbedding(factId: Uuid): Promise<void> {
+  try {
+    await postApi("/api/embed", { body: { factIds: [factId] } });
+  } catch {
+    // 握りつぶす。ここで画面にエラーを出しても人には打つ手が無く、
+    // 取りこぼしは Cron が閉じる。
+  }
 }
 
 /**

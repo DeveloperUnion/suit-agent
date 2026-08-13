@@ -62,26 +62,7 @@ export function simulateLatency(ms = 900): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * 読み取りを依頼する。
- *
- * 失敗はここで例外にする。呼び出し側は「読めたか読めなかったか」だけを扱えばよく、
- * 半端な結果を確認画面へ流さない。
- */
-export async function postExtraction<T extends ExtractionMeta>(
-  endpoint: string,
-  file: File,
-): Promise<T> {
-  const body = new FormData();
-  body.append("file", file);
-
-  const response = await fetch(endpoint, { method: "POST", body });
-  if (!response.ok) {
-    const detail = await response
-      .json()
-      .then((data: { message?: string }) => data.message)
-      .catch(() => undefined);
-    throw new Error(detail ?? "読み取りに失敗しました。");
-  }
-  return (await response.json()) as T;
-}
+// 読み取りを依頼する postExtraction は lib/api/client.ts へ移した。
+// サーバーを叩くにはトークンが要り、それを取るには lib/supabase/client.ts
+// （"use client"）に触ることになるが、このファイルは gemini.ts からも
+// 読まれるのでサーバーの束に入れられない。

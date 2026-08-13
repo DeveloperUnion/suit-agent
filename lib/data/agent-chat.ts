@@ -15,10 +15,25 @@ import { bump } from "@/lib/store/revision";
 
 const COLUMNS = "id, staffId:staff_id, role, body, action, appliedAt:applied_at, sentAt:sent_at";
 
-export async function listAgentMessages(): Promise<AgentMessage[]> {
-  const { data, error } = await supabase().from("agent_messages").select(COLUMNS).order("sent_at");
+/**
+ * 画面に出す件数。
+ *
+ * 消しゴムを押すまで会話は残るので、数ヶ月使えば数千件になる。
+ * 上限を置かないと、そのままモデルへ渡すプロンプトにもなる。
+ * 遡りたければ消さずに増やせばよいので、まずは十分に大きい値で切っておく。
+ */
+const DEFAULT_LIMIT = 200;
+
+export async function listAgentMessages(limit = DEFAULT_LIMIT): Promise<AgentMessage[]> {
+  // 新しい方から limit 件取って、表示のために時系列へ戻す。
+  // order("sent_at") のまま limit を付けると**古いほうが残る**。
+  const { data, error } = await supabase()
+    .from("agent_messages")
+    .select(COLUMNS)
+    .order("sent_at", { ascending: false })
+    .limit(limit);
   if (error) throw error;
-  return (data ?? []).map((r) => {
+  return (data ?? []).reverse().map((r) => {
     const m = r as unknown as AgentMessage & { appliedAt: string | null; action: AgentAction | null };
     return {
       ...m,

@@ -9,11 +9,11 @@ import type {
 import type { OrderSheetExtraction } from "@/lib/ai/extract-order-sheet";
 import { CONFIDENCE_WARN } from "@/lib/ai/extraction";
 import { ADJUSTMENT_MAP, adjustmentLabel } from "@/lib/constants/adjustments";
+import type { OrderAmountBreakdown } from "@/lib/constants/labels";
 import { deriveActual } from "@/lib/constants/measurement-ease";
 import { findField } from "@/lib/constants/measurement-fields";
 import { createSheetFromImport } from "@/lib/data/measurements";
 import { createOrder, type OrderItemFabric } from "@/lib/data/orders";
-import { uploadOrderPhoto } from "@/lib/data/order-photos";
 import { updateCustomer } from "@/lib/data/customers";
 
 /**
@@ -75,15 +75,15 @@ export type ImportPlan = {
   deliveredAt?: IsoDate;
   /** 用途は紙に無い。取り込みでは既定のまま持ち、画面には出さない */
   purpose: OrderPurpose;
-  /**
-   * 着装写真。ここではまだ注文が無いので File のまま持ち、
-   * commitOrderSheetImport が注文を作った直後に上げる。
-   */
-  photos: File[];
   /** 生地はマスタを引かず、紙の値をそのまま持つ */
   fabric: OrderItemFabric;
-  /** 売上金額（税込）。紙の金額欄は事実上いつも空欄なので、初期値は 0 */
+  /**
+   * 売上金額（税込）。**紙には載らないので人が入れる。**
+   * 初期値は 0 だが、0 のままでは確認画面を先へ進めない（必須）。
+   */
   totalAmount: number;
+  /** 売上区分の内訳。任意。分かるときだけ入れる */
+  breakdown: OrderAmountBreakdown;
   sections: ImportPlanSection[];
   adjustments: ImportPlanAdjustment[];
   note: string;
@@ -160,7 +160,7 @@ export function buildImportPlan(
       fabricComposition: extraction.fabricComposition?.value,
     },
     totalAmount: 0,
-    photos: [],
+    breakdown: {},
     sections,
     adjustments,
     note: buildNote(extraction, unknownFieldKeys),
@@ -193,7 +193,7 @@ function buildNote(extraction: OrderSheetExtraction, unknownFieldKeys: string[])
 /** 確認後に初めて書く。採寸票1枚と注文1件を作る */
 export async function commitOrderSheetImport(
   plan: ResolvedImportPlan,
-): Promise<{ sheetId: Uuid; orderId: Uuid; photoFailures: number }> {
+): Promise<{ sheetId: Uuid; orderId: Uuid }> {
   const sections: MeasurementSection[] = plan.sections.map((section) => ({
     itemTypeId: section.itemTypeId,
     silhouette: section.silhouette,
@@ -240,6 +240,7 @@ export async function commitOrderSheetImport(
     measurementSheetId: sheetId,
     fabric: plan.fabric,
     totalAmount: plan.totalAmount,
+    breakdown: plan.breakdown,
     items: plan.sections.map((section) => ({ itemTypeId: section.itemTypeId })),
   });
 
@@ -247,17 +248,5 @@ export async function commitOrderSheetImport(
     await updateCustomer(plan.customerId, { embroideryName: plan.embroideryName });
   }
 
-  // 写真は最後。ここで落ちても throw しない — 紙 1 枚ぶんの転記が終わったあとに
-  // 写真のアップロード失敗で全体を失敗として見せると、注文が入ったのか分からなくなる。
-  // 何枚落ちたかだけ返し、呼び出し側が toast で知らせる（後から編集で足せる）。
-  let photoFailures = 0;
-  for (const file of plan.photos) {
-    try {
-      await uploadOrderPhoto({ id: orderId, customerId: plan.customerId }, file);
-    } catch {
-      photoFailures += 1;
-    }
-  }
-
-  return { sheetId, orderId, photoFailures };
+  return { sheetId, orderId };
 }

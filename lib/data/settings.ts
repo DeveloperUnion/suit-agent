@@ -231,8 +231,17 @@ export async function listMonthlyRevenue(
 }
 
 /**
- * 月単位の upsert。
- * 0 以下は行ごと削除して「未設定」に戻す。
+ * 月単位の upsert。0 以下は行ごと削除して「未設定」に戻す。
+ *
+ * **変わった月だけを渡すこと。**画面が 12 ヶ月ぶんを毎回渡していた頃は、
+ * 触っていない空欄の月まで「0 になった＝未設定に戻せ」と解釈され、
+ * 1 つでも空欄があれば全部が削除に回っていた。しかも削除が先に走るので、
+ * 金額を入れた月の upsert には到達しないまま例外で終わっていた
+ * （= 何も保存されない）。差分を作るのは呼び出し側の仕事。
+ *
+ * 「未設定」は amount = 0 の行ではなく**行が無いこと**で表す。
+ * ダッシュボード（lib/data/dashboard.ts）と goal-panel が
+ * target === null で「未設定です」に分岐しているため。
  */
 export async function saveRevenueTargets(
   staffId: Uuid,

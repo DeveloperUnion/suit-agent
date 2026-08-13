@@ -5,10 +5,13 @@ import { Pencil } from "lucide-react";
 
 import { EmptyState, SectionTitle } from "@/components/common/field";
 import { OrderEditDialog } from "@/components/order/order-edit-dialog";
-import { OrderPhotos } from "@/components/order/order-photos";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ORDER_PURPOSE_LABEL, ORDER_STATUS_LABEL } from "@/lib/constants/labels";
+import {
+  AMOUNT_CATEGORIES,
+  ORDER_PURPOSE_LABEL,
+  ORDER_STATUS_LABEL,
+} from "@/lib/constants/labels";
 import { ITEM_TYPE_MAP } from "@/lib/constants/measurement-fields";
 import { getOwnedItemSummary, listOrders, type OrderView } from "@/lib/data/orders";
 import { useQuery } from "@/lib/hooks/use-query";
@@ -110,10 +113,7 @@ export function OrdersTab({ customerId }: { customerId: string }) {
                 繰り返さず注文の見出しの下に 1 度だけ出す。
                 マスタは引かず、発注書に書かれていた値をそのまま出す。
               */}
-              <div className="flex flex-col gap-2.5 p-4 sm:flex-row sm:gap-4">
-                {/* 着装写真。足す・消すは編集ダイアログの中だけ */}
-                <OrderPhotos orderId={order.id} readOnly />
-
+              <div className="flex flex-col gap-2.5 p-4">
                 <div className="flex min-w-0 flex-1 flex-col gap-2">
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     {order.items.map((item) => (
@@ -144,6 +144,8 @@ export function OrdersTab({ customerId }: { customerId: string }) {
                       {order.fabricComposition}
                     </div>
                   )}
+
+                  <AmountBreakdown order={order} />
                 </div>
               </div>
             </li>
@@ -160,6 +162,31 @@ export function OrdersTab({ customerId }: { customerId: string }) {
           onOpenChange={(next) => !next && setEditing(null)}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * 売上金額の内訳。
+ *
+ * **入っている区分だけ出す。**未入力の区分に「—」を並べると、内訳を付けない
+ * のが普通の運用なのに 4 行ぶんの空欄が全部の注文カードに居座る。
+ *
+ * 合計との差も出さない。「その他」区分を作らない判断なので差が出るのが既定で、
+ * カードは読むためのもの。差を確かめたい人は編集を開けば注記が出る。
+ */
+function AmountBreakdown({ order }: { order: OrderView }) {
+  const entries = AMOUNT_CATEGORIES.filter(({ key }) => order[key] !== undefined);
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      {entries.map(({ key, label }) => (
+        <span key={key} className="text-xs text-muted-foreground">
+          {label}{" "}
+          <span className="tnum font-mono">¥{formatAmount(order[key] ?? 0)}</span>
+        </span>
+      ))}
     </div>
   );
 }

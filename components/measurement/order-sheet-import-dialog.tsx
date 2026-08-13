@@ -10,8 +10,7 @@ import {
   SimilarCustomerList,
   useDifferentPersonGate,
 } from "@/components/customer/similar-customer-list";
-import { AmountField } from "@/components/order/amount-field";
-import { OrderPhotoPicker } from "@/components/order/order-photos";
+import { AmountSection } from "@/components/order/amount-section";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -142,26 +141,22 @@ export function OrderSheetImportDialog({
     plan !== null &&
     plan.customerId !== undefined &&
     plan.sections.length > 0 &&
+    // 金額は必須。紙に載らない値なので、取り込みのついでに入れてもらう。
+    // ここを 0 のまま通せる口を残すと、金額の無い注文はそこから入り続ける。
+    plan.totalAmount > 0 &&
     (!nameMismatch || nameMismatchAccepted);
 
   const handleSubmit = async () => {
     if (!plan || !canSubmit) return;
     setSaving(true);
     const resolved = plan as ResolvedImportPlan;
-    const { sheetId, photoFailures } = await commitOrderSheetImport(resolved);
+    const { sheetId } = await commitOrderSheetImport(resolved);
     setSaving(false);
     onOpenChange(false);
     reset();
     toast.success("発注書を取り込みました", {
       description: "採寸票と注文を作成しました。実寸は空欄のままです。",
     });
-    // 写真だけ落ちても取り込み自体は成立している。黙って捨てると
-    // 「入れたはずの写真が無い」に後から気づくことになる
-    if (photoFailures > 0) {
-      toast.error(`着装写真を ${photoFailures} 枚上げられませんでした`, {
-        description: "注文履歴の「編集」からもう一度足せます。",
-      });
-    }
     onImported(sheetId, resolved.customerId);
   };
 
@@ -318,15 +313,25 @@ export function OrderSheetImportDialog({
             </div>
           </div>
 
-          {/* 金額は紙に載らない。分かっていれば入れ、分からなければ後から注文カードで直せる */}
-          <div className="mt-4">
-            <AmountField
-              id="import-amount"
-              value={plan.totalAmount}
-              onChange={(v) => update({ totalAmount: v })}
-            />
-          </div>
         </>
+      ),
+    });
+
+    /*
+      金額だけ独立したステップにする。
+      紙に載らないので**読み取りで埋まらない唯一の必須項目**で、生地欄の末尾に
+      混ぜていた頃は「どこに金額を打つのか分からない」が実際に起きていた。
+    */
+    steps.push({
+      title: "金額",
+      content: (
+        <AmountSection
+          id="import-amount"
+          value={plan.totalAmount}
+          onChange={(v) => update({ totalAmount: v })}
+          breakdown={plan.breakdown}
+          onBreakdownChange={(breakdown) => update({ breakdown })}
+        />
       ),
     });
 
@@ -387,15 +392,6 @@ export function OrderSheetImportDialog({
             </p>
           )}
         </>
-      ),
-    });
-
-    // 紙とは別の情報だが、仕立てた直後に撮るものなので取り込みと同じ流れに置く。
-    // ここではまだ注文が無いので File のまま預かり、注文ができた直後に上げる。
-    steps.push({
-      title: "着装写真",
-      content: (
-        <OrderPhotoPicker files={plan.photos} onChange={(photos) => update({ photos })} />
       ),
     });
 
@@ -533,7 +529,11 @@ export function OrderSheetImportDialog({
             <span className="text-xs text-muted-foreground">
               {plan.customerId === undefined
                 ? "取り込み先のお客様を決めてください。"
-                : `採寸票 1枚 と 注文 1件（${plan.sections
+                : // 「取り込む」が押せない理由を出す。金額は紙から埋まらないので、
+                  // ここを黙って無効にすると理由が画面のどこにも無い
+                  plan.totalAmount <= 0
+                  ? "金額を入れてください。紙には載らないので、ここで入れる必要があります。"
+                  : `採寸票 1枚 と 注文 1件（${plan.sections
                     .map((s) => ITEM_TYPE_MAP[s.itemTypeId].sheetLabel)
                     .join(" / ")}）を作成します。`}
             </span>

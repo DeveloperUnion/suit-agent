@@ -551,6 +551,29 @@ function buildAll(): Built {
       const base = itemTypes.reduce((sum, t) => sum + priceOf(t), 0);
       const surcharge = rand() < 0.3 ? int(1, 6) * 5000 : 0;
 
+      /*
+       * 売上区分の内訳。**任意なので、3 割ほどは入れないままにする。**
+       * 入っている注文と入っていない注文が両方見えないと、画面の出し分け
+       * （内訳が無ければ何も出さない）を手元で確かめられない。
+       *
+       * ネクタイやチーフは採寸が要らないので order_items には出ない。
+       * 内訳にだけ現れる区分があるのは、実際にそういう売り方をするため。
+       *
+       * **割増ぶんはどの区分にも入れない。**「その他」区分を作らない判断が
+       * そのまま「内訳の和が合計に届かない」として画面に出る状態を作っておく。
+       */
+      const accessory = rand() < 0.25 ? int(1, 4) * 4000 : 0;
+      const shirt = rand() < 0.2 ? int(1, 3) * 12000 : 0;
+      const withTax = (amount: number) => Math.floor(amount * 1.1);
+      const hasBreakdown = rand() < 0.7;
+      const breakdown = hasBreakdown
+        ? {
+            amountSuit: withTax(base),
+            amountAccessory: accessory > 0 ? withTax(accessory) : undefined,
+            amountShirt: shirt > 0 ? withTax(shirt) : undefined,
+          }
+        : {};
+
       // 納品（工場→店）の 1 週間ほど後に顧客へお渡しする
       const arrivedAt = toIsoDate(addDays(orderedDate, 43));
 
@@ -563,7 +586,8 @@ function buildAll(): Built {
         deliveredAt: delivered ? daysAgo(deliveryDays) : undefined,
         status: delivered ? "delivered" : "in_production",
         purpose,
-        totalAmount: Math.floor((base + surcharge) * 1.1),
+        totalAmount: withTax(base + surcharge + accessory + shirt),
+        ...breakdown,
         // 生地は注文単位。紙が原反ＮＯ を 1 つしか持たない
         ...fabric,
         takenByStaffId: staffId,

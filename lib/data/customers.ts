@@ -2,7 +2,6 @@ import type { Customer, CustomerAnniversary, IsoDate, Staff, Uuid } from "@/lib/
 import { supabase } from "@/lib/supabase/client";
 import { bump } from "@/lib/store/revision";
 import { getCurrentStaffId, getViewingStaffId } from "@/lib/auth/current-staff";
-import { removeCustomerPhotos } from "@/lib/data/order-photos";
 import { INDUSTRIES } from "@/lib/constants/industries";
 import { PREFECTURES } from "@/lib/constants/prefectures";
 
@@ -357,16 +356,13 @@ export async function updateCustomer(id: Uuid, patch: Partial<Customer>): Promis
 /**
  * 顧客の物理削除。
  *
- * **Storage を先に消してから RPC を呼ぶ。** SQL 関数から Storage には手が
- * 届かないので、順序を逆にすると顧客だけ消えて着装写真が孤児として残る。
- * 写真の削除に失敗したらここで throw し、DB には触らない。
+ * public.delete_customer()（SECURITY DEFINER）が全部やる。テーブルへの
+ * delete 権限は付いていないので、消す口はこの 1 本だけ。
  *
- * DB 側は public.delete_customer()（SECURITY DEFINER）が担当する。
- * テーブルへの delete 権限は付いていないので、消す口はこの 1 本だけ。
+ * 着装写真があった頃はこの手前で Storage を消していた（SQL から Storage に
+ * 手が届かないため）。写真をやめたので、削除は再び RPC 1 本で完結する。
  */
 export async function deleteCustomer(id: Uuid): Promise<void> {
-  await removeCustomerPhotos(id);
-
   const { error } = await supabase().rpc("delete_customer", { p_customer_id: id });
   if (error) throw error;
   bump();

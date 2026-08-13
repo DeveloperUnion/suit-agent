@@ -72,14 +72,17 @@ values (:'cust_a', '時枝 正', 'トキエダ タダシ', :'a_id'),
 --
 -- lib/ai/models.ts の EMBEDDING_DIMENSIONS と揃っていること。
 -- ずれると挿入時に落ちるので無音ではないが、気づくのが本番の初回投入になる。
+--
+-- 型は halfvec（1 次元 2 バイト）。索引を張らず全走査するので、
+-- 走査するバイト数が半分になることがそのまま効く。
 
 select is(
   (select format_type(a.atttypid, a.atttypmod)
      from pg_attribute a
     where a.attrelid = 'public.search_chunks'::regclass
       and a.attname = 'embedding'),
-  'vector(1536)',
-  'search_chunks.embedding は vector(1536)（HNSW の上限 2000 に収まる次元）'
+  'halfvec(1536)',
+  'search_chunks.embedding は halfvec(1536)'
 );
 
 

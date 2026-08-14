@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Ruler } from "lucide-react";
 import { toast } from "sonner";
 
+import { AmountGapDialog } from "@/components/order/amount-gap-dialog";
 import { AmountSection } from "@/components/order/amount-section";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,7 +18,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ORDER_PURPOSE_LABEL, type OrderAmountBreakdown } from "@/lib/constants/labels";
+import {
+  hasAmountGap,
+  ORDER_PURPOSE_LABEL,
+  type OrderAmountBreakdown,
+} from "@/lib/constants/labels";
 import { ITEM_TYPE_MAP } from "@/lib/constants/measurement-fields";
 import { listSheets } from "@/lib/data/measurements";
 import { createOrder, type OrderItemFabric } from "@/lib/data/orders";
@@ -61,6 +66,7 @@ export function OrderCreateDialog({
   const [totalAmount, setTotalAmount] = useState(0);
   const [breakdown, setBreakdown] = useState<OrderAmountBreakdown>({});
   const [saving, setSaving] = useState(false);
+  const [gapOpen, setGapOpen] = useState(false);
 
   const sheetsLoader = useCallback(() => listSheets(customerId), [customerId]);
   const { data: sheets } = useQuery(sheetsLoader, [customerId, open]);
@@ -77,6 +83,9 @@ export function OrderCreateDialog({
       setFabric({});
       setTotalAmount(0);
       setBreakdown({});
+      // このダイアログは閉じてもマウントされたまま（customer-detail-view）。
+      // 差額の確認が開いたままだと、次に開いたとき前の注文の確認が居座る
+      setGapOpen(false);
     });
     return () => {
       alive = false;
@@ -90,8 +99,18 @@ export function OrderCreateDialog({
   const setFabricField = (patch: Partial<OrderItemFabric>) =>
     setFabric((current) => ({ ...current, ...patch }));
 
-  const handleSubmit = async () => {
-    if (!canSubmit) return;
+  // 内訳と合計が食い違っていたら、書き込む前に一度確かめる。
+  // ここで止めるのではなく、見たことを確かめるだけ（合計欄のほうが正）
+  const handleSubmit = () => {
+    if (!canSubmit || saving) return;
+    if (hasAmountGap(totalAmount, breakdown)) {
+      setGapOpen(true);
+      return;
+    }
+    void save();
+  };
+
+  const save = async () => {
     setSaving(true);
     await createOrder({
       customerId,
@@ -110,229 +129,243 @@ export function OrderCreateDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-dvh max-h-dvh w-screen max-w-none flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:h-[92dvh] sm:w-[95vw] sm:max-w-4xl sm:rounded-md sm:border">
-        <DialogHeader className="shrink-0 space-y-0 border-b border-border px-4 py-3 text-left sm:px-6">
-          <span className="field-label">Order</span>
-          <DialogTitle className="font-heading text-base font-medium sm:text-lg">
-            注文を追加 — {customerName} 様
-          </DialogTitle>
-          <DialogDescription className="sr-only">
-            使う寸法・生地・アイテム・受注情報を入力して注文を登録します。
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="flex h-dvh max-h-dvh w-screen max-w-none flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:h-[92dvh] sm:w-[95vw] sm:max-w-4xl sm:rounded-md sm:border">
+          <DialogHeader className="shrink-0 space-y-0 border-b border-border px-4 py-3 text-left sm:px-6">
+            <span className="field-label">Order</span>
+            <DialogTitle className="font-heading text-base font-medium sm:text-lg">
+              注文を追加 — {customerName} 様
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              使う寸法・生地・アイテム・受注情報を入力して注文を登録します。
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto p-4 sm:p-6">
-          {/* ① 使う寸法 */}
-          <Step number={1} title="使う寸法">
-            {sheets && sheets.length > 0 ? (
-              <div className="flex flex-wrap items-center gap-3">
-                <Select value={sheetId} onValueChange={setSheetId}>
-                  <SelectTrigger className="h-11 w-56 bg-card font-mono">
-                    <SelectValue placeholder="採寸票を選ぶ" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sheets.map((sheet, i) => (
-                      <SelectItem key={sheet.id} value={sheet.id} className="font-mono">
-                        {formatDateDot(sheet.measuredAt)}
-                        {i === 0 && <span className="ml-2 text-xs text-muted-foreground">最新</span>}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <span className="text-sm text-muted-foreground">
-                  体型が変わっていれば
-                  <button
-                    type="button"
+          <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto p-4 sm:p-6">
+            {/* ① 使う寸法 */}
+            <Step number={1} title="使う寸法">
+              {sheets && sheets.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <Select value={sheetId} onValueChange={setSheetId}>
+                    <SelectTrigger className="h-11 w-56 bg-card font-mono">
+                      <SelectValue placeholder="採寸票を選ぶ" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sheets.map((sheet, i) => (
+                        <SelectItem key={sheet.id} value={sheet.id} className="font-mono">
+                          {formatDateDot(sheet.measuredAt)}
+                          {i === 0 && <span className="ml-2 text-xs text-muted-foreground">最新</span>}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <span className="text-sm text-muted-foreground">
+                    体型が変わっていれば
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onOpenChange(false);
+                        onOpenMeasurement();
+                      }}
+                      className="mx-1 text-brand underline underline-offset-2"
+                    >
+                      新しく採寸する
+                    </button>
+                  </span>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-3 rounded-md border border-dashed border-border p-3">
+                  <span className="text-sm text-muted-foreground">
+                    採寸データがありません。寸法なしでも登録できますが、先に採寸することを勧めます。
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-10 gap-1.5"
                     onClick={() => {
                       onOpenChange(false);
                       onOpenMeasurement();
                     }}
-                    className="mx-1 text-brand underline underline-offset-2"
                   >
-                    新しく採寸する
-                  </button>
-                </span>
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center gap-3 rounded-md border border-dashed border-border p-3">
-                <span className="text-sm text-muted-foreground">
-                  採寸データがありません。寸法なしでも登録できますが、先に採寸することを勧めます。
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-10 gap-1.5"
-                  onClick={() => {
-                    onOpenChange(false);
-                    onOpenMeasurement();
-                  }}
-                >
-                  <Ruler className="size-4" />
-                  採寸する
-                </Button>
-              </div>
-            )}
-          </Step>
-
-          {/* ② 生地。マスタは引かず、発注書に書くのと同じ値をそのまま入れる */}
-          <Step number={2} title="生地" note="決まっていなければ空のままで構いません">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="order-fabric-no">原反NO</Label>
-                <Input
-                  id="order-fabric-no"
-                  value={fabric.fabricProductNumber ?? ""}
-                  onChange={(e) =>
-                    setFabricField({ fabricProductNumber: e.target.value || undefined })
-                  }
-                  placeholder="AC5601"
-                  className="h-11 bg-card font-mono"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="order-fabric-color-no">色番</Label>
-                <Input
-                  id="order-fabric-color-no"
-                  value={fabric.fabricColorNumber ?? ""}
-                  onChange={(e) =>
-                    setFabricField({ fabricColorNumber: e.target.value || undefined })
-                  }
-                  placeholder="3330"
-                  className="h-11 bg-card font-mono"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="order-fabric-color">色名</Label>
-                <Input
-                  id="order-fabric-color"
-                  value={fabric.fabricColorName ?? ""}
-                  onChange={(e) =>
-                    setFabricField({ fabricColorName: e.target.value || undefined })
-                  }
-                  placeholder="カーキ無地"
-                  className="h-11 bg-card"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="order-fabric-composition">組成</Label>
-                <Input
-                  id="order-fabric-composition"
-                  value={fabric.fabricComposition ?? ""}
-                  onChange={(e) =>
-                    setFabricField({ fabricComposition: e.target.value || undefined })
-                  }
-                  placeholder="Wool 100% / Super110's"
-                  className="h-11 bg-card"
-                />
-              </div>
-            </div>
-          </Step>
-
-          {/* ③ アイテム */}
-          <Step number={3} title="アイテム">
-            <div className="flex flex-col gap-3">
-              {ITEM_TYPES.map((type) => (
-                <div
-                  key={type}
-                  className={cn(
-                    "rounded-md border p-3 transition-colors",
-                    selected[type] ? "border-border bg-card" : "border-dashed border-border",
-                  )}
-                >
-                  <label className="flex min-h-11 cursor-pointer items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      checked={selected[type] ?? false}
-                      onChange={(e) =>
-                        setSelected((s) => ({ ...s, [type]: e.target.checked }))
-                      }
-                      className="size-4 accent-[var(--brand)]"
-                    />
-                    <span className="font-heading text-sm font-semibold uppercase tracking-[0.1em] text-brand">
-                      {ITEM_TYPE_MAP[type].sheetLabel}
-                    </span>
-                    <span className="text-sm text-muted-foreground">
-                      {ITEM_TYPE_MAP[type].name}
-                    </span>
-                  </label>
+                    <Ruler className="size-4" />
+                    採寸する
+                  </Button>
                 </div>
-              ))}
-            </div>
-          </Step>
+              )}
+            </Step>
 
-          {/* ④ 受注情報 */}
-          <Step number={4} title="受注情報">
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="ordered-at">受注日</Label>
-                <Input
-                  id="ordered-at"
-                  type="date"
-                  value={orderedAt}
-                  onChange={(e) => setOrderedAt(e.target.value)}
-                  className="h-11 bg-card font-mono"
-                />
+            {/* ② 生地。マスタは引かず、発注書に書くのと同じ値をそのまま入れる */}
+            <Step number={2} title="生地" note="決まっていなければ空のままで構いません">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="order-fabric-no">原反NO</Label>
+                  <Input
+                    id="order-fabric-no"
+                    value={fabric.fabricProductNumber ?? ""}
+                    onChange={(e) =>
+                      setFabricField({ fabricProductNumber: e.target.value || undefined })
+                    }
+                    placeholder="AC5601"
+                    className="h-11 bg-card font-mono"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="order-fabric-color-no">色番</Label>
+                  <Input
+                    id="order-fabric-color-no"
+                    value={fabric.fabricColorNumber ?? ""}
+                    onChange={(e) =>
+                      setFabricField({ fabricColorNumber: e.target.value || undefined })
+                    }
+                    placeholder="3330"
+                    className="h-11 bg-card font-mono"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="order-fabric-color">色名</Label>
+                  <Input
+                    id="order-fabric-color"
+                    value={fabric.fabricColorName ?? ""}
+                    onChange={(e) =>
+                      setFabricField({ fabricColorName: e.target.value || undefined })
+                    }
+                    placeholder="カーキ無地"
+                    className="h-11 bg-card"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="order-fabric-composition">組成</Label>
+                  <Input
+                    id="order-fabric-composition"
+                    value={fabric.fabricComposition ?? ""}
+                    onChange={(e) =>
+                      setFabricField({ fabricComposition: e.target.value || undefined })
+                    }
+                    placeholder="Wool 100% / Super110's"
+                    className="h-11 bg-card"
+                  />
+                </div>
               </div>
-              <div className="flex flex-col gap-1.5">
-                {/* 工場から店に届く日。お渡し日は紙が出てから編集で入れる */}
-                <Label htmlFor="arrived-at">納品日</Label>
-                <Input
-                  id="arrived-at"
-                  type="date"
-                  value={arrivedAt}
-                  onChange={(e) => setArrivedAt(e.target.value)}
-                  className="h-11 bg-card font-mono"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="purpose">用途</Label>
-                <Select value={purpose} onValueChange={(v) => setPurpose(v as OrderPurpose)}>
-                  <SelectTrigger id="purpose" className="h-11 bg-card">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(Object.keys(ORDER_PURPOSE_LABEL) as OrderPurpose[]).map((p) => (
-                      <SelectItem key={p} value={p}>
-                        {ORDER_PURPOSE_LABEL[p]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </Step>
+            </Step>
 
-          {/* ⑤ 金額。取り込みと同じ形にする。どちらから入れても同じものが残る */}
-          <Step number={5} title="金額" note="内訳は分かるときだけで構いません">
-            <AmountSection
-              id="order-amount"
-              value={totalAmount}
-              onChange={setTotalAmount}
-              breakdown={breakdown}
-              onBreakdownChange={setBreakdown}
-            />
-          </Step>
-        </div>
+            {/* ③ アイテム */}
+            <Step number={3} title="アイテム">
+              <div className="flex flex-col gap-3">
+                {ITEM_TYPES.map((type) => (
+                  <div
+                    key={type}
+                    className={cn(
+                      "rounded-md border p-3 transition-colors",
+                      selected[type] ? "border-border bg-card" : "border-dashed border-border",
+                    )}
+                  >
+                    <label className="flex min-h-11 cursor-pointer items-center gap-2.5">
+                      <input
+                        type="checkbox"
+                        checked={selected[type] ?? false}
+                        onChange={(e) =>
+                          setSelected((s) => ({ ...s, [type]: e.target.checked }))
+                        }
+                        className="size-4 accent-[var(--brand)]"
+                      />
+                      <span className="font-heading text-sm font-semibold uppercase tracking-[0.1em] text-brand">
+                        {ITEM_TYPE_MAP[type].sheetLabel}
+                      </span>
+                      <span className="text-sm text-muted-foreground">
+                        {ITEM_TYPE_MAP[type].name}
+                      </span>
+                    </label>
+                  </div>
+                ))}
+              </div>
+            </Step>
 
-        <DialogFooter className="shrink-0 flex-row items-center justify-between gap-3 border-t border-border px-4 py-3 sm:px-6">
-          <span className="flex items-baseline gap-2">
-            <span className="field-label">売上</span>
-            <span className="tnum font-mono text-lg font-medium">
-              ¥{formatAmount(totalAmount)}
+            {/* ④ 受注情報 */}
+            <Step number={4} title="受注情報">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="ordered-at">受注日</Label>
+                  <Input
+                    id="ordered-at"
+                    type="date"
+                    value={orderedAt}
+                    onChange={(e) => setOrderedAt(e.target.value)}
+                    className="h-11 bg-card font-mono"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  {/* 工場から店に届く日。お渡し日は紙が出てから編集で入れる */}
+                  <Label htmlFor="arrived-at">納品日</Label>
+                  <Input
+                    id="arrived-at"
+                    type="date"
+                    value={arrivedAt}
+                    onChange={(e) => setArrivedAt(e.target.value)}
+                    className="h-11 bg-card font-mono"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="purpose">用途</Label>
+                  <Select value={purpose} onValueChange={(v) => setPurpose(v as OrderPurpose)}>
+                    <SelectTrigger id="purpose" className="h-11 bg-card">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(ORDER_PURPOSE_LABEL) as OrderPurpose[]).map((p) => (
+                        <SelectItem key={p} value={p}>
+                          {ORDER_PURPOSE_LABEL[p]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </Step>
+
+            {/* ⑤ 金額。取り込みと同じ形にする。どちらから入れても同じものが残る */}
+            <Step number={5} title="金額" note="内訳は分かるときだけで構いません">
+              <AmountSection
+                id="order-amount"
+                value={totalAmount}
+                onChange={setTotalAmount}
+                breakdown={breakdown}
+                onBreakdownChange={setBreakdown}
+              />
+            </Step>
+          </div>
+
+          <DialogFooter className="shrink-0 flex-row items-center justify-between gap-3 border-t border-border px-4 py-3 sm:px-6">
+            <span className="flex items-baseline gap-2">
+              <span className="field-label">売上</span>
+              <span className="tnum font-mono text-lg font-medium">
+                ¥{formatAmount(totalAmount)}
+              </span>
             </span>
-          </span>
-          <span className="flex gap-2">
-            <Button variant="outline" className="h-11" onClick={() => onOpenChange(false)}>
-              キャンセル
-            </Button>
-            <Button className="h-11" onClick={handleSubmit} disabled={!canSubmit || saving}>
-              注文を登録
-            </Button>
-          </span>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            <span className="flex gap-2">
+              <Button variant="outline" className="h-11" onClick={() => onOpenChange(false)}>
+                キャンセル
+              </Button>
+              <Button className="h-11" onClick={handleSubmit} disabled={!canSubmit || saving}>
+                注文を登録
+              </Button>
+            </span>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AmountGapDialog
+        open={gapOpen}
+        onOpenChange={setGapOpen}
+        total={totalAmount}
+        breakdown={breakdown}
+        confirmLabel="登録する"
+        onConfirm={() => {
+          setGapOpen(false);
+          void save();
+        }}
+      />
+    </>
   );
 }
 

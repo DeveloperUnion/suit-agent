@@ -17,6 +17,7 @@ import {
   clearAgentMessages,
   listAgentMessages,
   markAgentActionApplied,
+  rejectAgentAction,
 } from "@/lib/data/agent-chat";
 import { useIsDesktop } from "@/lib/hooks/use-media-query";
 import { useQuery } from "@/lib/hooks/use-query";
@@ -94,13 +95,29 @@ export function AgentPanel() {
       return;
     }
     try {
-      await markAgentActionApplied(message.id);
+      // 提案ではなく**押された形**を残す。差分がそのまま「AI がどこを外したか」になる
+      await markAgentActionApplied(message.id, action);
     } catch {
       // 適用は一度きり（agent_messages のトリガー）。二度押しはここで落ちるが、
       // 書き込み自体は上で終わっているので、成功として畳んでよい。
       // 押したか分からず もう一度押す、は普通に起きる。
     }
     toast.success(appliedMessage(action), { description: actionCustomerName(action) });
+  }, []);
+
+  /**
+   * 「違う」を押されたとき。
+   *
+   * 書き込みは起きない。**残すこと自体が目的**で、押されずに流れた提案と
+   * 「見て、違うと判断した提案」を別物として数えられるようにする。
+   */
+  const reject = useCallback(async (message: AgentMessage) => {
+    try {
+      await rejectAgentAction(message.id);
+    } catch {
+      // 決定は一度きり（DB のトリガー）。二度押しはここで落ちるが、
+      // 利用者から見れば「もう見送った」で同じなので黙って畳む
+    }
   }, []);
 
   /**
@@ -263,6 +280,7 @@ export function AgentPanel() {
             progress={progress}
             keyboardHeight={viewport?.height ?? 0}
             onApply={apply}
+            onReject={reject}
             onAnswer={answer}
             onNavigate={navigateTo}
             onPickExample={send}

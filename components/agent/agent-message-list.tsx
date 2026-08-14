@@ -21,6 +21,7 @@ export function AgentMessageList({
   progress,
   keyboardHeight,
   onApply,
+  onReject,
   onAnswer,
   onNavigate,
   onPickExample,
@@ -33,6 +34,8 @@ export function AgentMessageList({
   keyboardHeight: number;
   /** カードの上で編集された action がそのまま渡る（部分承認） */
   onApply: (message: AgentMessage, action: AgentAction) => Promise<void> | void;
+  /** 「違う」。書き込みは起きず、判断だけ残る */
+  onReject: (message: AgentMessage) => Promise<void> | void;
   /** 聞き返しの選択肢が押されたとき。その文がそのまま次の発話になる */
   onAnswer: (answer: string) => void;
   onNavigate: (href: string) => void;
@@ -106,7 +109,9 @@ export function AgentMessageList({
                       <AgentActionCard
                         action={message.action}
                         applied={Boolean(message.appliedAt)}
+                        rejected={Boolean(message.rejectedAt)}
                         onApply={(action) => onApply(message, action)}
+                        onReject={() => onReject(message)}
                         onAnswer={onAnswer}
                         onNavigate={onNavigate}
                       />

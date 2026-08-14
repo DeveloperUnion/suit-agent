@@ -29,13 +29,23 @@ import { factCategoryKey } from "@/lib/constants/facts";
 export async function applyAgentAction(action: AgentAction): Promise<void> {
   switch (action.kind) {
     case "add_fact": {
-      // 語は既存の表記へ寄せてある（DB が決めた値）。無い語だけここで作る。
+      // **新しい語は、既定では語彙にしない。**
+      //
+      // fact_labels は店で共有される語で、「ゴルフが趣味な人」を全員引くための軸。
+      // そこに屋号・社名・その人だけの肩書き（「◯◯ジム」）が混ざると、
+      // 1 人にしか当てはまらない語が増えて軸として役に立たなくなる。
+      // 図書館情報学でも、総称概念（AAT）と法人・個人の固有名（ULAN）は別の器に置く。
+      //
+      // 未昇格の新語は**行を作らない**。聞いた文（body）に既に含まれているので、
+      // 確定検索の本文一致で引ける。行を分けると同じ文が何行も並ぶ。
+      const promoted = new Set(action.promotedWords ?? []);
+      const asLabel = action.labelNames.filter(
+        (n) => !action.newLabelNames.includes(n) || promoted.has(n),
+      );
+
       const labels = await listLabels();
-      // 分類はここでも正す。会話は残るので、**この直しより前に出た提案**が
-      // カルテに残っており、それを今日押されることがある。提案に載っている値を
-      // そのまま信じると、そのとき外部キー違反で落ちる。
       const categoryKey = factCategoryKey(action.categoryKey);
-      for (const name of action.labelNames) {
+      for (const name of asLabel) {
         const label = findLabel(labels, name) ?? (await createLabel({ name, categoryKey }));
         await addFact({
           customerId: action.customer.id,
@@ -43,6 +53,12 @@ export async function applyAgentAction(action: AgentAction): Promise<void> {
           body: action.body,
           source: "agent",
         });
+      }
+
+      // 語が 1 つも立たないときだけ、聞いた文を走り書きとして残す。
+      // ここを抜かすと「新語しか無い発話」が丸ごと消える。
+      if (asLabel.length === 0) {
+        await addFact({ customerId: action.customer.id, body: action.body, source: "agent" });
       }
       return;
     }

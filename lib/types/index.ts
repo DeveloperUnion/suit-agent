@@ -468,10 +468,13 @@ export type AgentAction =
       /** 足すラベル。既存語に寄せた結果なので、表記は fact_labels のもの */
       labelNames: string[];
       /**
-       * false のものは適用時に fact_labels へ新しく作られる。
-       * カードに「新しい語です」と出すのはこの判定を見ている。
+       * まだ fact_labels に無い語。**既定では語彙にしない。**
+       * 店で共有される語に屋号や個人の肩書きが混ざると、「ゴルフが趣味な人」を
+       * 引くための軸として役に立たなくなるため、人が明示的に選んだものだけ昇格する。
        */
       newLabelNames: string[];
+      /** カードで「語として登録」を押された分。ここに入ったものだけラベルになる */
+      promotedWords?: string[];
       /** どのカテゴリで作るか。既存語のときは使わない */
       categoryKey: string;
       /** 聞き取った言い回し。そのまま body になる */
@@ -586,6 +589,8 @@ export type AgentMessage = {
   action?: AgentAction;
   /** 適用済みなら日時が入る。カードの適用ボタンはこれで消す */
   appliedAt?: IsoDateTime;
+  /** 「違う」を押したなら日時が入る。適用と同じく一度きり */
+  rejectedAt?: IsoDateTime;
 };
 
 // ── 設定 ────────────────────────────────────────────────

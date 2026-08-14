@@ -8,7 +8,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(9);
+select plan(13);
 
 
 -- ── 道具 ────────────────────────────────────────────────
@@ -118,6 +118,50 @@ select throws_ok(
   $$ update public.agent_messages set applied_at = null where body like '時枝様%' $$,
   '23001', null,
   'applied_at を NULL に戻すこともできない'
+);
+
+
+-- ── 却下も一度きり ──────────────────────────────────────
+--
+-- 決定が 2 つ（適用・却下）になったので、**どちらか一方が済んでいたら
+-- もう一方も受け付けない**。「適用したあとで却下」は意味を持たない。
+
+insert into public.agent_messages (role, body, action)
+values ('assistant', '柏木様の注意事項に足す提案です。',
+        '{"kind":"add_ng_note","body":"光沢は苦手"}'::jsonb);
+
+update public.agent_messages set rejected_at = '2020-01-01'::timestamptz
+ where body like '柏木様%';
+
+select ok(
+  (select rejected_at from public.agent_messages where body like '柏木様%') > now() - interval '1 minute',
+  '却下した日時も DB が決める（画面から渡した値は採らない）'
+);
+
+select throws_ok(
+  $$ update public.agent_messages set rejected_at = now() where body like '柏木様%' $$,
+  '23001', null,
+  '却下済みの提案をもう一度却下すると落ちる'
+);
+
+select throws_ok(
+  $$ update public.agent_messages set applied_at = now() where body like '柏木様%' $$,
+  '23001', null,
+  '却下したあとで適用はできない'
+);
+
+
+-- ── 適用していないのに「適用した内容」だけ残らない ──────
+
+insert into public.agent_messages (role, body, action)
+values ('assistant', '三雲様のパーソナルに足す提案です。',
+        '{"kind":"add_fact","labelNames":["サウナ"]}'::jsonb);
+
+select throws_ok(
+  $$ update public.agent_messages set applied_action = '{"kind":"add_fact"}'::jsonb
+      where body like '三雲様%' $$,
+  '23001', null,
+  '適用していない提案に applied_action は入れられない'
 );
 
 

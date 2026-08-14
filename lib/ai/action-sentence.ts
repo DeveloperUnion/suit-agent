@@ -26,11 +26,28 @@ function subject(name: string, from: SubjectOrigin): string {
   return `${name} さん${ORIGIN_NOTE[from]}`;
 }
 
+/**
+ * その提案が、チップ（パーソナル）ではなくメモとして入るか。
+ *
+ * **新しい語は既定で語彙にしない**ので、既存語が 1 つも無ければ行き先はメモになる。
+ * カードの見出しと返答文の両方がこれを見る — 片方だけ直すと、また出所が 2 つになる。
+ */
+export function isMemoOnly(action: AgentAction): boolean {
+  return (
+    action.kind === "add_fact" &&
+    action.labelNames.every((n) => action.newLabelNames.includes(n))
+  );
+}
+
 export function actionSentence(action: AgentAction): string | null {
   switch (action.kind) {
     case "add_fact": {
-      const words = action.labelNames.join("・");
-      return `${subject(action.customer.name, action.subjectFrom)}のパーソナルに「${words}」を足す提案です。`;
+      const known = action.labelNames.filter((n) => !action.newLabelNames.includes(n));
+      const who = subject(action.customer.name, action.subjectFrom);
+      if (known.length === 0) {
+        return `${who}のメモに残す提案です。`;
+      }
+      return `${who}のパーソナルに「${known.join("・")}」を足す提案です。`;
     }
     case "add_ng_note":
       return `${subject(action.customer.name, action.subjectFrom)}の注意事項に足す提案です。`;

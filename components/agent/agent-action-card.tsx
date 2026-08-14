@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, Check } from "lucide-react";
+import { ArrowRight, Check, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { AgentAction, AgentCustomerRef } from "@/lib/types";
+import { isMemoOnly } from "@/lib/ai/action-sentence";
 import { cn } from "@/lib/utils";
 
 /**
@@ -21,14 +22,19 @@ import { cn } from "@/lib/utils";
 export function AgentActionCard({
   action,
   applied,
+  rejected,
   onApply,
+  onReject,
   onAnswer,
   onNavigate,
 }: {
   action: AgentAction;
   applied: boolean;
+  rejected: boolean;
   /** カードの上で外した分を反映した action が渡る（部分承認） */
   onApply: (action: AgentAction) => Promise<void> | void;
+  /** 「違う」。書き込みは起きず、判断だけ残る */
+  onReject: () => Promise<void> | void;
   /** 選択肢が押されたとき。その文がそのまま次の発話になる */
   onAnswer: (answer: string) => void;
   /** カルテへ移る。スマホは全画面なので、閉じてから進む順序をパネル側が握る */
@@ -37,6 +43,8 @@ export function AgentActionCard({
   // 適用対象から外した語。**チェックボックスを足さない** — 既に出している
   // Badge をタップで灰色に落とすだけで、新しい UI 要素をゼロ個で部分承認が入る。
   const [dropped, setDropped] = useState<string[]>([]);
+  // 「語として登録」を押した新語。**既定は空** — 新しい語は走り書きのまま残る
+  const [promoted, setPromoted] = useState<string[]>([]);
 
   if (action.kind === "search_result") {
     return (
@@ -105,7 +113,8 @@ export function AgentActionCard({
     );
   }
 
-  const label = PROPOSAL_LABELS[action.kind];
+  // 見出しも実際の行き先に合わせる。新しい語しか無ければ、入るのはメモ
+  const label = isMemoOnly(action) ? "メモに追加" : PROPOSAL_LABELS[action.kind];
   const keep = action.kind === "add_fact"
     ? action.labelNames.filter((n) => !dropped.includes(n))
     : [];
@@ -117,9 +126,15 @@ export function AgentActionCard({
       subjectFrom={action.subjectFrom}
       quote={action.quote}
       applied={applied}
+      rejected={rejected}
+      onReject={onReject}
       disabled={action.kind === "add_fact" && keep.length === 0}
       onApply={() =>
-        onApply(action.kind === "add_fact" ? { ...action, labelNames: keep } : action)
+        onApply(
+          action.kind === "add_fact"
+            ? { ...action, labelNames: keep, promotedWords: promoted }
+            : action,
+        )
       }
       onNavigate={onNavigate}
     >
@@ -158,11 +173,40 @@ export function AgentActionCard({
               );
             })}
           </div>
-          {action.newLabelNames.filter((n) => keep.includes(n)).length > 0 && (
-            <span className="text-xs text-muted-foreground">
-              {action.newLabelNames.filter((n) => keep.includes(n)).join("・")}{" "}
-              は新しい語です。適用すると店舗の一覧に加わります。
-            </span>
+          {/* 新しい語は既定で走り書きのまま。店で共有する語彙にするかは人が決める。
+              1 人にしか当てはまらない語（屋号・その人だけの肩書き）が混ざると、
+              「ゴルフが趣味な人」を引くための軸として役に立たなくなるため */}
+          {action.newLabelNames.filter((n) => keep.includes(n)).length > 0 && !applied && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs text-muted-foreground">
+                下の語は、この店でまだ使われていません。このままならメモとして残ります。
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {action.newLabelNames
+                  .filter((n) => keep.includes(n))
+                  .map((n) => {
+                    const on = promoted.includes(n);
+                    return (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() =>
+                          setPromoted((p) =>
+                            p.includes(n) ? p.filter((x) => x !== n) : [...p, n],
+                          )
+                        }
+                      >
+                        <Badge
+                          variant={on ? "default" : "outline"}
+                          className={cn("font-normal", on && "bg-brand-fill text-primary-foreground")}
+                        >
+                          {on ? `${n} を語として登録` : `${n} を語にする`}
+                        </Badge>
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
           )}
           <span className="text-sm">{action.body}</span>
         </>
@@ -240,8 +284,10 @@ function Proposal({
   subjectFrom,
   quote,
   applied,
+  rejected,
   disabled,
   onApply,
+  onReject,
   onNavigate,
   children,
 }: {
@@ -250,8 +296,10 @@ function Proposal({
   subjectFrom?: string;
   quote?: string;
   applied: boolean;
+  rejected: boolean;
   disabled?: boolean;
   onApply: () => Promise<void> | void;
+  onReject: () => Promise<void> | void;
   onNavigate: (href: string) => void;
   children: React.ReactNode;
 }) {
@@ -279,6 +327,11 @@ function Proposal({
           <Check className="size-3.5" />
           カルテに残しました
         </span>
+      ) : rejected ? (
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <X className="size-3.5" />
+          見送りました
+        </span>
       ) : (
         <div className="flex gap-2">
           <Button
@@ -292,13 +345,25 @@ function Proposal({
           >
             {applying ? "保存中…" : "適用する"}
           </Button>
+          {/* 「違う」の口。押されずに流れた提案と、見て違うと判断した提案は別物で、
+              後者だけが精度を直すための材料になる */}
           <Button
             variant="ghost"
             className="h-11 sm:h-9"
             disabled={applying}
+            onClick={() => onReject()}
+          >
+            違う
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="カルテを開く"
+            className="size-11 shrink-0 sm:size-9"
+            disabled={applying}
             onClick={() => onNavigate(`/customers/${customer.id}`)}
           >
-            カルテを開く
+            <ArrowRight className="size-4" />
           </Button>
         </div>
       )}

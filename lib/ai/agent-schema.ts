@@ -31,6 +31,23 @@ const customerId = {
   description: "find_customer か search_customers が返した顧客の id。自分で作らないこと。",
 } as const;
 
+/**
+ * その相手をどうやって決めたか。**サーバが検算する。**
+ *
+ * 道具の選択は間違えないが、対象の取り違えは実測で 24〜26% 起きる。しかも
+ * プロンプトの注意書きでは直らないことが分かっている。申告させて、申告と
+ * 発話・画面の状態が食い違ったら**提案を作らせない**（差し戻す）形にしてある。
+ */
+const subjectFrom = {
+  type: "string",
+  enum: ["spoken_name", "open_karte", "recent_topic"],
+  description:
+    "この相手をどう決めたか。spoken_name=いまの発話に名前が出ていた（サーバが発話と照合する） / " +
+    "open_karte=いま開いているカルテだから / recent_topic=直前のやり取りで話していたから。" +
+    "**推測で埋めないこと。**開いているカルテと直前の相手が別人で、いまの発話に名前が無いなら、" +
+    "どちらも選ばずに propose_ask で聞き返す。",
+} as const;
+
 const quote = {
   type: "string",
   description:
@@ -96,6 +113,7 @@ export const AGENT_TOOLS: Tool[] = [
       "こちらは接客の材料として引っ張り出すもの、あちらは外すと事故になるもの。",
     {
       customerId,
+      subjectFrom,
       labels: {
         type: "array",
         items: { type: "string" },
@@ -114,15 +132,15 @@ export const AGENT_TOOLS: Tool[] = [
       },
       quote,
     },
-    ["customerId", "labels", "body"],
+    ["customerId", "subjectFrom", "labels", "body"],
   ),
   fn(
     "propose_add_ng_note",
     "注意事項への追記を提案する。カルテの一番上に無条件で出る枠。" +
       "**否定・禁止・忌避はすべてこちら**（「光沢のある生地は苦手」「ピークドラペルは断られた」" +
       "「夜は電話しない」）。取りこぼすと次の接客で外すことになるので、迷ったらこちらへ倒す。",
-    { customerId, body: { type: "string" }, quote },
-    ["customerId", "body"],
+    { customerId, subjectFrom, body: { type: "string" }, quote },
+    ["customerId", "subjectFrom", "body"],
   ),
   fn(
     "propose_update_customer",
@@ -132,6 +150,7 @@ export const AGENT_TOOLS: Tool[] = [
       "どの項目にも当たらないので propose_add_fact（分類は work）で残すこと。",
     {
       customerId,
+      subjectFrom,
       changes: {
         type: "array",
         description: "変える項目。",
@@ -173,19 +192,20 @@ export const AGENT_TOOLS: Tool[] = [
       },
       quote,
     },
-    ["customerId", "changes"],
+    ["customerId", "subjectFrom", "changes"],
   ),
   fn(
     "propose_add_anniversary",
     "記念日の追加を提案する。誕生日・初回購入・結婚記念日など。",
     {
       customerId,
+      subjectFrom,
       type: { type: "string", enum: ["birthday", "first_purchase", "wedding", "other"] },
       date: { type: "string", description: "YYYY-MM-DD。年が分からなければ当年で構わない。" },
       label: { type: "string", description: "other のときの呼び名。" },
       quote,
     },
-    ["customerId", "type", "date"],
+    ["customerId", "subjectFrom", "type", "date"],
   ),
   fn(
     "propose_invalidate_fact",
@@ -193,6 +213,7 @@ export const AGENT_TOOLS: Tool[] = [
       "先に get_customer で対象の id を確かめること。",
     {
       customerId,
+      subjectFrom,
       factIds: {
         type: "array",
         items: { type: "string" },
@@ -200,26 +221,56 @@ export const AGENT_TOOLS: Tool[] = [
       },
       quote,
     },
-    ["customerId", "factIds"],
+    ["customerId", "subjectFrom", "factIds"],
   ),
   fn(
     "propose_resolve_approach",
     "「連絡した」「今回は見送る」と言われたときに、本日のアプローチを畳む提案をする。",
     {
       customerId,
+      subjectFrom,
       status: { type: "string", enum: ["done", "skipped"] },
       quote,
     },
-    ["customerId", "status"],
+    ["customerId", "subjectFrom", "status"],
   ),
   fn(
-    "propose_ask_customer",
-    "同じ名字が複数いて誰の話か決められないときに、候補を出して人に選ばせる。",
+    "propose_ask",
+    "決められないときに人へ聞く。**あらゆる曖昧さの落ち先はここ。**" +
+      "同姓が複数いる、誰の話か分からない、どの項目のことか分からない、いずれもこれを使う。" +
+      "道具で確かめられるなら聞かずに確かめること。" +
+      "**できないことを聞き返さない。**予定・売上・他スタッフの顧客のように、" +
+      "そもそも扱えない話題は、相手を絞っても答えられない。聞き返さず「できません」と答える。",
     {
-      candidateIds: { type: "array", items: { type: "string" } },
-      labels: { type: "array", items: { type: "string" }, description: "決まったら足す語。" },
-      body: { type: "string" },
+      question: { type: "string", description: "短く 1 つだけ聞く。" },
+      options: {
+        type: "array",
+        minItems: 2,
+        maxItems: 5,
+        description:
+          "選択肢。**そのまま答えになる完全な文**にする（「はい」「1」のような断片は不可）。" +
+          "**顧客を選ばせるときは answer を書かず customerId だけ渡すこと。**" +
+          "文言と手がかり（会社名・開いているカルテかどうか）はこちらで作ります。",
+        items: {
+          type: "object",
+          properties: {
+            customerId: {
+              type: "string",
+              description:
+                "顧客を選ばせるとき。find_customer などが返した id。" +
+                "これを渡した選択肢の文言はサーバが作るので、answer は要りません。",
+            },
+            answer: {
+              type: "string",
+              description: "顧客以外の選択肢のとき。押されたらこの文が次の発話として送られる。",
+            },
+            hint: { type: "string", description: "選ぶ手がかり。" },
+          },
+          required: [],
+          additionalProperties: false,
+        },
+      },
     },
-    ["candidateIds", "body"],
+    ["question", "options"],
   ),
 ];

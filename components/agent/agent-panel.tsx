@@ -21,7 +21,7 @@ import {
 import { useIsDesktop } from "@/lib/hooks/use-media-query";
 import { useQuery } from "@/lib/hooks/use-query";
 import { useVisualViewport } from "@/lib/hooks/use-visual-viewport";
-import type { AgentAction, AgentCustomerRef, AgentMessage } from "@/lib/types";
+import type { AgentAction, AgentMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -103,10 +103,16 @@ export function AgentPanel() {
     toast.success(appliedMessage(action), { description: actionCustomerName(action) });
   }, []);
 
-  /** 同姓の候補から選ばれたとき。誰の話かを言い直して、もう一度考えさせる */
-  const pickCustomer = useCallback(
-    async (customer: AgentCustomerRef) => {
-      await send(`${customer.name} さんのことです`);
+  /**
+   * 聞き返しの選択肢が押されたとき。
+   *
+   * 選択肢の文をそのまま次の発話として送る。サーバ側で道具を止めていないので、
+   * 「人が答えたものが道具の結果になる」形にはならないが、**打ち直させない**という
+   * 効果は同じ。片手で操作していることを前提にすると、ここが要点。
+   */
+  const answer = useCallback(
+    async (text: string) => {
+      await send(text);
     },
     [send],
   );
@@ -257,7 +263,7 @@ export function AgentPanel() {
             progress={progress}
             keyboardHeight={viewport?.height ?? 0}
             onApply={apply}
-            onPickCustomer={pickCustomer}
+            onAnswer={answer}
             onNavigate={navigateTo}
             onPickExample={send}
           />

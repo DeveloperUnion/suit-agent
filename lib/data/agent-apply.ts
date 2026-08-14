@@ -87,9 +87,9 @@ export async function applyAgentAction(action: AgentAction): Promise<void> {
       await resolveApproach(action.customer.id, action.status);
       return;
 
-    // 検索結果と候補の問い合わせは、押して書き込むものではない
+    // 検索結果と聞き返しは、押して書き込むものではない
     case "search_result":
-    case "ask_customer":
+    case "ask":
       return;
   }
 }

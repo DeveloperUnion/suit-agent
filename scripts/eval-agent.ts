@@ -40,7 +40,7 @@ type Case = {
  * **error を match に混ぜない。**混ぜると、鍵が切れて全部落ちている状態で
  * 「否定ケースは全部 ✓」という嘘の合格が出る（実際に一度出した）。
  */
-type Verdict = "match" | "mismatch" | "omission" | "hallucination" | "error";
+type Verdict = "match" | "mismatch" | "omission" | "hallucination" | "over_ask" | "error";
 
 const BASE = process.env.EVAL_BASE_URL ?? "http://localhost:3000";
 const SUPABASE = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:54321";
@@ -133,7 +133,12 @@ async function readStream(body: ReadableStream<Uint8Array>): Promise<DoneEvent> 
 
 function judge(expect: Expectation, action: Record<string, unknown> | undefined): Verdict {
   const got = (action?.kind as string | undefined) ?? null;
-  if (expect.kind === null) return got === null ? "match" : "hallucination";
+  if (expect.kind === null) {
+    if (got === null) return "match";
+    // 聞き返しは捏造とは別。無いものを作ったのではなく、答えられないことを
+    // 聞き返して**できるふりをした**という失敗で、直し方も違う
+    return got === "ask" ? "over_ask" : "hallucination";
+  }
   if (got === null) return "omission";
   if (got !== expect.kind) return "mismatch";
 
@@ -180,6 +185,27 @@ async function main() {
   const cases = JSON.parse(
     readFileSync(new URL("../lib/ai/eval/cases.json", import.meta.url), "utf8"),
   ) as Case[];
+
+  // **先に、期待している顧客が実在するか確かめる。**
+  //
+  // dev-seed は lib/mock/seed.ts から生成されるので、作り直されると氏名が
+  // 総入れ替えになる。実際に一度、main 側の変更で 7 名中 6 名が消えた状態で
+  // eval を回し、**モデルが劣化したように見える結果**が出た。
+  // ここで落としておけば「seed が変わった」と「精度が落ちた」を取り違えない。
+  const wanted = [
+    ...new Set(
+      cases.flatMap((c) => [c.expect.customer, c.context?.open, c.context?.recent].filter(Boolean)),
+    ),
+  ] as string[];
+  const missing: string[] = [];
+  for (const name of wanted) if (!(await idOf(name))) missing.push(name);
+  if (missing.length > 0) {
+    console.error(
+      `dev-seed にいない顧客が cases.json にあります: ${missing.join("、")}\n` +
+        "npm run db:reset を流し直すか、いまの seed に合わせて cases.json を直してください。",
+    );
+    process.exit(1);
+  }
 
   const rows: { id: string; verdict: Verdict; got: string; ms: number; reply: string }[] = [];
 
@@ -230,6 +256,7 @@ async function main() {
     mismatch: "✗ 取り違え",
     omission: "✗ 出さなかった",
     hallucination: "✗ 出しすぎ",
+    over_ask: "✗ 聞きすぎ",
     error: "! 落ちた",
   };
   for (const r of rows) {
@@ -244,6 +271,7 @@ async function main() {
   console.log(`出さなかった  ${count("omission")}`);
   // ここが 0 でないまま出さない。**捏造だけは頻度の問題ではない。**
   console.log(`出しすぎ      ${count("hallucination")}   ← 0 であること`);
+  console.log(`聞きすぎ      ${count("over_ask")}   ← 聞き返せば済むと思っている`);
   console.log(`落ちた        ${count("error")}`);
   const p50 = [...rows].sort((a, b) => a.ms - b.ms)[Math.floor(rows.length / 2)]?.ms;
   console.log(`所要 中央値   ${p50}ms`);

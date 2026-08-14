@@ -22,14 +22,15 @@ export function AgentActionCard({
   action,
   applied,
   onApply,
-  onPickCustomer,
+  onAnswer,
   onNavigate,
 }: {
   action: AgentAction;
   applied: boolean;
   /** カードの上で外した分を反映した action が渡る（部分承認） */
   onApply: (action: AgentAction) => Promise<void> | void;
-  onPickCustomer: (customer: AgentCustomerRef) => void;
+  /** 選択肢が押されたとき。その文がそのまま次の発話になる */
+  onAnswer: (answer: string) => void;
   /** カルテへ移る。スマホは全画面なので、閉じてから進む順序をパネル側が握る */
   onNavigate: (href: string) => void;
 }) {
@@ -76,23 +77,25 @@ export function AgentActionCard({
     );
   }
 
-  if (action.kind === "ask_customer") {
+  if (action.kind === "ask") {
     return (
       <div className="flex flex-col gap-2 rounded-md border border-brand/25 bg-accent/40 p-3">
-        <span className="field-label">どちらの方ですか</span>
+        <span className="text-sm">{action.question}</span>
+        {/* 選択肢はそのまま答えになる文。押すと次の発話として送られるので、
+            打ち直させない（片手で操作していることを前提にする） */}
         <ul className="flex flex-col gap-2">
-          {action.candidates.map((customer) => (
-            <li key={customer.id}>
+          {action.options.map((option) => (
+            <li key={option.answer}>
               <button
                 type="button"
-                onClick={() => onPickCustomer(customer)}
+                onClick={() => onAnswer(option.answer)}
                 className="flex min-h-11 w-full items-center gap-3 rounded-md border border-border bg-card p-3 text-left transition-colors hover:border-brand/40 active:bg-accent/40"
               >
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="truncate text-sm font-medium">{customer.name}</span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    {customer.nameKana}
-                  </span>
+                  <span className="truncate text-sm font-medium">{option.answer}</span>
+                  {option.hint && (
+                    <span className="truncate text-xs text-muted-foreground">{option.hint}</span>
+                  )}
                 </span>
               </button>
             </li>
@@ -111,6 +114,7 @@ export function AgentActionCard({
     <Proposal
       title={label}
       customer={action.customer}
+      subjectFrom={action.subjectFrom}
       quote={action.quote}
       applied={applied}
       disabled={action.kind === "add_fact" && keep.length === 0}
@@ -225,9 +229,15 @@ const ANNIVERSARY_LABELS: Record<string, string> = {
 };
 
 /** 提案カードの外枠。種類が増えても、見出し・根拠・ボタンの並びは動かさない */
+const ORIGIN_NOTE: Record<string, string> = {
+  open_karte: "いま開いているカルテから",
+  recent_topic: "さきほどの話から",
+};
+
 function Proposal({
   title,
   customer,
+  subjectFrom,
   quote,
   applied,
   disabled,
@@ -237,6 +247,7 @@ function Proposal({
 }: {
   title: string;
   customer: AgentCustomerRef;
+  subjectFrom?: string;
   quote?: string;
   applied: boolean;
   disabled?: boolean;
@@ -251,6 +262,10 @@ function Proposal({
       <div className="flex flex-col gap-1">
         <span className="field-label">{title}</span>
         <span className="text-sm font-medium">{customer.name} 様</span>
+        {/* どうやってこの人だと決めたか。名前を言われていないときこそ効く */}
+        {subjectFrom && subjectFrom !== "spoken_name" && (
+          <span className="text-xs text-muted-foreground">{ORIGIN_NOTE[subjectFrom]}</span>
+        )}
       </div>
 
       {children}

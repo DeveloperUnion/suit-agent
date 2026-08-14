@@ -442,10 +442,29 @@ export type AgentCustomerRef = {
  * 名刺・発注書の読み取りと同じで、AI が出したものを黙って保存はしない。
  * 会話ログの再描画に必要なので、表示に使う値はここに畳んで持たせる。
  */
+/**
+ * その提案の相手を、モデルが**どうやって決めたか**。
+ *
+ * 道具の選択をモデルが間違えることはほぼ無い（実測 0.0%）が、
+ * **対象エンティティの束縛は 24〜26% 間違える**（arXiv 2606.30531）。しかも
+ * 「プロンプトの言い回しでは robust に直らない」ことも別途実測されている。
+ *
+ * だから自己申告させて**サーバが検算する**。申告そのものを信じるのではなく、
+ * 申告と発話・画面の状態が食い違ったら提案を作らせない、という使い方をする。
+ */
+export type SubjectOrigin =
+  /** 発話に名前が出ていた */
+  | "spoken_name"
+  /** いま開いているカルテ */
+  | "open_karte"
+  /** 直前のやり取りで話していた相手 */
+  | "recent_topic";
+
 export type AgentAction =
   | {
       kind: "add_fact";
       customer: AgentCustomerRef;
+      subjectFrom: SubjectOrigin;
       /** 足すラベル。既存語に寄せた結果なので、表記は fact_labels のもの */
       labelNames: string[];
       /**
@@ -471,20 +490,38 @@ export type AgentAction =
       /** 「近いもの」。該当者ではないので枠を分ける（同じ配列に混ぜない） */
       similar?: { customer: AgentCustomerRef; content: string }[];
     }
-  /** 誰の話か決められなかった。候補を出して選ばせる */
+  /**
+   * 決められなかったので人に聞く。
+   *
+   * 顧客の取り違えだけでなく、**あらゆる曖昧さの落ちる先**。用途を「同姓が複数」に
+   * 絞っていたときは、外れた曖昧さが素のテキストの質問になって選択肢が出なかった。
+   *
+   * 選択肢は 2〜5 個で、**そのまま答えになる完全な文**にする（「はい」「いいえ」の
+   * ようなプレースホルダにしない）。同姓のときに氏名を並べても選べないので、
+   * hint には**識別に効く属性**（会社名・最終お渡し）を入れる。
+   */
   | {
-      kind: "ask_customer";
-      keyword: string;
-      candidates: AgentCustomerRef[];
-      pendingLabels: string[];
-      /** 聞き取った言い回し。相手が決まったら、そのまま提案の body になる */
-      body: string;
+      kind: "ask";
+      question: string;
+      options: {
+        /** 押すとこの文がそのまま次の発話として送られる */
+        answer: string;
+        /** 選ぶ手がかり。会社名など */
+        hint?: string;
+      }[];
     }
   /** 注意事項。カルテの一番上に無条件で出る枠なので、パーソナルとは別扱い */
-  | { kind: "add_ng_note"; customer: AgentCustomerRef; body: string; quote?: string }
+  | {
+      kind: "add_ng_note";
+      customer: AgentCustomerRef;
+      subjectFrom: SubjectOrigin;
+      body: string;
+      quote?: string;
+    }
   | {
       kind: "update_customer";
       customer: AgentCustomerRef;
+      subjectFrom: SubjectOrigin;
       /** 現在値を必ず添える。「何が何に変わるか」を見ずに押させない */
       changes: { field: CustomerFieldKey; label: string; before?: string; after: string }[];
       quote?: string;
@@ -492,6 +529,7 @@ export type AgentAction =
   | {
       kind: "add_anniversary";
       customer: AgentCustomerRef;
+      subjectFrom: SubjectOrigin;
       anniversary: { type: AnniversaryType; date: IsoDate; label?: string };
       quote?: string;
     }
@@ -499,6 +537,7 @@ export type AgentAction =
   | {
       kind: "invalidate_fact";
       customer: AgentCustomerRef;
+      subjectFrom: SubjectOrigin;
       facts: { id: Uuid; label?: string; body: string }[];
       quote?: string;
     }
@@ -510,6 +549,7 @@ export type AgentAction =
   | {
       kind: "resolve_approach";
       customer: AgentCustomerRef;
+      subjectFrom: SubjectOrigin;
       status: ApproachStatus;
       quote?: string;
     };

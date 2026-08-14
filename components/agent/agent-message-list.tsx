@@ -4,7 +4,7 @@ import { ArrowDown, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { AgentActionCard } from "@/components/agent/agent-action-card";
-import type { AgentAction, AgentCustomerRef, AgentMessage } from "@/lib/types";
+import type { AgentAction, AgentMessage } from "@/lib/types";
 import { useStickToBottom } from "@/lib/hooks/use-stick-to-bottom";
 import { cn } from "@/lib/utils";
 
@@ -21,7 +21,7 @@ export function AgentMessageList({
   progress,
   keyboardHeight,
   onApply,
-  onPickCustomer,
+  onAnswer,
   onNavigate,
   onPickExample,
 }: {
@@ -33,7 +33,8 @@ export function AgentMessageList({
   keyboardHeight: number;
   /** カードの上で編集された action がそのまま渡る（部分承認） */
   onApply: (message: AgentMessage, action: AgentAction) => Promise<void> | void;
-  onPickCustomer: (customer: AgentCustomerRef) => void;
+  /** 聞き返しの選択肢が押されたとき。その文がそのまま次の発話になる */
+  onAnswer: (answer: string) => void;
   onNavigate: (href: string) => void;
   onPickExample: (text: string) => void;
 }) {
@@ -106,7 +107,7 @@ export function AgentMessageList({
                         action={message.action}
                         applied={Boolean(message.appliedAt)}
                         onApply={(action) => onApply(message, action)}
-                        onPickCustomer={onPickCustomer}
+                        onAnswer={onAnswer}
                         onNavigate={onNavigate}
                       />
                     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -53,6 +53,18 @@ export function PersonalityPanel({ customerId }: { customerId: Uuid }) {
   const [adding, setAdding] = useState<string | null>(null);
 
   const rows = facts ?? [];
+
+  // 会話の根拠チップから飛んできたとき、その行まで寄せる。
+  //
+  // ブラウザ任せにできないのは、記録が非同期で入るため — 遷移した瞬間には
+  // まだ行が無く、ハッシュの飛び先が見つからないまま終わる。読み込めてから寄せる。
+  useEffect(() => {
+    const id = window.location.hash.startsWith("#fact-") ? window.location.hash.slice(6) : null;
+    if (!id || rows.length === 0) return;
+    document.getElementById(`fact-${id}`)?.scrollIntoView({ block: "center" });
+    // 依存は件数だけ。rows は毎レンダー新しい配列になるので、そのまま依存にすると
+    // 描画のたびにスクロールし直して、利用者の手動スクロールを奪う
+  }, [rows.length]);
   const labelled = rows.filter((f) => f.label);
 
   // 数十件なので毎レンダー組み直してよい
@@ -258,6 +270,18 @@ export function RecordsPanel({ customerId }: { customerId: Uuid }) {
 
   const rows = facts ?? [];
 
+  // 会話の根拠チップから飛んできたとき、その行まで寄せる。
+  //
+  // ブラウザ任せにできないのは、記録が非同期で入るため — 遷移した瞬間には
+  // まだ行が無く、ハッシュの飛び先が見つからないまま終わる。読み込めてから寄せる。
+  useEffect(() => {
+    const id = window.location.hash.startsWith("#fact-") ? window.location.hash.slice(6) : null;
+    if (!id || rows.length === 0) return;
+    document.getElementById(`fact-${id}`)?.scrollIntoView({ block: "center" });
+    // 依存は件数だけ。rows は毎レンダー新しい配列になるので、そのまま依存にすると
+    // 描画のたびにスクロールし直して、利用者の手動スクロールを奪う
+  }, [rows.length]);
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-2">
@@ -287,7 +311,11 @@ export function RecordsPanel({ customerId }: { customerId: Uuid }) {
           {rows.map((fact) => (
             <li
               key={fact.id}
-              className="flex items-start gap-3 border-b border-border/60 py-2 last:border-b-0"
+              // 会話の根拠チップからここへ飛んでくる（/customers/{id}#fact-{factId}）。
+              // scroll-mt はヘッダーの下に隠れないための余白
+              id={`fact-${fact.id}`}
+              // target: で寄せた行に色を付ける。React の状態を増やさずに済む
+              className="flex scroll-mt-24 items-start gap-3 border-b border-border/60 py-2 target:-mx-2 target:rounded-md target:bg-accent target:px-2 last:border-b-0" 
             >
               <span className="tnum w-20 shrink-0 pt-0.5 font-mono text-xs text-muted-foreground">
                 {formatDateDot(fact.createdAt.slice(0, 10))}

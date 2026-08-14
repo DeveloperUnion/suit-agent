@@ -94,11 +94,24 @@ export async function POST(request: Request) {
       facts: { id: string; label: string | null; body: string }[];
     };
     const dossiers = new Map<string, Dossier>();
+    /** このターンで実際に返した記録。出典の検証はこれだけを正とする */
+    const factIndex = new Map<
+      string,
+      { id: string; customerId: string; label?: string; body: string }
+    >();
     const dossierOf = async (id: string): Promise<Dossier | null> => {
       if (!dossiers.has(id)) {
         const d = (await getCustomer(ctx, id)) as Dossier | null;
         if (!d) return null;
         dossiers.set(id, d);
+        for (const f of d.facts) {
+          factIndex.set(f.id, {
+            id: f.id,
+            customerId: d.customer.id,
+            label: f.label ?? undefined,
+            body: f.body,
+          });
+        }
         remember({
           ...d.customer,
           labels: d.facts.map((f) => f.label).filter((l): l is string => Boolean(l)),
@@ -492,6 +505,28 @@ export async function POST(request: Request) {
             cacheKey: `agent:${caller.userId}`,
             onToolStart: (name) => send({ type: "tool", name }),
           });
+          // ── 出典 ──
+          //
+          // モデルには本文中に [[factId]] を書かせ、**そのターンに実際に返した
+          // 記録の id と突き合わせて、無いものは捨てる**（quote を発話と突き合わせて
+          // いるのと同じ考え方）。書かせたものをそのまま信じない。
+          //
+          // 根拠を「出典: カルテ」で終わらせず**その行まで飛ばす**のが要点で、
+          // NotebookLM が信用を作っているのもここ。マーカーは表示前に必ず外す。
+          const cited: { id: string; customerId: string; label?: string; body: string }[] = [];
+          const seenCite = new Set<string>();
+          for (const m of turn.reply.matchAll(/\[\[([0-9a-fA-F-]{36})\]\]/g)) {
+            const factId = m[1];
+            if (seenCite.has(factId)) continue;
+            const found = factIndex.get(factId);
+            if (!found) continue; // モデルが作った id は捨てる
+            seenCite.add(factId);
+            cited.push(found);
+          }
+          // 記法は**中身によらず**必ず外す。id の形をしていないものを書かれたとき
+          // （[[abc]] など）に、そこだけ生のまま画面へ出るのを防ぐ
+          const cleaned = turn.reply.replace(/\s*\[\[[^\]]*\]\]/g, "").trim();
+
           // **提案があるターンは、返答文もコードが作る。**
           // モデルの散文とカードが同じ提案を別々に説明していたので、
           // 「職業として記録します」と言いながらカードは「パーソナルに追加」になった。
@@ -499,7 +534,8 @@ export async function POST(request: Request) {
           const sentence = action ? actionSentence(action) : null;
           send({
             type: "done",
-            reply: sentence ?? turn.reply,
+            reply: sentence ?? cleaned,
+            citations: cited,
             action,
             source: MODELS.chat,
             elapsedMs: Math.round(performance.now() - startedAt),

@@ -160,6 +160,9 @@ migration を追記するだけ）と、冪等な `masters.sql` の 2 つで、�
 | `..._search_customers` | `search_chunks.embedding` を `halfvec` に・**HNSW を落とす** / `search_customers()` / `customer_dossier()` / `find_customers_by_name()` |
 | `..._worker_login` | `worker_role` に LOGIN と `extensions` の usage |
 | `..._agent_plans` | `fact_vocabulary()` / `plan_fact_add()` |
+| `..._single_char_surname` | 1 文字の苗字を前方一致で引けるように |
+| `..._agent_decision` | `agent_messages` に `rejected_at` / `applied_action`（決定は一度きり） |
+| `..._agent_citations` | `agent_messages` に `citations`（答えの根拠。提案と同じく後から変えられない） |
 | `..._drop_order_photos` | 着装写真の撤回。バケット・表・関数・ポリシーを落とし、`delete_customer()` を写真抜きで差し替え |
 | `..._order_amount_breakdown` | 使わなかった金額 3 列を落とし、売上区分の内訳 4 列（すべて nullable）を足す |
 | `..._revenue_target_delete` | `revenue_targets` の DELETE を開ける（境界は INSERT / UPDATE と同じ） |

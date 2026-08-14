@@ -2,6 +2,7 @@
 
 import { ArrowDown, Sparkles } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AgentActionCard } from "@/components/agent/agent-action-card";
 import type { AgentAction, AgentMessage } from "@/lib/types";
@@ -104,6 +105,28 @@ export function AgentMessageList({
                   >
                     {message.body}
                   </p>
+                  {/* 根拠。タップでカルテの該当行へ飛ぶ。
+                      「出典: カルテ」で終わらせず、**その行まで**到達させるのが要点 */}
+                  {message.citations && message.citations.length > 0 && (
+                    <div className="flex max-w-[min(34rem,100%)] flex-wrap gap-1">
+                      {message.citations.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => onNavigate(`/customers/${c.customerId}#fact-${c.id}`)}
+                        >
+                          <Badge variant="outline" className="max-w-full font-normal">
+                            {/* ラベルと本文が同じ記録が多い（「ゴルフ / ゴルフ」）。
+                                同じなら 1 つでよい */}
+                            <span className="truncate">
+                              {c.label && c.label !== c.body ? `${c.label} / ` : ""}
+                              {c.body}
+                            </span>
+                          </Badge>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {message.action && (
                     <div className="w-full max-w-[min(34rem,100%)]">
                       <AgentActionCard

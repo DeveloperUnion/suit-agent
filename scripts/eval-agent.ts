@@ -26,10 +26,17 @@ type Expectation = {
   field?: string;
   status?: string;
 };
+type Turn = { utterance: string; expect: Expectation };
 type Case = {
   id: string;
-  utterance: string;
-  expect: Expectation;
+  /** 1 発話のケース */
+  utterance?: string;
+  expect?: Expectation;
+  /**
+   * 続けて話すケース。**単発だけ見ていると宛先の取り違えが再現しない** —
+   * 「古賀さんは…」→「あと出張も多いって」のように、名前の無い続きで起きる。
+   */
+  turns?: Turn[];
   /** 「開いているカルテ」と「直前に話していた相手」。氏名で書き、実行時に id へ直す */
   context?: { open?: string; recent?: string };
 };
@@ -40,7 +47,15 @@ type Case = {
  * **error を match に混ぜない。**混ぜると、鍵が切れて全部落ちている状態で
  * 「否定ケースは全部 ✓」という嘘の合格が出る（実際に一度出した）。
  */
-type Verdict = "match" | "mismatch" | "omission" | "hallucination" | "over_ask" | "error";
+type Verdict =
+  | "match"
+  | "mismatch"
+  | "omission"
+  | "hallucination"
+  | "over_ask"
+  /** 提案は合っているのに、返答文が食い違っている */
+  | "reply_drift"
+  | "error";
 
 const BASE = process.env.EVAL_BASE_URL ?? "http://localhost:3000";
 const SUPABASE = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:54321";
@@ -131,7 +146,11 @@ async function readStream(body: ReadableStream<Uint8Array>): Promise<DoneEvent> 
   return done;
 }
 
-function judge(expect: Expectation, action: Record<string, unknown> | undefined): Verdict {
+function judge(
+  expect: Expectation,
+  action: Record<string, unknown> | undefined,
+  reply: string,
+): Verdict {
   const got = (action?.kind as string | undefined) ?? null;
   if (expect.kind === null) {
     if (got === null) return "match";
@@ -153,6 +172,12 @@ function judge(expect: Expectation, action: Record<string, unknown> | undefined)
     const labels = (action?.labelNames ?? []) as string[];
     if (!expect.labels.every((l) => labels.includes(l))) return "mismatch";
   }
+
+  // **返答文も見る。**構造だけ見ていると、カードは正しいのに「別人の名前を言う」が
+  // 素通りする（実際にそれが最初の不具合だった）。いまは返答文をコードが action から
+  // 作っているので、名前が一致しないなら、その仕組みが壊れている。
+  if (expect.customer && customer && !reply.includes(expect.customer)) return "reply_drift";
+
   return "match";
 }
 
@@ -194,7 +219,14 @@ async function main() {
   // ここで落としておけば「seed が変わった」と「精度が落ちた」を取り違えない。
   const wanted = [
     ...new Set(
-      cases.flatMap((c) => [c.expect.customer, c.context?.open, c.context?.recent].filter(Boolean)),
+      cases.flatMap((c) =>
+        [
+          c.expect?.customer,
+          ...(c.turns ?? []).map((t) => t.expect.customer),
+          c.context?.open,
+          c.context?.recent,
+        ].filter(Boolean),
+      ),
     ),
   ] as string[];
   const missing: string[] = [];
@@ -211,39 +243,55 @@ async function main() {
 
   for (const c of cases) {
     const startedAt = Date.now();
-    let action: Record<string, unknown> | undefined;
+    const turns: Turn[] = c.turns ?? [{ utterance: c.utterance!, expect: c.expect! }];
+    // 会話は積み上げる。宛先の引き継ぎは、履歴と「直前の相手」が揃って初めて再現する
+    const history: { role: "user" | "assistant"; body: string }[] = [];
+    let recent: string | undefined = c.context?.recent ? await idOf(c.context.recent) : undefined;
+    let verdict: Verdict = "match";
+    let got = "—";
     let reply = "";
-    let failed = false;
-    try {
-      const res = await fetch(`${BASE}/api/agent`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          text: c.utterance,
-          history: [],
-          contextCustomerId: c.context?.open ? await idOf(c.context.open) : null,
-          recentCustomerId: c.context?.recent ? await idOf(c.context.recent) : null,
-        }),
-      });
-      if (!res.ok || !res.body) {
-        const detail = (await res.json().catch(() => ({}))) as { message?: string };
-        throw new Error(detail.message ?? `HTTP ${res.status}`);
+
+    for (const turn of turns) {
+      let action: Record<string, unknown> | undefined;
+      try {
+        const res = await fetch(`${BASE}/api/agent`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            text: turn.utterance,
+            history,
+            contextCustomerId: c.context?.open ? await idOf(c.context.open) : null,
+            recentCustomerId: recent ?? null,
+          }),
+        });
+        if (!res.ok || !res.body) {
+          const detail = (await res.json().catch(() => ({}))) as { message?: string };
+          throw new Error(detail.message ?? `HTTP ${res.status}`);
+        }
+        const done = await readStream(res.body);
+        action = done.action;
+        reply = done.reply ?? "";
+      } catch (error) {
+        verdict = "error";
+        reply = `エラー: ${error instanceof Error ? error.message : String(error)}`;
+        break;
       }
-      // 応答は進捗つきの流れ（SSE）。最後の done だけを見る
-      const done = await readStream(res.body);
-      action = done.action;
-      reply = done.reply ?? "";
-    } catch (error) {
-      failed = true;
-      reply = `エラー: ${error instanceof Error ? error.message : String(error)}`;
+
+      got = (action?.kind as string | undefined) ?? "—";
+      const v = judge(turn.expect, action, reply);
+      if (v !== "match") {
+        verdict = v;
+        break;
+      }
+      const customer = action?.customer as { id?: string } | undefined;
+      if (customer?.id) recent = customer.id;
+      history.push({ role: "user", body: turn.utterance }, { role: "assistant", body: reply });
     }
 
     rows.push({
       id: c.id,
-      // 落ちたものを判定に混ぜない。混ぜると、全部落ちている状態で
-      // 「否定ケースは全部 ✓」という嘘の合格が出る
-      verdict: failed ? "error" : judge(c.expect, action),
-      got: (action?.kind as string | undefined) ?? "—",
+      verdict,
+      got,
       ms: Date.now() - startedAt,
       reply: reply.replace(/\s+/g, " ").slice(0, 60),
     });
@@ -257,6 +305,7 @@ async function main() {
     omission: "✗ 出さなかった",
     hallucination: "✗ 出しすぎ",
     over_ask: "✗ 聞きすぎ",
+    reply_drift: "✗ 文言ずれ",
     error: "! 落ちた",
   };
   for (const r of rows) {
@@ -272,6 +321,7 @@ async function main() {
   // ここが 0 でないまま出さない。**捏造だけは頻度の問題ではない。**
   console.log(`出しすぎ      ${count("hallucination")}   ← 0 であること`);
   console.log(`聞きすぎ      ${count("over_ask")}   ← 聞き返せば済むと思っている`);
+  console.log(`文言ずれ      ${count("reply_drift")}   ← カードと返答が別のことを言う`);
   console.log(`落ちた        ${count("error")}`);
   const p50 = [...rows].sort((a, b) => a.ms - b.ms)[Math.floor(rows.length / 2)]?.ms;
   console.log(`所要 中央値   ${p50}ms`);

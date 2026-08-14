@@ -68,7 +68,12 @@ export function AgentPanel() {
           // agent_messages に入れる
           onProgress: setProgress,
         });
-        await appendAgentMessage({ role: "assistant", body: turn.reply, action: turn.action });
+        await appendAgentMessage({
+          role: "assistant",
+          body: turn.reply,
+          action: turn.action,
+          citations: turn.citations,
+        });
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "うまく聞き取れませんでした");
       } finally {

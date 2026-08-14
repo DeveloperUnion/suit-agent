@@ -1,4 +1,4 @@
-import type { AgentAction, AgentMessage, Uuid } from "@/lib/types";
+import type { AgentAction, AgentCitation, AgentMessage, Uuid } from "@/lib/types";
 import type { ExtractionMeta } from "@/lib/ai/extraction";
 import { getViewingStaffId } from "@/lib/auth/current-staff";
 import { postStream } from "@/lib/api/client";
@@ -19,6 +19,11 @@ export type AgentTurn = ExtractionMeta & {
   reply: string;
   /** 人が「適用」を押すまで書き込まない提案。検索結果もここに入る */
   action?: AgentAction;
+  /**
+   * 答えの根拠になった記録。**サーバが実際に返した id と突き合わせた後**のものだけ。
+   * タップでカルテの該当行へ飛ばす。
+   */
+  citations?: AgentCitation[];
 };
 
 export type AgentInterpretContext = {

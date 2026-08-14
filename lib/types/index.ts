@@ -579,6 +579,14 @@ export type CustomerFieldKey =
   | "industry"
   | "familyInfo";
 
+/** 答えの根拠になった記録 1 件。カルテの該当行へ飛ばすのに要るものだけ持つ */
+export type AgentCitation = {
+  id: Uuid;
+  customerId: Uuid;
+  label?: string;
+  body: string;
+};
+
 export type AgentMessage = {
   id: Uuid;
   /** 会話もスタッフごとに分ける。顧客と同じ境界を引く */
@@ -587,6 +595,8 @@ export type AgentMessage = {
   body: string;
   sentAt: IsoDateTime;
   action?: AgentAction;
+  /** 答えの根拠。会話は残るので、後から開き直しても辿れるように一緒に保存する */
+  citations?: AgentCitation[];
   /** 適用済みなら日時が入る。カードの適用ボタンはこれで消す */
   appliedAt?: IsoDateTime;
   /** 「違う」を押したなら日時が入る。適用と同じく一度きり */

@@ -1,4 +1,4 @@
-import type { AgentAction, AgentMessage, Uuid } from "@/lib/types";
+import type { AgentAction, AgentCitation, AgentMessage, Uuid } from "@/lib/types";
 import { supabase } from "@/lib/supabase/client";
 import { bump } from "@/lib/store/revision";
 
@@ -14,7 +14,7 @@ import { bump } from "@/lib/store/revision";
  */
 
 const COLUMNS =
-  "id, staffId:staff_id, role, body, action, appliedAt:applied_at, rejectedAt:rejected_at, sentAt:sent_at";
+  "id, staffId:staff_id, role, body, action, citations, appliedAt:applied_at, rejectedAt:rejected_at, sentAt:sent_at";
 
 /**
  * 画面に出す件数。
@@ -39,10 +39,12 @@ export async function listAgentMessages(limit = DEFAULT_LIMIT): Promise<AgentMes
       appliedAt: string | null;
       rejectedAt: string | null;
       action: AgentAction | null;
+      citations: AgentCitation[] | null;
     };
     return {
       ...m,
       action: m.action ?? undefined,
+      citations: m.citations ?? undefined,
       appliedAt: m.appliedAt ?? undefined,
       rejectedAt: m.rejectedAt ?? undefined,
     };
@@ -50,11 +52,19 @@ export async function listAgentMessages(limit = DEFAULT_LIMIT): Promise<AgentMes
 }
 
 export async function appendAgentMessage(
-  input: Pick<AgentMessage, "role" | "body"> & { action?: AgentAction },
+  input: Pick<AgentMessage, "role" | "body"> & {
+    action?: AgentAction;
+    citations?: AgentCitation[];
+  },
 ): Promise<Uuid> {
   const { data, error } = await supabase()
     .from("agent_messages")
-    .insert({ role: input.role, body: input.body, action: input.action ?? null })
+    .insert({
+      role: input.role,
+      body: input.body,
+      action: input.action ?? null,
+      citations: input.citations ?? null,
+    })
     .select("id")
     .single();
   if (error) throw error;

@@ -27,18 +27,32 @@ function subject(name: string, from: SubjectOrigin): string {
 }
 
 /**
+ * 実際に「語」として立つもの。**行き先を決める式はこれ 1 本にする。**
+ *
+ * カードの見出し・返答文・適用後のトーストが、それぞれ別に判定していた時期があり、
+ * **メモに入ったのにトーストだけ「パーソナルに残しました」と言っていた**
+ * （パーソナルはラベルの付いた行しか出さないので、探しても無い）。
+ * 適用ハンドラ（lib/data/agent-apply.ts）の絞り込みと同じ式をここに置き、
+ * 表示する側は全部これを見る。
+ *
+ * カード上でトグルを入れると promotedWords が増えるので、同じ関数が
+ * 提案時（まだ何も押していない）と適用時の両方で使える。
+ */
+export function factLabelNames(action: Extract<AgentAction, { kind: "add_fact" }>): string[] {
+  const promoted = new Set(action.promotedWords ?? []);
+  return action.labelNames.filter(
+    (n) => !action.newLabelNames.includes(n) || promoted.has(n),
+  );
+}
+
+/**
  * その提案が、チップ（パーソナル）ではなくメモとして入るか。
  *
- * **新しい語は既定で語彙にしない**ので、既存語が 1 つも無ければ行き先はメモになる。
- * ここが見ているのは**提案が出た時点**の行き先。カードは「パーソナルに追加」の
- * トグルで行き先が変わるので、見出しのほうは同じ式をその場の状態で計算し直す
- * （components/agent/agent-action-card.tsx）。式を変えるときは両方を直すこと。
+ * **新しい語は既定で語彙にしない**ので、語として立つものが 1 つも無ければ
+ * 行き先はカルテの「メモ」になる（「パーソナル」には出ない）。
  */
 export function isMemoOnly(action: AgentAction): boolean {
-  return (
-    action.kind === "add_fact" &&
-    action.labelNames.every((n) => action.newLabelNames.includes(n))
-  );
+  return action.kind === "add_fact" && factLabelNames(action).length === 0;
 }
 
 /** 「何を数えたか」。数と必ずセットで出す */
@@ -57,12 +71,13 @@ function searchScope(action: Extract<AgentAction, { kind: "search_result" }>): s
 export function actionSentence(action: AgentAction): string | null {
   switch (action.kind) {
     case "add_fact": {
-      const known = action.labelNames.filter((n) => !action.newLabelNames.includes(n));
+      const known = factLabelNames(action);
       const who = subject(action.customer.name, action.subjectFrom);
       if (known.length === 0) {
         return `${who}のメモに残す提案です。`;
       }
-      return `${who}のパーソナルに「${known.join("・")}」を足す提案です。`;
+      // 語が付いた行はチップとメモの両方に出る。カードの見出しと同じ言い方にする
+      return `${who}のパーソナルとメモに「${known.join("・")}」を残す提案です。`;
     }
     case "add_ng_note":
       return `${subject(action.customer.name, action.subjectFrom)}の注意事項に足す提案です。`;

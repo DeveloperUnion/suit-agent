@@ -7,6 +7,7 @@ import {
   invalidateFact,
   listLabels,
 } from "@/lib/data/facts";
+import { factLabelNames, isMemoOnly } from "@/lib/ai/action-sentence";
 import { listAnniversaries, saveAnniversaries, updateCustomer } from "@/lib/data/customers";
 import { resolveApproach } from "@/lib/data/approaches";
 import { factCategoryKey } from "@/lib/constants/facts";
@@ -38,10 +39,10 @@ export async function applyAgentAction(action: AgentAction): Promise<void> {
       //
       // 未昇格の新語は**行を作らない**。聞いた文（body）に既に含まれているので、
       // 確定検索の本文一致で引ける。行を分けると同じ文が何行も並ぶ。
-      const promoted = new Set(action.promotedWords ?? []);
-      const asLabel = action.labelNames.filter(
-        (n) => !action.newLabelNames.includes(n) || promoted.has(n),
-      );
+      //
+      // 絞り込みの式は factLabelNames に置いてある。カードの見出しもトーストも
+      // 同じ関数を見るので、**書いた場所と言った場所がずれない**。
+      const asLabel = factLabelNames(action);
 
       const labels = await listLabels();
       const categoryKey = factCategoryKey(action.categoryKey);
@@ -115,11 +116,21 @@ export function actionCustomerName(action: AgentAction): string | undefined {
   return "customer" in action ? action.customer.name : undefined;
 }
 
-/** 適用したときに出す一言。何が起きたかを言い切る */
+/**
+ * 適用したときに出す一言。**どこを見れば在るかを言い切る。**
+ *
+ * 記録は 1 行で、**必ずカルテの「メモ」に並ぶ**。語が付いた行だけが、加えて
+ * 「パーソナル」にチップとしても出る（personality-panel.tsx はラベルのある行だけを
+ * チップにし、メモ側は全行を時系列で出す）。
+ *
+ * ここを一律「パーソナルに残しました」と言っていたので、語にしなかったときは
+ * パーソナルを探しても無い、という形になっていた。逆に語にしたときも、
+ * メモにも残ることが伝わらない。行き先は 2 つとも名指しする。
+ */
 export function appliedMessage(action: AgentAction): string {
   switch (action.kind) {
     case "add_fact":
-      return "パーソナルに残しました";
+      return isMemoOnly(action) ? "メモに残しました" : "パーソナルとメモに残しました";
     case "add_ng_note":
       return "注意事項に残しました";
     case "update_customer":

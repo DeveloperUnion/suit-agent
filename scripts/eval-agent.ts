@@ -20,7 +20,14 @@
 import { readFileSync } from "node:fs";
 
 type Expectation = {
-  kind: string | null;
+  /**
+   * 期待する提案の種類。null は「提案を作らない」。
+   *
+   * **配列で書くと「どれでもよい」。**相手が決まらないターンの正解は 1 つに
+   * 絞れない（選択肢を出して聞き返しても、返答で名前を聞き直しても正しい）。
+   * 絞れないものを絞ると、正しい答えを失敗として数えることになる。
+   */
+  kind: string | null | (string | null)[];
   /** 件数まで見る。**数が合っていることが検索の存在理由**なので、種類だけでは足りない */
   exactCount?: number;
   customer?: string;
@@ -118,6 +125,8 @@ type DoneEvent = {
   message?: string;
   reply?: string;
   action?: Record<string, unknown>;
+  /** そのターンが誰の話だったか。次のターンの「直前の相手」になる */
+  subjectCustomerId?: string | null;
 };
 
 /**
@@ -156,6 +165,11 @@ function judge(
   reply: string,
 ): Verdict {
   const got = (action?.kind as string | undefined) ?? null;
+  if (Array.isArray(expect.kind)) {
+    // 「どれでもよい」。外したときだけ、提案を作ったかどうかで呼び分ける
+    if (expect.kind.includes(got)) return "match";
+    return got === null ? "omission" : "hallucination";
+  }
   if (expect.kind === null) {
     if (got === null) return "match";
     // 聞き返しは捏造とは別。無いものを作ったのではなく、答えられないことを
@@ -214,9 +228,17 @@ async function main() {
     return idCache.get(name);
   };
 
-  const cases = JSON.parse(
+  const all = JSON.parse(
     readFileSync(new URL("../lib/ai/eval/cases.json", import.meta.url), "utf8"),
   ) as Case[];
+  // 直したケースだけ回せるようにしておく（`npm run eval -- multi`）。
+  // 34 件を毎回流すと数分かかり、1 件直すたびに全部を待つことになる
+  const only = process.argv[2];
+  const cases = only ? all.filter((c) => c.id.includes(only)) : all;
+  if (cases.length === 0) {
+    console.error(`「${only}」に当たるケースがありません。`);
+    process.exit(1);
+  }
 
   // **先に、期待している顧客が実在するか確かめる。**
   //
@@ -260,6 +282,7 @@ async function main() {
 
     for (const turn of turns) {
       let action: Record<string, unknown> | undefined;
+      let subject: string | null = null;
       try {
         const res = await fetch(`${BASE}/api/agent`, {
           method: "POST",
@@ -278,6 +301,7 @@ async function main() {
         const done = await readStream(res.body);
         action = done.action;
         reply = done.reply ?? "";
+        subject = (done.subjectCustomerId as string | null | undefined) ?? null;
       } catch (error) {
         verdict = "error";
         reply = `エラー: ${error instanceof Error ? error.message : String(error)}`;
@@ -290,8 +314,10 @@ async function main() {
         verdict = v;
         break;
       }
-      const customer = action?.customer as { id?: string } | undefined;
-      if (customer?.id) recent = customer.id;
+      // 「直前の相手」の引き継ぎ方は画面と揃える（lib/ai/agent.ts の lastCustomerId）。
+      // サーバが決めた相手をそのまま使い、決まらなかったターンで足跡は切れる
+      if (subject) recent = subject;
+      else if (action) recent = undefined;
       history.push({ role: "user", body: turn.utterance }, { role: "assistant", body: reply });
     }
 

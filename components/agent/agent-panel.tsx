@@ -73,6 +73,9 @@ export function AgentPanel() {
           body: turn.reply,
           action: turn.action,
           citations: turn.citations,
+          // 誰の話だったか。次に名前が言われなかったときの宛先になるので、
+          // 会話と一緒に残す（開き直しても足跡が消えないように）
+          subjectCustomerId: turn.subjectCustomerId ?? undefined,
         });
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "うまく聞き取れませんでした");

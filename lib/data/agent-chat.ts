@@ -14,7 +14,7 @@ import { bump } from "@/lib/store/revision";
  */
 
 const COLUMNS =
-  "id, staffId:staff_id, role, body, action, citations, appliedAt:applied_at, rejectedAt:rejected_at, sentAt:sent_at";
+  "id, staffId:staff_id, role, body, action, citations, subjectCustomerId:subject_customer_id, appliedAt:applied_at, rejectedAt:rejected_at, sentAt:sent_at";
 
 /**
  * 画面に出す件数。
@@ -40,11 +40,13 @@ export async function listAgentMessages(limit = DEFAULT_LIMIT): Promise<AgentMes
       rejectedAt: string | null;
       action: AgentAction | null;
       citations: AgentCitation[] | null;
+      subjectCustomerId: Uuid | null;
     };
     return {
       ...m,
       action: m.action ?? undefined,
       citations: m.citations ?? undefined,
+      subjectCustomerId: m.subjectCustomerId ?? undefined,
       appliedAt: m.appliedAt ?? undefined,
       rejectedAt: m.rejectedAt ?? undefined,
     };
@@ -55,6 +57,7 @@ export async function appendAgentMessage(
   input: Pick<AgentMessage, "role" | "body"> & {
     action?: AgentAction;
     citations?: AgentCitation[];
+    subjectCustomerId?: Uuid;
   },
 ): Promise<Uuid> {
   const { data, error } = await supabase()
@@ -64,6 +67,8 @@ export async function appendAgentMessage(
       body: input.body,
       action: input.action ?? null,
       citations: input.citations ?? null,
+      // 誰の話だったかはサーバが道具の呼び方から決める。ここは運ぶだけ
+      subject_customer_id: input.subjectCustomerId ?? null,
     })
     .select("id")
     .single();

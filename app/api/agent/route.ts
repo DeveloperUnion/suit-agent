@@ -129,6 +129,19 @@ export async function POST(request: Request) {
     let action: AgentAction | undefined;
 
     /**
+     * このターンで**モデルが名指しした**顧客。
+     *
+     * 次のターンで名前が言われなかったときの宛先（＝「直前に話していた相手」）は、
+     * これを 1 人に絞れたときだけ立つ。以前は提案の相手だけを足跡にしていたので、
+     * **カルテを読んだだけ・聞き返しただけのターンが素通り**し、もっと前の提案の
+     * 相手が「直前」として残り続けた。
+     *
+     * サーバが自分で開いたカルテ（開いているカルテ・直前の相手のカルテ）は数えない。
+     * ここに入れると、いま話題にしていない人が毎ターン足跡を作り直してしまう。
+     */
+    const pinned = new Set<string>();
+
+    /**
      * 相手の決め方を検算する。
      *
      * **モデルの自己申告をそのまま信じない。**道具の選択は間違えないが、対象の
@@ -168,8 +181,22 @@ export async function POST(request: Request) {
             "どちらか当てずに propose_ask で聞き返してください（選択肢には氏名だけでなく会社名も添える）。",
         };
       }
-      const expected = from === "open_karte" ? contextId : recentId;
-      if (expected && expected !== customer.id) {
+      // 検算の相手には**生の値**を使う。recentId は「開いているカルテと別人のとき」
+      // だけ立つ値なので、そちらで比べると同一人物のときに検算が空振りする
+      const expected = from === "open_karte" ? contextId : body.recentCustomerId ?? null;
+      if (!expected) {
+        // **検算できない由来は通さない。**ここを素通りさせていたので、
+        // カルテを開いていない・直前の相手もいない状態では、モデルが
+        // recent_topic と名乗れば**どの顧客でも**宛先にできた。
+        return {
+          ok: false,
+          error:
+            from === "open_karte"
+              ? "いまカルテは開いていません。発話に名前があるなら spoken_name を、なければ propose_ask で聞き返してください。"
+              : "直前に誰の話をしていたかは決まっていません。発話に名前があるなら spoken_name を、なければ propose_ask で聞き返してください。",
+        };
+      }
+      if (expected !== customer.id) {
         return {
           ok: false,
           error:
@@ -235,6 +262,9 @@ export async function POST(request: Request) {
         case "find_customer": {
           const hits = await findCustomer(ctx, String(args.name ?? ""));
           hits.forEach((h) => remember(h));
+          // 1 人に定まったときだけ足跡にする。同姓が複数出たターンは
+          // 「誰の話か決まらなかった」ターンで、次の宛先にはできない
+          if (hits.length === 1) pinned.add(hits[0].id);
           return hits.map((h) => ({
             id: h.id,
             name: h.name,
@@ -243,8 +273,14 @@ export async function POST(request: Request) {
           }));
         }
 
-        case "get_customer":
-          return (await dossierOf(cid)) ?? { error: "そのカルテは開けませんでした。" };
+        case "get_customer": {
+          const dossier = await dossierOf(cid);
+          if (!dossier) return { error: "そのカルテは開けませんでした。" };
+          // 読んだ相手も足跡にする。「天野さんってどんな人だっけ」の次に
+          // 名前なしで話が続くのは普通で、そこで前の提案の相手へ飛ばれると困る
+          pinned.add(cid);
+          return dossier;
+        }
 
         case "propose_add_fact": {
           const labels = (Array.isArray(args.labels) ? (args.labels as string[]) : []).filter(
@@ -431,6 +467,9 @@ export async function POST(request: Request) {
                 if (typeof o.customerId === "string") {
                   const ref = await refOf(o.customerId);
                   if (!ref) return null;
+                  // 誰かを選ばせている以上、そのターンは相手が決まっていない。
+                  // 2 人を pinned に入れることで、足跡は立たない（1 人のときだけ立つ）
+                  pinned.add(o.customerId);
                   const dossier = dossiers.get(o.customerId);
                   const company = dossier?.customer.companyName;
                   const where =
@@ -543,11 +582,21 @@ export async function POST(request: Request) {
           // 「職業として記録します」と言いながらカードは「パーソナルに追加」になった。
           // 出所を 1 つにすれば、ずれようがない。
           const sentence = action ? actionSentence(action) : null;
+          // **そのターンが誰の話だったか。**次に名前が言われなかったときの宛先になる。
+          // 提案があればその相手。無ければ、モデルが名指しした顧客が 1 人に
+          // 定まったときだけ立てる（検索や、同姓が 2 人出た聞き返しでは立たない）。
+          const subjectCustomerId =
+            action && "customer" in action
+              ? action.customer.id
+              : pinned.size === 1
+                ? [...pinned][0]
+                : null;
           send({
             type: "done",
             reply: sentence ?? cleaned,
             citations: cited,
             action,
+            subjectCustomerId,
             source: MODELS.chat,
             elapsedMs: Math.round(performance.now() - startedAt),
           });

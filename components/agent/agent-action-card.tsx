@@ -104,7 +104,8 @@ export function AgentActionCard({
   if (action.kind === "ask") {
     return (
       <div className="flex flex-col gap-2 rounded-md border border-brand/25 bg-accent/40 p-3">
-        <span className="text-sm">{action.question}</span>
+        {/* 質問文はここに出さない。返答の吹き出しが同じ文（actionSentence が
+            action.question を返す）なので、並べると同じ問いが 2 回出る */}
         {/* 選択肢はそのまま答えになる文。押すと次の発話として送られるので、
             打ち直させない（片手で操作していることを前提にする） */}
         <ul className="flex flex-col gap-2">

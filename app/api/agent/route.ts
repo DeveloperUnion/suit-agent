@@ -11,6 +11,7 @@ import { AgentError, runTurn } from "@/lib/ai/agent-loop";
 import { AGENT_TOOLS } from "@/lib/ai/agent-schema";
 import { MODELS } from "@/lib/ai/models";
 import { contextLine, systemPrompt } from "@/lib/ai/prompt";
+import { mentionsName } from "@/lib/ai/spoken-name";
 import { errorResponse, requireStaff, type Caller } from "@/lib/api/auth";
 import {
   factVocabulary,
@@ -158,18 +159,38 @@ export async function POST(request: Request) {
       if (from !== "spoken_name" && from !== "open_karte" && from !== "recent_topic") {
         return { ok: false, error: "subjectFrom が要ります（spoken_name / open_karte / recent_topic）。" };
       }
+      // 発話に名前が出ているか。姓だけで呼ぶのが普通なので、姓でも照合する
+      // （判定は lib/ai/spoken-name.ts。空白の無い氏名でも通るようにしてある）
+      const spoken = mentionsName(text, customer.name);
       if (from === "spoken_name") {
-        // 発話に名字が出ているか。姓だけで話しかけるのが普通なので、姓で照合する
-        const family = customer.name.split(/[\s　]/)[0];
-        if (family && !text.includes(family)) {
+        if (!spoken) {
           return {
             ok: false,
             error:
-              `いまの発話に「${family}」は出てきません。名前で決めたのでなければ、` +
+              `いまの発話に ${customer.name} さんの名前は出てきません。名前で決めたのでなければ、` +
               "open_karte か recent_topic を選ぶか、どちらとも言えないなら propose_ask で聞き返してください。",
           };
         }
         return { ok: true, from };
+      }
+      // **申告より、発話に名前がある事実のほうが強い。**
+      //
+      // 「横川くん」と名前を言っているのに open_karte と申告され、下の
+      // 「開いているカルテと直前の相手が別人」に当たって聞き返していた。
+      // 人からは、名前を言ったのに誰の話か聞かれたようにしか見えない。
+      if (spoken) return { ok: true, from: "spoken_name" };
+      // この人の名前は出ていないのに、**別の人の名前が出ている**。
+      // 話題が移ったのに前の相手へ書きにいく形なので、当てずに聞き返させる
+      const other = [...refs.values()].find(
+        (r) => r.id !== customer.id && mentionsName(text, r.name),
+      );
+      if (other) {
+        return {
+          ok: false,
+          error:
+            `いまの発話に出ているのは ${other.name} さんの名前で、${customer.name} さんではありません。` +
+            "相手が違うなら名前の出ている方を、迷うなら propose_ask で聞き返してください。",
+        };
       }
       // 名前が言われていないのに、開いているカルテと直前の相手が別人。
       // ここで当てにいくと「黙って別人のカルテへ書く」が起きる（実際に起きた）

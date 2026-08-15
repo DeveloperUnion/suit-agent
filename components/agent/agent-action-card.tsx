@@ -5,9 +5,14 @@ import { ArrowRight, Check, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import type { AgentAction, AgentCustomerRef } from "@/lib/types";
-import { isMemoOnly } from "@/lib/ai/action-sentence";
 import { cn } from "@/lib/utils";
+
+/** この店でまだ使われていない語か。適用するまで fact_labels には入らない */
+function isNewWord(action: AgentAction, name: string): boolean {
+  return action.kind === "add_fact" && action.newLabelNames.includes(name);
+}
 
 /**
  * アシスタントの提案。
@@ -130,11 +135,16 @@ export function AgentActionCard({
     );
   }
 
-  // 見出しも実際の行き先に合わせる。新しい語しか無ければ、入るのはメモ
-  const label = isMemoOnly(action) ? "メモに追加" : PROPOSAL_LABELS[action.kind];
   const keep = action.kind === "add_fact"
     ? action.labelNames.filter((n) => !dropped.includes(n))
     : [];
+  // 語として立つもの＝この店で既に使われている語＋「パーソナルに追加」を入れた新語。
+  // 適用ハンドラ（lib/data/agent-apply.ts）の絞り込みと同じ式にしてある
+  const asLabel = keep.filter((n) => !isNewWord(action, n) || promoted.includes(n));
+  // 見出しは**いまの行き先**に合わせる。トグルを入れた瞬間に「メモに追加」から
+  // 「パーソナルに追加」へ変わる。押す前に、どこへ入るかが見出しで分かる
+  const memoOnly = action.kind === "add_fact" && asLabel.length === 0;
+  const label = memoOnly ? "メモに追加" : PROPOSAL_LABELS[action.kind];
 
   return (
     <Proposal
@@ -163,7 +173,10 @@ export function AgentActionCard({
                 {l}
               </Badge>
             ))}
-            {action.labelNames.map((l) => {
+            {/* 語として立つものだけを＋で出す。新語はトグルを入れるまでメモなので、
+                ここに出すと「パーソナルに入る」と読めてしまう（実際そう読まれた）。
+                トグルを入れるとこの行に増えるので、何が起きるかが目で追える */}
+            {action.labelNames.filter((l) => !isNewWord(action, l) || promoted.includes(l)).map((l) => {
               const off = dropped.includes(l);
               return (
                 // タップで外せる。「ゴルフとワイン」と聞こえて片方だけ違うのは
@@ -192,37 +205,35 @@ export function AgentActionCard({
           </div>
           {/* 新しい語は既定で走り書きのまま。店で共有する語彙にするかは人が決める。
               1 人にしか当てはまらない語（屋号・その人だけの肩書き）が混ざると、
-              「ゴルフが趣味な人」を引くための軸として役に立たなくなるため */}
+              「ゴルフが趣味な人」を引くための軸として役に立たなくなるため。
+              **「語にする」では何が起きるか分からない**と言われたので、
+              起きること（パーソナルに追加される）をそのまま見出しにしてある */}
           {action.newLabelNames.filter((n) => keep.includes(n)).length > 0 && !applied && (
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs text-muted-foreground">
-                下の語は、この店でまだ使われていません。このままならメモとして残ります。
-              </span>
-              <div className="flex flex-wrap gap-1">
-                {action.newLabelNames
-                  .filter((n) => keep.includes(n))
-                  .map((n) => {
-                    const on = promoted.includes(n);
-                    return (
-                      <button
-                        key={n}
-                        type="button"
-                        onClick={() =>
-                          setPromoted((p) =>
-                            p.includes(n) ? p.filter((x) => x !== n) : [...p, n],
-                          )
-                        }
-                      >
-                        <Badge
-                          variant={on ? "default" : "outline"}
-                          className={cn("font-normal", on && "bg-brand-fill text-primary-foreground")}
-                        >
-                          {on ? `${n} を語として登録` : `${n} を語にする`}
-                        </Badge>
-                      </button>
-                    );
-                  })}
-              </div>
+            <div className="flex flex-col gap-2">
+              {action.newLabelNames
+                .filter((n) => keep.includes(n))
+                .map((n) => {
+                  const on = promoted.includes(n);
+                  return (
+                    <Switch
+                      key={n}
+                      checked={on}
+                      onCheckedChange={() =>
+                        setPromoted((p) => (p.includes(n) ? p.filter((x) => x !== n) : [...p, n]))
+                      }
+                    >
+                      <span className="truncate text-sm font-medium">
+                        「{n}」をパーソナルに追加
+                      </span>
+                      {/* オフのままだと何が残るのかを書く。「残らない」と読まれない */}
+                      <span className="text-xs text-muted-foreground">
+                        {on
+                          ? "この店の語になり、ほかのお客様にも付けられます"
+                          : "オフのままなら、メモとして残ります"}
+                      </span>
+                    </Switch>
+                  );
+                })}
             </div>
           )}
           <span className="text-sm">{action.body}</span>

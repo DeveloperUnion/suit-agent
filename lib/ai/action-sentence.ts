@@ -30,7 +30,9 @@ function subject(name: string, from: SubjectOrigin): string {
  * その提案が、チップ（パーソナル）ではなくメモとして入るか。
  *
  * **新しい語は既定で語彙にしない**ので、既存語が 1 つも無ければ行き先はメモになる。
- * カードの見出しと返答文の両方がこれを見る — 片方だけ直すと、また出所が 2 つになる。
+ * ここが見ているのは**提案が出た時点**の行き先。カードは「パーソナルに追加」の
+ * トグルで行き先が変わるので、見出しのほうは同じ式をその場の状態で計算し直す
+ * （components/agent/agent-action-card.tsx）。式を変えるときは両方を直すこと。
  */
 export function isMemoOnly(action: AgentAction): boolean {
   return (

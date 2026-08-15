@@ -321,10 +321,20 @@ function buildAll(): Built {
     // 記念日としては意味があるので customer_anniversaries に残す。
     const firstPurchase = minimal ? undefined : daysAgo(int(200, 1600));
 
+    // 1 人だけ、姓と名のあいだに空白を入れない。
+    //
+    // 実際に画面から手で登録された顧客はこの形になる（「横川尚隆」）。
+    // 全員が空白ありだと、氏名を `split(" ")[0]` で姓として扱うコードが
+    // 手元では通ってしまう。**それで「横川くん」と名前を言っているのに
+    // 誰の話か聞き返される**不具合が本番の使い方でだけ出た。
+    // eval は細川（STAFF[0]）で入るので、その担当かつ**同姓のいない**顧客に付ける
+    // （同姓がいると、聞き返すのが正解になってしまい照合の検証にならない）
+    const handTyped = i === 26;
+
     const customer: Customer = {
       id,
-      name: `${sn} ${gn}`,
-      nameKana: `${snKana} ${gnKana}`,
+      name: handTyped ? `${sn}${gn}` : `${sn} ${gn}`,
+      nameKana: handTyped ? `${snKana}${gnKana}` : `${snKana} ${gnKana}`,
       birthDate: minimal ? undefined : `19${int(62, 92)}-${String(int(1, 12)).padStart(2, "0")}-${String(int(1, 28)).padStart(2, "0")}`,
       gender: "male",
       phone: `090-${int(1000, 9999)}-${int(1000, 9999)}`,

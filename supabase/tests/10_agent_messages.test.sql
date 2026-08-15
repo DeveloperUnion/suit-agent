@@ -8,7 +8,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(13);
+select plan(15);
 
 
 -- ── 道具 ────────────────────────────────────────────────
@@ -162,6 +162,31 @@ select throws_ok(
       where body like '三雲様%' $$,
   '23001', null,
   '適用していない提案に applied_action は入れられない'
+);
+
+
+-- ── 「誰の話だったか」も後から変えられない ──────────────
+--
+-- subject_customer_id は**次のターンの宛先**になる。ここが動くと、
+-- 過去の発言の相手が変わるだけでなく、これから出す提案の宛先も一緒に動く。
+-- 提案の中身と同じ強さで固定しておく。
+
+insert into public.customers (name, name_kana) values ('主語 太郎', 'しゅご たろう')
+returning id as subject_id \gset
+
+insert into public.agent_messages (role, body, subject_customer_id)
+values ('assistant', '主語様のカルテを読みました。', :'subject_id'::uuid);
+
+select is(
+  (select subject_customer_id from public.agent_messages where body like '主語様%'),
+  (select :'subject_id'::uuid),
+  '提案が無いターンにも「誰の話だったか」は残る（カルテを読んだだけでも足跡になる）'
+);
+
+select throws_ok(
+  $$ update public.agent_messages set subject_customer_id = null where body like '主語様%' $$,
+  '23001', null,
+  '「誰の話だったか」の書き換えはトリガーで落ちる'
 );
 
 

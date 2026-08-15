@@ -45,8 +45,13 @@ export const ORDER_PURPOSE_LABEL: Record<OrderPurpose, string> = {
  * 「何がいくら売れたか」。スーツは上下一式なので採寸側に対応する id が無い。
  *
  * **「その他」は作らない。**区分に当てはまらない売上は内訳に現れず、
- * 4つの和は合計（totalAmount）に届かないのが既定。合わないことを
- * 警告してはいけない — 合計欄のほうが正だから。
+ * 4つの和は合計（totalAmount）に届かないのが既定。合わないこと自体は
+ * 異常ではない — 合計欄のほうが正だから。DB に CHECK は張らない。
+ *
+ * ただし**打ち間違い（桁落ち・二重計上）も、区分に無い売上も、画面では
+ * まったく同じ「差がある」という形で現れる。**注記に留めていたときは前者だけが
+ * 黙って保存されていたので、保存の手前で1度だけ確認を挟むようにした
+ * （hasAmountGap）。直させるのではなく、見たことを確かめるための関門。
  */
 export const AMOUNT_CATEGORIES = [
   { key: "amountSuit", label: "スーツ" },
@@ -69,6 +74,19 @@ export function hasAmountBreakdown(breakdown: OrderAmountBreakdown): boolean {
 /** 入っている区分だけの合計。未入力（undefined）は 0 として扱わず飛ばす */
 export function sumAmountBreakdown(breakdown: OrderAmountBreakdown): number {
   return AMOUNT_CATEGORIES.reduce((sum, { key }) => sum + (breakdown[key] ?? 0), 0);
+}
+
+/**
+ * 合計と内訳の和が食い違っているか。保存の手前で確認を出すかの判定に使う。
+ *
+ * 内訳を1つも入れていない注文は対象外。「その他」区分を作らない以上、
+ * 内訳を付けない注文で差額を問うても意味がない。
+ *
+ * 金額を作る3経路（新規登録・発注書の取り込み・編集）が同じ判定を持たないよう、
+ * ここ1箇所に寄せる。
+ */
+export function hasAmountGap(total: number, breakdown: OrderAmountBreakdown): boolean {
+  return hasAmountBreakdown(breakdown) && sumAmountBreakdown(breakdown) !== total;
 }
 
 /*

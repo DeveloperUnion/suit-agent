@@ -10,6 +10,7 @@ import {
   SimilarCustomerList,
   useDifferentPersonGate,
 } from "@/components/customer/similar-customer-list";
+import { AmountGapDialog } from "@/components/order/amount-gap-dialog";
 import { AmountSection } from "@/components/order/amount-section";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { extractOrderSheet } from "@/lib/ai/extract-order-sheet";
 import { CONFIDENCE_WARN } from "@/lib/ai/extraction";
 import { ADJUSTMENT_MAP, MAX_ADJUSTMENTS } from "@/lib/constants/adjustments";
+import { hasAmountGap } from "@/lib/constants/labels";
 import { ITEM_TYPE_MAP } from "@/lib/constants/measurement-fields";
 import {
   buildImportPlan,
@@ -73,6 +75,7 @@ export function OrderSheetImportDialog({
   const [newName, setNewName] = useState("");
   const [newKana, setNewKana] = useState("");
   const [saving, setSaving] = useState(false);
+  const [gapOpen, setGapOpen] = useState(false);
 
   // 顧客が決まっていない取り込みだけ、紙の氏名で候補を引く
   const picking = customerId === undefined && plan !== null && plan.customerId === undefined;
@@ -88,6 +91,7 @@ export function OrderSheetImportDialog({
     setPlan(null);
     setNameMismatchAccepted(false);
     gate.reset();
+    setGapOpen(false);
     setNewName("");
     setNewKana("");
   };
@@ -146,8 +150,19 @@ export function OrderSheetImportDialog({
     plan.totalAmount > 0 &&
     (!nameMismatch || nameMismatchAccepted);
 
-  const handleSubmit = async () => {
-    if (!plan || !canSubmit) return;
+  // 内訳と合計が食い違っていたら、書き込む前に一度確かめる。
+  // ここで止めるのではなく、見たことを確かめるだけ（合計欄のほうが正）
+  const handleSubmit = () => {
+    if (!plan || !canSubmit || saving) return;
+    if (hasAmountGap(plan.totalAmount, plan.breakdown)) {
+      setGapOpen(true);
+      return;
+    }
+    void save();
+  };
+
+  const save = async () => {
+    if (!plan) return;
     setSaving(true);
     const resolved = plan as ResolvedImportPlan;
     const { sheetId } = await commitOrderSheetImport(resolved);
@@ -431,124 +446,140 @@ export function OrderSheetImportDialog({
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) reset();
-        onOpenChange(next);
-      }}
-    >
-      <DialogContent className="flex h-dvh max-h-dvh w-screen max-w-none flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:h-[92dvh] sm:w-[95vw] sm:max-w-4xl sm:rounded-md sm:border">
-        <DialogHeader className="shrink-0 space-y-0 border-b border-border px-4 py-3 text-left sm:px-6">
-          <span className="field-label">Order Sheet</span>
-          <DialogTitle className="font-heading text-base font-medium sm:text-lg">
-            発注書を取り込む{customerName ? ` — ${customerName} 様` : ""}
-          </DialogTitle>
-          <DialogDescription className="sr-only">
-            工場発注書を読み取り、内容を確認してから採寸票と注文を作成します。
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          if (!next) reset();
+          onOpenChange(next);
+        }}
+      >
+        <DialogContent className="flex h-dvh max-h-dvh w-screen max-w-none flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:h-[92dvh] sm:w-[95vw] sm:max-w-4xl sm:rounded-md sm:border">
+          <DialogHeader className="shrink-0 space-y-0 border-b border-border px-4 py-3 text-left sm:px-6">
+            <span className="field-label">Order Sheet</span>
+            <DialogTitle className="font-heading text-base font-medium sm:text-lg">
+              発注書を取り込む{customerName ? ` — ${customerName} 様` : ""}
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              工場発注書を読み取り、内容を確認してから採寸票と注文を作成します。
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto p-4 sm:p-6">
-          {phase === "select" && (
-            <div className="flex flex-col gap-3">
-              <FileDrop
-                accept="image/*,application/pdf"
-                onFile={handleFile}
-                label="工場発注書（PDF・画像）をここにドロップ"
-                hint="受注日・寸法・補正・生地・備考を読み取ります。紙は上がり寸のみのため、実寸欄は空のままになります。"
-              />
-              {onOpenManual && (
-                <p className="text-sm text-muted-foreground">
-                  紙が手元に無い場合は{" "}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onOpenChange(false);
-                      onOpenManual();
-                    }}
-                    className="text-brand underline underline-offset-2"
-                  >
-                    › 手で入力する
-                  </button>
-                </p>
-              )}
-            </div>
-          )}
+          <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto p-4 sm:p-6">
+            {phase === "select" && (
+              <div className="flex flex-col gap-3">
+                <FileDrop
+                  accept="image/*,application/pdf"
+                  onFile={handleFile}
+                  label="工場発注書（PDF・画像）をここにドロップ"
+                  hint="受注日・寸法・補正・生地・備考を読み取ります。紙は上がり寸のみのため、実寸欄は空のままになります。"
+                />
+                {onOpenManual && (
+                  <p className="text-sm text-muted-foreground">
+                    紙が手元に無い場合は{" "}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onOpenChange(false);
+                        onOpenManual();
+                      }}
+                      className="text-brand underline underline-offset-2"
+                    >
+                      › 手で入力する
+                    </button>
+                  </p>
+                )}
+              </div>
+            )}
 
-          {/*
-            スケルトンではなく回るものを出す。読み取りは十数秒かかることがあり、
-            止まっているのか動いているのかが分からないと、もう一度ドロップされる。
-          */}
-          {phase === "reading" && (
-            <div className="flex flex-1 flex-col items-center justify-center gap-4">
-              <Loader2 className="size-8 animate-spin text-brand" />
-              <p className="text-sm text-muted-foreground">読み取り中です</p>
-            </div>
-          )}
+            {/*
+              スケルトンではなく回るものを出す。読み取りは十数秒かかることがあり、
+              止まっているのか動いているのかが分からないと、もう一度ドロップされる。
+            */}
+            {phase === "reading" && (
+              <div className="flex flex-1 flex-col items-center justify-center gap-4">
+                <Loader2 className="size-8 animate-spin text-brand" />
+                <p className="text-sm text-muted-foreground">読み取り中です</p>
+              </div>
+            )}
+
+            {phase === "confirm" && plan && (
+              <>
+                {nameMismatch && (
+                  <div className="flex flex-col gap-2 rounded-md border border-thread/30 bg-thread/5 p-3">
+                    <span className="flex items-start gap-1.5 text-sm text-thread">
+                      <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                      紙のお客様名「{plan.paperCustomerName}」は、いま開いている「{customerName}{" "}
+                      様」と一致しません。別の方の発注書かもしれません。
+                    </span>
+                    <label className="flex min-h-10 cursor-pointer items-center gap-2.5 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={nameMismatchAccepted}
+                        onChange={(e) => setNameMismatchAccepted(e.target.checked)}
+                        className="size-4 accent-[var(--brand)]"
+                      />
+                      同じ方として取り込む
+                    </label>
+                  </div>
+                )}
+
+                {plan.lowConfidenceCount > 0 && (
+                  <p className="text-sm text-thread">
+                    読み取りが不確かな寸法が {plan.lowConfidenceCount}項目あります。
+                    紙と見比べて直してください。
+                  </p>
+                )}
+
+                {steps.map((step, i) => (
+                  <Step key={step.title} number={i + 1} title={step.title}>
+                    {step.content}
+                  </Step>
+                ))}
+              </>
+            )}
+          </div>
 
           {phase === "confirm" && plan && (
-            <>
-              {nameMismatch && (
-                <div className="flex flex-col gap-2 rounded-md border border-thread/30 bg-thread/5 p-3">
-                  <span className="flex items-start gap-1.5 text-sm text-thread">
-                    <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                    紙のお客様名「{plan.paperCustomerName}」は、いま開いている「{customerName}{" "}
-                    様」と一致しません。別の方の発注書かもしれません。
-                  </span>
-                  <label className="flex min-h-10 cursor-pointer items-center gap-2.5 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={nameMismatchAccepted}
-                      onChange={(e) => setNameMismatchAccepted(e.target.checked)}
-                      className="size-4 accent-[var(--brand)]"
-                    />
-                    同じ方として取り込む
-                  </label>
-                </div>
-              )}
-
-              {plan.lowConfidenceCount > 0 && (
-                <p className="text-sm text-thread">
-                  読み取りが不確かな寸法が {plan.lowConfidenceCount}項目あります。
-                  紙と見比べて直してください。
-                </p>
-              )}
-
-              {steps.map((step, i) => (
-                <Step key={step.title} number={i + 1} title={step.title}>
-                  {step.content}
-                </Step>
-              ))}
-            </>
+            <DialogFooter className="shrink-0 flex-row items-center justify-between gap-3 border-t border-border px-4 py-3 sm:px-6">
+              <span className="text-xs text-muted-foreground">
+                {plan.customerId === undefined
+                  ? "取り込み先のお客様を決めてください。"
+                  : // 「取り込む」が押せない理由を出す。金額は紙から埋まらないので、
+                    // ここを黙って無効にすると理由が画面のどこにも無い
+                    plan.totalAmount <= 0
+                    ? "金額を入れてください。紙には載らないので、ここで入れる必要があります。"
+                    : `採寸票 1枚 と 注文 1件（${plan.sections
+                      .map((s) => ITEM_TYPE_MAP[s.itemTypeId].sheetLabel)
+                      .join(" / ")}）を作成します。`}
+              </span>
+              <span className="flex shrink-0 gap-2">
+                <Button variant="outline" className="h-11" onClick={() => onOpenChange(false)}>
+                  キャンセル
+                </Button>
+                <Button className="h-11" onClick={handleSubmit} disabled={!canSubmit || saving}>
+                  取り込む
+                </Button>
+              </span>
+            </DialogFooter>
           )}
-        </div>
+        </DialogContent>
+      </Dialog>
 
-        {phase === "confirm" && plan && (
-          <DialogFooter className="shrink-0 flex-row items-center justify-between gap-3 border-t border-border px-4 py-3 sm:px-6">
-            <span className="text-xs text-muted-foreground">
-              {plan.customerId === undefined
-                ? "取り込み先のお客様を決めてください。"
-                : // 「取り込む」が押せない理由を出す。金額は紙から埋まらないので、
-                  // ここを黙って無効にすると理由が画面のどこにも無い
-                  plan.totalAmount <= 0
-                  ? "金額を入れてください。紙には載らないので、ここで入れる必要があります。"
-                  : `採寸票 1枚 と 注文 1件（${plan.sections
-                    .map((s) => ITEM_TYPE_MAP[s.itemTypeId].sheetLabel)
-                    .join(" / ")}）を作成します。`}
-            </span>
-            <span className="flex shrink-0 gap-2">
-              <Button variant="outline" className="h-11" onClick={() => onOpenChange(false)}>
-                キャンセル
-              </Button>
-              <Button className="h-11" onClick={handleSubmit} disabled={!canSubmit || saving}>
-                取り込む
-              </Button>
-            </span>
-          </DialogFooter>
-        )}
-      </DialogContent>
-    </Dialog>
+      {plan && (
+        <AmountGapDialog
+          open={gapOpen}
+          onOpenChange={setGapOpen}
+          total={plan.totalAmount}
+          breakdown={plan.breakdown}
+          confirmLabel="取り込む"
+          onConfirm={() => {
+            setGapOpen(false);
+            void save();
+          }}
+        />
+      )}
+    </>
   );
 }
 

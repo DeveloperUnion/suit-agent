@@ -130,7 +130,11 @@ export function AmountSection({
 
           {/*
             差額は注記であってエラーではない。「その他」区分を作らない判断なので、
-            4 つの和が合計に届かないのが既定の状態。赤くしない。
+            4 つの和が合計に届かないのが既定の状態。**ここは赤くしない。**
+
+            ただし打ち間違い（桁落ち・二重計上）も画面ではまったく同じ形で現れるので、
+            **保存を押した先で 1 度だけ確認を挟む**（components/order/amount-gap-dialog.tsx）。
+            「戻って直す」を押した人が降りてくるのがこの欄なので、注記はこのまま残す。
           */}
           <p className="tnum text-xs text-muted-foreground">
             内訳の合計 ¥{formatAmount(breakdownTotal)}

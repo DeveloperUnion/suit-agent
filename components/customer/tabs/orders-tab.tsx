@@ -173,7 +173,8 @@ export function OrdersTab({ customerId }: { customerId: string }) {
  * のが普通の運用なのに 4 行ぶんの空欄が全部の注文カードに居座る。
  *
  * 合計との差も出さない。「その他」区分を作らない判断なので差が出るのが既定で、
- * カードは読むためのもの。差を確かめたい人は編集を開けば注記が出る。
+ * カードは読むためのもの。差を確かめたい人は編集を開けば注記が出るし、
+ * 差があるまま保存しようとすれば確認を求められる。
  */
 function AmountBreakdown({ order }: { order: OrderView }) {
   const entries = AMOUNT_CATEGORIES.filter(({ key }) => order[key] !== undefined);

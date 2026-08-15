@@ -247,5 +247,53 @@
       }
     ],
     "note": "実際に踏んだ形。黙って開いているカルテへ書かない"
+  },
+  {
+    "id": "count-1-交差",
+    "utterance": "ゴルフもワインも両方好きな人って誰かいる？",
+    "expect": {
+      "kind": "search_result",
+      "exactCount": 1
+    },
+    "note": "和集合は 4 名。交差の 1 名（時枝）を返さないと、正しい形で間違える"
+  },
+  {
+    "id": "count-2-否定",
+    "utterance": "ゴルフが趣味じゃない人を教えて",
+    "expect": {
+      "kind": "search_result",
+      "exactCount": 7
+    },
+    "note": "担当 10 名 − ゴルフ 3 名。肯定の 3 名を返すと正反対になる"
+  },
+  {
+    "id": "count-3-単純",
+    "utterance": "ネイビーが好きな人って何人いる？",
+    "expect": {
+      "kind": "search_result",
+      "exactCount": 4
+    }
+  },
+  {
+    "id": "count-4-除外つき",
+    "utterance": "ネイビーが好きでゴルフはやらない人",
+    "expect": {
+      "kind": "search_result",
+      "exactCount": 3
+    }
+  },
+  {
+    "id": "read-3-無い情報",
+    "utterance": "時枝さんの血液型わかる？",
+    "expect": {
+      "kind": null
+    }
+  },
+  {
+    "id": "neg-8-他スタッフの顧客",
+    "utterance": "白髭さんの担当してる顧客を教えて",
+    "expect": {
+      "kind": null
+    }
   }
 ]

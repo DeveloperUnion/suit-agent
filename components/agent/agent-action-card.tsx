@@ -45,23 +45,39 @@ export function AgentActionCard({
   const [dropped, setDropped] = useState<string[]>([]);
   // 「語として登録」を押した新語。**既定は空** — 新しい語は走り書きのまま残る
   const [promoted, setPromoted] = useState<string[]>([]);
+  const [expanded, setExpanded] = useState(false);
 
   if (action.kind === "search_result") {
+    // 大きい一覧は畳む。**落としているのではなく畳んでいる**と機械が言い切るので、
+    // 「見えていない分がある」という不安は残らない（否定検索だと 300 人中 297 人になる）
+    const shown = expanded ? action.customers : action.customers.slice(0, LIST_PREVIEW);
+    const hidden = action.customers.length - shown.length;
     return (
       <div className="flex flex-col gap-3">
         {/* 件数は一覧と別に出す。「12 名」と言い切れることがこの検索の存在理由で、
-            並べた数を人に数え直させない */}
+            並べた数を人に数え直させない。**何の数かも一緒に出す** —
+            「両方」と「いずれか」で同じ文言になると、取り違えに誰も気づけない */}
         <span className="field-label">
-          {action.keyword ? `${action.keyword} — ` : ""}
+          {action.keyword
+            ? `${action.keyword}の${action.match === "all" ? "全部" : "いずれか"}`
+            : ""}
+          {action.excluded?.length ? `（${action.excluded.join("・")}を除く）` : ""}
+          {action.keyword || action.excluded?.length ? " — " : ""}
           該当 {action.exactCount} 名
         </span>
         <ul className="flex flex-col gap-2">
-          {action.customers.map((customer) => (
+          {shown.map((customer) => (
             <li key={customer.id}>
               <CustomerRow customer={customer} highlight={action.keyword} onNavigate={onNavigate} />
             </li>
           ))}
         </ul>
+
+        {hidden > 0 && (
+          <Button variant="ghost" className="h-11 sm:h-9" onClick={() => setExpanded(true)}>
+            残り {hidden} 名を見る
+          </Button>
+        )}
 
         {/* 「近いもの」は該当者ではない。枠を分けて、そう書く */}
         {action.similar && action.similar.length > 0 && (
@@ -256,6 +272,9 @@ export function AgentActionCard({
     </Proposal>
   );
 }
+
+/** 最初に見せる人数。スマホの親指で流せる長さに抑える */
+const LIST_PREVIEW = 5;
 
 const PROPOSAL_LABELS: Record<string, string> = {
   add_fact: "パーソナルに追加",

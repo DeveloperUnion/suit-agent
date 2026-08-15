@@ -189,6 +189,8 @@ export async function POST(request: Request) {
           const result = await searchCustomers(ctx, {
             labels: Array.isArray(args.labels) ? (args.labels as string[]) : [],
             freeText: typeof args.freeText === "string" ? args.freeText : undefined,
+            match: args.match === "all" ? "all" : "any",
+            exclude: Array.isArray(args.exclude) ? (args.exclude as string[]) : [],
           });
           const customers = result.exact.map((c) =>
             remember({
@@ -206,6 +208,8 @@ export async function POST(request: Request) {
               .join("・"),
             customers,
             exactCount: result.exactCount,
+            match: result.match,
+            excluded: result.excluded?.length ? result.excluded : undefined,
             similar: result.similar.map((s) => ({
               customer: remember({ id: s.id, name: s.name, nameKana: s.nameKana }),
               content: s.content,
@@ -213,8 +217,15 @@ export async function POST(request: Request) {
           };
           // モデルには件数と、名前だけを返す。カルテの中身は渡さない
           // （一覧を描くのは画面で、モデルに並べ直させない）。
+          // モデルにも「何の数か」を返す。数だけ渡すと別の問いの答えに使われる
           return {
             exactCount: result.exactCount,
+            countMeans:
+              result.match === "all"
+                ? `${result.labels.join("・")} の全部に当てはまる人数`
+                : result.excluded.length > 0 && result.labels.length === 0
+                  ? `${result.excluded.join("・")} を除いた人数`
+                  : `${result.labels.join("・")} のいずれかに当てはまる人数`,
             exact: result.exact.map((c) => ({ id: c.id, name: c.name })),
             similar: result.similar.map((s) => ({ id: s.id, name: s.name, content: s.content })),
             similarAvailable: result.similarAvailable,

@@ -74,8 +74,24 @@ export const AGENT_TOOLS: Tool[] = [
   fn(
     "search_customers",
     "語で顧客を引く。確定検索（該当者を全員）と意味検索（近いもの）を両方走らせる。" +
-      "「ゴルフが趣味な人」のような網羅が要る問いも、これ 1 本でよい。",
+      "「ゴルフが趣味な人」のような網羅が要る問いも、これ 1 本でよい。" +
+      "**「両方」なら match=all、「〜じゃない人」なら exclude を使うこと。**" +
+      "既定は「いずれか」なので、そのまま使うと和集合の数を交差の答えにしてしまう。",
     {
+      match: {
+        type: "string",
+        enum: ["any", "all"],
+        description:
+          "any=渡した語の**いずれか**に当てはまる人（既定） / " +
+          "all=**全部**に当てはまる人。「ゴルフもワインも両方」は all。",
+      },
+      exclude: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "この語に当てはまる人を**外す**。「ゴルフが趣味じゃない人」は " +
+          "labels を空にして exclude に「ゴルフ」を入れる。",
+      },
       labels: {
         type: "array",
         items: { type: "string" },

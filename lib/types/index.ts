@@ -486,6 +486,13 @@ export type AgentAction =
       keyword: string;
       customers: AgentCustomerRef[];
       /**
+       * その件数が何の件数か。**数だけを持ち回ると取り違えが画面まで届く** —
+       * 「両方」と聞かれて和集合の数を答える、が実際に起きた。
+       */
+      match: "any" | "all";
+      /** 除外した語。「ゴルフを除く 7 名」と言い切るために持つ */
+      excluded?: string[];
+      /**
        * 該当した人数。customers.length と同じだが、別に持つ。
        * モデルが散文にする過程で列挙を削っても、数字だけは削れない形にしておく。
        */

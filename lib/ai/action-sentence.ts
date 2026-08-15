@@ -39,6 +39,19 @@ export function isMemoOnly(action: AgentAction): boolean {
   );
 }
 
+/** 「何を数えたか」。数と必ずセットで出す */
+function searchScope(action: Extract<AgentAction, { kind: "search_result" }>): string {
+  const words = action.keyword ? action.keyword.split("・").filter(Boolean) : [];
+  const parts: string[] = [];
+  if (words.length > 1) {
+    parts.push(`${words.join("・")}の${action.match === "all" ? "全部" : "いずれか"}`);
+  } else if (words.length === 1) {
+    parts.push(words[0]);
+  }
+  if (action.excluded?.length) parts.push(`${action.excluded.join("・")}を除く`);
+  return parts.length > 0 ? `${parts.join("・")}で、` : "";
+}
+
 export function actionSentence(action: AgentAction): string | null {
   switch (action.kind) {
     case "add_fact": {
@@ -64,11 +77,15 @@ export function actionSentence(action: AgentAction): string | null {
         action.status === "done" ? "連絡した" : "スキップ"
       }」にする提案です。`;
 
-    case "search_result":
-      // 件数だけ言い切る。一覧は画面が描くので、モデルにも並べ直させない
+    case "search_result": {
+      // 件数だけ言い切る。一覧は画面が描くので、モデルにも並べ直させない。
+      // **その数が何の数かを必ず添える。**「両方」と聞かれて和集合の数を答えて
+      // しまったとき、文言が同じなら人は気づけない。
+      const what = searchScope(action);
       return action.exactCount === 0
-        ? "該当する方はいませんでした。"
-        : `該当は ${action.exactCount} 名です。`;
+        ? `${what}該当する方はいませんでした。`
+        : `${what}該当は ${action.exactCount} 名です。`;
+    }
 
     case "ask":
       // 質問文はモデルが書いてよい（構造の言い換えではなく、会話そのものなので）

@@ -21,6 +21,8 @@ import { readFileSync } from "node:fs";
 
 type Expectation = {
   kind: string | null;
+  /** 件数まで見る。**数が合っていることが検索の存在理由**なので、種類だけでは足りない */
+  exactCount?: number;
   customer?: string;
   labels?: string[];
   field?: string;
@@ -55,6 +57,8 @@ type Verdict =
   | "over_ask"
   /** 提案は合っているのに、返答文が食い違っている */
   | "reply_drift"
+  /** 種類は合っているのに件数が違う。「両方」に和集合を返す類 */
+  | "wrong_count"
   | "error";
 
 const BASE = process.env.EVAL_BASE_URL ?? "http://localhost:3000";
@@ -164,6 +168,9 @@ function judge(
   const customer = (action?.customer as { name?: string } | undefined)?.name;
   if (expect.customer && customer !== expect.customer) return "mismatch";
   if (expect.status && action?.status !== expect.status) return "mismatch";
+  if (expect.exactCount !== undefined && action?.exactCount !== expect.exactCount) {
+    return "wrong_count";
+  }
   if (expect.field) {
     const changes = (action?.changes ?? []) as { field: string }[];
     if (!changes.some((c) => c.field === expect.field)) return "mismatch";
@@ -306,6 +313,7 @@ async function main() {
     hallucination: "✗ 出しすぎ",
     over_ask: "✗ 聞きすぎ",
     reply_drift: "✗ 文言ずれ",
+    wrong_count: "✗ 件数ちがい",
     error: "! 落ちた",
   };
   for (const r of rows) {
@@ -322,6 +330,7 @@ async function main() {
   console.log(`出しすぎ      ${count("hallucination")}   ← 0 であること`);
   console.log(`聞きすぎ      ${count("over_ask")}   ← 聞き返せば済むと思っている`);
   console.log(`文言ずれ      ${count("reply_drift")}   ← カードと返答が別のことを言う`);
+  console.log(`件数ちがい    ${count("wrong_count")}   ← 種類は合っているのに数が違う`);
   console.log(`落ちた        ${count("error")}`);
   const p50 = [...rows].sort((a, b) => a.ms - b.ms)[Math.floor(rows.length / 2)]?.ms;
   console.log(`所要 中央値   ${p50}ms`);

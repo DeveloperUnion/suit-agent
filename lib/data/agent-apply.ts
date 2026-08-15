@@ -117,17 +117,20 @@ export function actionCustomerName(action: AgentAction): string | undefined {
 }
 
 /**
- * 適用したときに出す一言。何が起きたかを言い切る。
+ * 適用したときに出す一言。**どこを見れば在るかを言い切る。**
  *
- * **行き先を名指しする。**新しい語をそのままにすると入るのはカルテの「メモ」で、
- * 「パーソナル」にはラベルの付いた行しか出ない。それを一律「パーソナルに
- * 残しました」と言っていたので、パーソナルに追加されたと読めてしまい、
- * 探しても無い、という形になっていた。
+ * 記録は 1 行で、**必ずカルテの「メモ」に並ぶ**。語が付いた行だけが、加えて
+ * 「パーソナル」にチップとしても出る（personality-panel.tsx はラベルのある行だけを
+ * チップにし、メモ側は全行を時系列で出す）。
+ *
+ * ここを一律「パーソナルに残しました」と言っていたので、語にしなかったときは
+ * パーソナルを探しても無い、という形になっていた。逆に語にしたときも、
+ * メモにも残ることが伝わらない。行き先は 2 つとも名指しする。
  */
 export function appliedMessage(action: AgentAction): string {
   switch (action.kind) {
     case "add_fact":
-      return isMemoOnly(action) ? "カルテのメモに残しました" : "パーソナルに残しました";
+      return isMemoOnly(action) ? "メモに残しました" : "パーソナルとメモに残しました";
     case "add_ng_note":
       return "注意事項に残しました";
     case "update_customer":

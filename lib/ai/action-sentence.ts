@@ -76,7 +76,8 @@ export function actionSentence(action: AgentAction): string | null {
       if (known.length === 0) {
         return `${who}のメモに残す提案です。`;
       }
-      return `${who}のパーソナルに「${known.join("・")}」を足す提案です。`;
+      // 語が付いた行はチップとメモの両方に出る。カードの見出しと同じ言い方にする
+      return `${who}のパーソナルとメモに「${known.join("・")}」を残す提案です。`;
     }
     case "add_ng_note":
       return `${subject(action.customer.name, action.subjectFrom)}の注意事項に足す提案です。`;

@@ -287,7 +287,9 @@ export function AgentActionCard({
 const LIST_PREVIEW = 5;
 
 const PROPOSAL_LABELS: Record<string, string> = {
-  add_fact: "パーソナルに追加",
+  // 語が付いた行は、パーソナルのチップとメモの両方に出る（同じ 1 行）。
+  // 片方だけ書くと、もう片方を探さない
+  add_fact: "パーソナルとメモに追加",
   add_ng_note: "注意事項に追加",
   update_customer: "カルテの項目を更新",
   add_anniversary: "記念日を追加",

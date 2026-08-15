@@ -31,3 +31,18 @@ export const FACT_CATEGORIES: FactCategory[] = [
   { key: "lifestyle", label: "暮らし" },
   { key: "other", label: "その他" },
 ];
+
+/**
+ * 分類のキーを、必ず存在するものに正す。
+ *
+ * 会話から来た値をそのまま通すと、`fact_labels.category_key` の外部キーで落ちる。
+ * しかも落ちるのは**人が「適用」を押した瞬間**で、提案を作るところまでは通るので
+ * 押すまで分からない。分類は表示の見出しにしか使わない（検索の絞り込みには
+ * 使わない）ので、外したときの害は小さい。**迷ったら other に倒す**という
+ * 上の方針をそのまま機械にも当てる。
+ */
+export function factCategoryKey(value: unknown): string {
+  return typeof value === "string" && FACT_CATEGORIES.some((c) => c.key === value)
+    ? value
+    : "other";
+}

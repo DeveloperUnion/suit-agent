@@ -1,5 +1,20 @@
 import type { Tool } from "openai/resources/responses/responses";
 
+import { FACT_CATEGORIES } from "@/lib/constants/facts";
+
+/**
+ * 分類の選択肢は**定数から作る。手で並べない。**
+ *
+ * 手で書いていたときは `hobby / preference / work / life` と説明文に並べていて、
+ * `life` は存在せず（正しくは `lifestyle`）、`scene` と `other` が抜けていた。
+ * モデルは素直に `life` を返し、**適用を押した瞬間に外部キー違反で落ちた**
+ * （提案を作るところまでは通るので、押すまで分からない）。
+ *
+ * 発注書の読み取りが `FIELD_KEYS` を定数から閉じているのと同じ理由で、
+ * ここも正（lib/constants/facts.ts）から生やす。
+ */
+const FACT_CATEGORY_KEYS = FACT_CATEGORIES.map((c) => c.key);
+
 /**
  * モデルに渡す道具の一覧。
  *
@@ -14,6 +29,23 @@ import type { Tool } from "openai/resources/responses/responses";
 const customerId = {
   type: "string",
   description: "find_customer か search_customers が返した顧客の id。自分で作らないこと。",
+} as const;
+
+/**
+ * その相手をどうやって決めたか。**サーバが検算する。**
+ *
+ * 道具の選択は間違えないが、対象の取り違えは実測で 24〜26% 起きる。しかも
+ * プロンプトの注意書きでは直らないことが分かっている。申告させて、申告と
+ * 発話・画面の状態が食い違ったら**提案を作らせない**（差し戻す）形にしてある。
+ */
+const subjectFrom = {
+  type: "string",
+  enum: ["spoken_name", "open_karte", "recent_topic"],
+  description:
+    "この相手をどう決めたか。spoken_name=いまの発話に名前が出ていた（サーバが発話と照合する） / " +
+    "open_karte=いま開いているカルテだから / recent_topic=直前のやり取りで話していたから。" +
+    "**推測で埋めないこと。**開いているカルテと直前の相手が別人で、いまの発話に名前が無いなら、" +
+    "どちらも選ばずに propose_ask で聞き返す。",
 } as const;
 
 const quote = {
@@ -42,8 +74,24 @@ export const AGENT_TOOLS: Tool[] = [
   fn(
     "search_customers",
     "語で顧客を引く。確定検索（該当者を全員）と意味検索（近いもの）を両方走らせる。" +
-      "「ゴルフが趣味な人」のような網羅が要る問いも、これ 1 本でよい。",
+      "「ゴルフが趣味な人」のような網羅が要る問いも、これ 1 本でよい。" +
+      "**「両方」なら match=all、「〜じゃない人」なら exclude を使うこと。**" +
+      "既定は「いずれか」なので、そのまま使うと和集合の数を交差の答えにしてしまう。",
     {
+      match: {
+        type: "string",
+        enum: ["any", "all"],
+        description:
+          "any=渡した語の**いずれか**に当てはまる人（既定） / " +
+          "all=**全部**に当てはまる人。「ゴルフもワインも両方」は all。",
+      },
+      exclude: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "この語に当てはまる人を**外す**。「ゴルフが趣味じゃない人」は " +
+          "labels を空にして exclude に「ゴルフ」を入れる。",
+      },
       labels: {
         type: "array",
         items: { type: "string" },
@@ -76,9 +124,12 @@ export const AGENT_TOOLS: Tool[] = [
   // ── 提案する（書き込まない） ──
   fn(
     "propose_add_fact",
-    "パーソナル（趣味・好み・人となり）への追記を提案する。既存の語に寄る形で返る。",
+    "パーソナル（趣味・好み・人となり）への追記を提案する。既存の語に寄る形で返る。" +
+      "**「苦手」「避けている」「前に断られた」は、好みに見えても propose_add_ng_note のほう。**" +
+      "こちらは接客の材料として引っ張り出すもの、あちらは外すと事故になるもの。",
     {
       customerId,
+      subjectFrom,
       labels: {
         type: "array",
         items: { type: "string" },
@@ -90,24 +141,33 @@ export const AGENT_TOOLS: Tool[] = [
       },
       categoryKey: {
         type: "string",
-        description: "新しい語を作るときの分類。hobby / preference / work / life のいずれか。",
+        enum: FACT_CATEGORY_KEYS,
+        description:
+          "新しい語を作るときの分類。既存の語に寄ったときは使われない。迷ったら other。" +
+          FACT_CATEGORIES.map((c) => ` ${c.key}=${c.label}`).join(""),
       },
       quote,
     },
-    ["customerId", "labels", "body"],
+    ["customerId", "subjectFrom", "labels", "body"],
   ),
   fn(
     "propose_add_ng_note",
-    "注意事項への追記を提案する。カルテの一番上に無条件で出る枠なので、" +
-      "「これは絶対に外せない」ことだけに使う（断られた提案、避けている素材など）。",
-    { customerId, body: { type: "string" }, quote },
-    ["customerId", "body"],
+    "注意事項への追記を提案する。カルテの一番上に無条件で出る枠。" +
+      "**否定・禁止・忌避はすべてこちら**（「光沢のある生地は苦手」「ピークドラペルは断られた」" +
+      "「夜は電話しない」）。取りこぼすと次の接客で外すことになるので、迷ったらこちらへ倒す。",
+    { customerId, subjectFrom, body: { type: "string" }, quote },
+    ["customerId", "subjectFrom", "body"],
   ),
   fn(
     "propose_update_customer",
-    "顧客の項目の書き換えを提案する（連絡先・勤務先・居住地など）。氏名と担当は変えられない。",
+    "顧客の**決まった項目**の書き換えを提案する（連絡先・勤務先・居住地など）。" +
+      "氏名と担当は変えられない。" +
+      "**会話で聞いた「何をしている人か」はここではない。**「歯科医院をやってる」" +
+      "「パーソナルトレーナーです」は propose_add_fact（分類は work）で残す。" +
+      "ここに入るのは名刺や書類に印字されている値のように、項目が決まっているものだけ。",
     {
       customerId,
+      subjectFrom,
       changes: {
         type: "array",
         description: "変える項目。",
@@ -116,6 +176,16 @@ export const AGENT_TOOLS: Tool[] = [
           properties: {
             field: {
               type: "string",
+              // 名前だけでは取り違える。役職と業種と会社名は、日本語で言われると
+              // どれも「仕事のこと」に見える
+              description:
+                "nameKana=フリガナ / birthDate=生年月日 / gender=性別 / phone=電話 / " +
+                "email=メール / address=住所 / residencePrefecture=居住地の都道府県 / " +
+                "embroideryName=ネーム刺繍 / companyName=勤務先の会社名 / department=部署 / " +
+                "jobTitle=名刺に印字された肩書き（部長・代表取締役など。名刺に「歯科医師」と" +
+                "あればそれも入る） / " +
+                "industry=業種（勤務先が属する業界。決まった一覧から選ぶ） / " +
+                "familyInfo=ご家族のこと",
               enum: [
                 "nameKana",
                 "birthDate",
@@ -140,19 +210,20 @@ export const AGENT_TOOLS: Tool[] = [
       },
       quote,
     },
-    ["customerId", "changes"],
+    ["customerId", "subjectFrom", "changes"],
   ),
   fn(
     "propose_add_anniversary",
     "記念日の追加を提案する。誕生日・初回購入・結婚記念日など。",
     {
       customerId,
+      subjectFrom,
       type: { type: "string", enum: ["birthday", "first_purchase", "wedding", "other"] },
       date: { type: "string", description: "YYYY-MM-DD。年が分からなければ当年で構わない。" },
       label: { type: "string", description: "other のときの呼び名。" },
       quote,
     },
-    ["customerId", "type", "date"],
+    ["customerId", "subjectFrom", "type", "date"],
   ),
   fn(
     "propose_invalidate_fact",
@@ -160,6 +231,7 @@ export const AGENT_TOOLS: Tool[] = [
       "先に get_customer で対象の id を確かめること。",
     {
       customerId,
+      subjectFrom,
       factIds: {
         type: "array",
         items: { type: "string" },
@@ -167,26 +239,56 @@ export const AGENT_TOOLS: Tool[] = [
       },
       quote,
     },
-    ["customerId", "factIds"],
+    ["customerId", "subjectFrom", "factIds"],
   ),
   fn(
     "propose_resolve_approach",
     "「連絡した」「今回は見送る」と言われたときに、本日のアプローチを畳む提案をする。",
     {
       customerId,
+      subjectFrom,
       status: { type: "string", enum: ["done", "skipped"] },
       quote,
     },
-    ["customerId", "status"],
+    ["customerId", "subjectFrom", "status"],
   ),
   fn(
-    "propose_ask_customer",
-    "同じ名字が複数いて誰の話か決められないときに、候補を出して人に選ばせる。",
+    "propose_ask",
+    "決められないときに人へ聞く。**あらゆる曖昧さの落ち先はここ。**" +
+      "同姓が複数いる、誰の話か分からない、どの項目のことか分からない、いずれもこれを使う。" +
+      "道具で確かめられるなら聞かずに確かめること。" +
+      "**できないことを聞き返さない。**予定・売上・他スタッフの顧客のように、" +
+      "そもそも扱えない話題は、相手を絞っても答えられない。聞き返さず「できません」と答える。",
     {
-      candidateIds: { type: "array", items: { type: "string" } },
-      labels: { type: "array", items: { type: "string" }, description: "決まったら足す語。" },
-      body: { type: "string" },
+      question: { type: "string", description: "短く 1 つだけ聞く。" },
+      options: {
+        type: "array",
+        minItems: 2,
+        maxItems: 5,
+        description:
+          "選択肢。**そのまま答えになる完全な文**にする（「はい」「1」のような断片は不可）。" +
+          "**顧客を選ばせるときは answer を書かず customerId だけ渡すこと。**" +
+          "文言と手がかり（会社名・開いているカルテかどうか）はこちらで作ります。",
+        items: {
+          type: "object",
+          properties: {
+            customerId: {
+              type: "string",
+              description:
+                "顧客を選ばせるとき。find_customer などが返した id。" +
+                "これを渡した選択肢の文言はサーバが作るので、answer は要りません。",
+            },
+            answer: {
+              type: "string",
+              description: "顧客以外の選択肢のとき。押されたらこの文が次の発話として送られる。",
+            },
+            hint: { type: "string", description: "選ぶ手がかり。" },
+          },
+          required: [],
+          additionalProperties: false,
+        },
+      },
     },
-    ["candidateIds", "body"],
+    ["question", "options"],
   ),
 ];

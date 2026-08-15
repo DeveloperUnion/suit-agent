@@ -43,6 +43,10 @@ type SearchResult = {
     matched: { factId: string; label: string | null; body: string }[];
   }[];
   exactCount: number;
+  /** その数が何の数か。取り違えを画面まで運ばないために、数と一緒に持ち回る */
+  match: "any" | "all";
+  labels: string[];
+  excluded: string[];
   similar: { id: string; name: string; nameKana: string; content: string; distance: number }[];
   similarAvailable: boolean;
 };
@@ -58,7 +62,7 @@ type SearchResult = {
  */
 export async function searchCustomers(
   ctx: ToolContext,
-  input: { labels?: string[]; freeText?: string },
+  input: { labels?: string[]; freeText?: string; match?: "any" | "all"; exclude?: string[] },
 ): Promise<SearchResult> {
   const freeText = input.freeText?.trim() || null;
   let embedding: string | null = null;
@@ -71,6 +75,8 @@ export async function searchCustomers(
     p_free_text: freeText,
     p_query_embedding: embedding,
     p_viewing_staff_id: ctx.viewingStaffId,
+    p_match: input.match === "all" ? "all" : "any",
+    p_exclude: input.exclude ?? [],
   });
 }
 

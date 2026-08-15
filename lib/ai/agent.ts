@@ -1,4 +1,4 @@
-import type { AgentAction, AgentMessage, Uuid } from "@/lib/types";
+import type { AgentAction, AgentCitation, AgentMessage, Uuid } from "@/lib/types";
 import type { ExtractionMeta } from "@/lib/ai/extraction";
 import { getViewingStaffId } from "@/lib/auth/current-staff";
 import { postStream } from "@/lib/api/client";
@@ -19,6 +19,11 @@ export type AgentTurn = ExtractionMeta & {
   reply: string;
   /** 人が「適用」を押すまで書き込まない提案。検索結果もここに入る */
   action?: AgentAction;
+  /**
+   * 答えの根拠になった記録。**サーバが実際に返した id と突き合わせた後**のものだけ。
+   * タップでカルテの該当行へ飛ばす。
+   */
+  citations?: AgentCitation[];
 };
 
 export type AgentInterpretContext = {
@@ -38,6 +43,17 @@ export type AgentInterpretContext = {
 /** モデルへ渡すターン数。画面の表示件数とは別で、ここは短くてよい */
 const HISTORY_TURNS = 20;
 
+/**
+ * 直近の提案の相手。検索結果は相手が 1 人に定まらないので数えない。
+ */
+function lastCustomerId(history: AgentMessage[]): Uuid | null {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const action = history[i].action;
+    if (action && "customer" in action) return action.customer.id;
+  }
+  return null;
+}
+
 export async function interpret(
   input: string,
   ctx: AgentInterpretContext = {},
@@ -50,6 +66,9 @@ export async function interpret(
       // 管理者がスタッフを切り替えているときは、その人の顧客を見ている。
       // 画面に出ているものと答えを一致させる。
       viewingStaffId: getViewingStaffId(),
+      // 直前に誰の話をしていたか。カルテを開いたまま別の人の話をするのは
+      // 普通にあるので、開いているカルテだけでは宛先が決まらない。
+      recentCustomerId: lastCustomerId(ctx.history ?? []),
       history: (ctx.history ?? []).slice(-HISTORY_TURNS).map((m) => ({
         role: m.role,
         body: m.body,

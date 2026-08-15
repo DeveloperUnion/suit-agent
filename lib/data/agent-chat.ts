@@ -1,4 +1,4 @@
-import type { AgentAction, AgentMessage, Uuid } from "@/lib/types";
+import type { AgentAction, AgentCitation, AgentMessage, Uuid } from "@/lib/types";
 import { supabase } from "@/lib/supabase/client";
 import { bump } from "@/lib/store/revision";
 
@@ -13,7 +13,8 @@ import { bump } from "@/lib/store/revision";
  * 同じ関数が既定値になっている。他人の会話は覗けないし、他人名義でも書けない。
  */
 
-const COLUMNS = "id, staffId:staff_id, role, body, action, appliedAt:applied_at, sentAt:sent_at";
+const COLUMNS =
+  "id, staffId:staff_id, role, body, action, citations, appliedAt:applied_at, rejectedAt:rejected_at, sentAt:sent_at";
 
 /**
  * 画面に出す件数。
@@ -34,21 +35,36 @@ export async function listAgentMessages(limit = DEFAULT_LIMIT): Promise<AgentMes
     .limit(limit);
   if (error) throw error;
   return (data ?? []).reverse().map((r) => {
-    const m = r as unknown as AgentMessage & { appliedAt: string | null; action: AgentAction | null };
+    const m = r as unknown as AgentMessage & {
+      appliedAt: string | null;
+      rejectedAt: string | null;
+      action: AgentAction | null;
+      citations: AgentCitation[] | null;
+    };
     return {
       ...m,
       action: m.action ?? undefined,
+      citations: m.citations ?? undefined,
       appliedAt: m.appliedAt ?? undefined,
+      rejectedAt: m.rejectedAt ?? undefined,
     };
   });
 }
 
 export async function appendAgentMessage(
-  input: Pick<AgentMessage, "role" | "body"> & { action?: AgentAction },
+  input: Pick<AgentMessage, "role" | "body"> & {
+    action?: AgentAction;
+    citations?: AgentCitation[];
+  },
 ): Promise<Uuid> {
   const { data, error } = await supabase()
     .from("agent_messages")
-    .insert({ role: input.role, body: input.body, action: input.action ?? null })
+    .insert({
+      role: input.role,
+      body: input.body,
+      action: input.action ?? null,
+      citations: input.citations ?? null,
+    })
     .select("id")
     .single();
   if (error) throw error;
@@ -62,10 +78,31 @@ export async function appendAgentMessage(
  * この列があることが「提案 → 適用」機構の本体。applied_at が NULL の間、
  * 提案は DB のどこにも反映されていない。
  */
-export async function markAgentActionApplied(messageId: Uuid): Promise<void> {
+export async function markAgentActionApplied(
+  messageId: Uuid,
+  appliedAction: AgentAction,
+): Promise<void> {
+  // **提案そのものではなく、人が見て押した形**を残す。カードの上でラベルを外したり
+  // 宛先を差し替えたりできるので、両者は食い違いうる。その差分が、注釈をつける手間
+  // ゼロで得られる「AI がどこを外したか」の記録になる。
   const { error } = await supabase()
     .from("agent_messages")
-    .update({ applied_at: new Date().toISOString() })
+    .update({ applied_at: new Date().toISOString(), applied_action: appliedAction })
+    .eq("id", messageId);
+  if (error) throw error;
+  bump();
+}
+
+/**
+ * 「違う」を押したときの記録。
+ *
+ * 書き込みは何も起きない。**残すこと自体が目的**で、押されなかった提案と
+ * 「見て、違うと判断した提案」は別物として数えられる必要がある。
+ */
+export async function rejectAgentAction(messageId: Uuid): Promise<void> {
+  const { error } = await supabase()
+    .from("agent_messages")
+    .update({ rejected_at: new Date().toISOString() })
     .eq("id", messageId);
   if (error) throw error;
   bump();

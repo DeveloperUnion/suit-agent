@@ -17,11 +17,12 @@ import {
   clearAgentMessages,
   listAgentMessages,
   markAgentActionApplied,
+  rejectAgentAction,
 } from "@/lib/data/agent-chat";
 import { useIsDesktop } from "@/lib/hooks/use-media-query";
 import { useQuery } from "@/lib/hooks/use-query";
 import { useVisualViewport } from "@/lib/hooks/use-visual-viewport";
-import type { AgentAction, AgentCustomerRef, AgentMessage } from "@/lib/types";
+import type { AgentAction, AgentMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -67,7 +68,12 @@ export function AgentPanel() {
           // agent_messages に入れる
           onProgress: setProgress,
         });
-        await appendAgentMessage({ role: "assistant", body: turn.reply, action: turn.action });
+        await appendAgentMessage({
+          role: "assistant",
+          body: turn.reply,
+          action: turn.action,
+          citations: turn.citations,
+        });
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "うまく聞き取れませんでした");
       } finally {
@@ -94,7 +100,8 @@ export function AgentPanel() {
       return;
     }
     try {
-      await markAgentActionApplied(message.id);
+      // 提案ではなく**押された形**を残す。差分がそのまま「AI がどこを外したか」になる
+      await markAgentActionApplied(message.id, action);
     } catch {
       // 適用は一度きり（agent_messages のトリガー）。二度押しはここで落ちるが、
       // 書き込み自体は上で終わっているので、成功として畳んでよい。
@@ -103,10 +110,31 @@ export function AgentPanel() {
     toast.success(appliedMessage(action), { description: actionCustomerName(action) });
   }, []);
 
-  /** 同姓の候補から選ばれたとき。誰の話かを言い直して、もう一度考えさせる */
-  const pickCustomer = useCallback(
-    async (customer: AgentCustomerRef) => {
-      await send(`${customer.name} さんのことです`);
+  /**
+   * 「違う」を押されたとき。
+   *
+   * 書き込みは起きない。**残すこと自体が目的**で、押されずに流れた提案と
+   * 「見て、違うと判断した提案」を別物として数えられるようにする。
+   */
+  const reject = useCallback(async (message: AgentMessage) => {
+    try {
+      await rejectAgentAction(message.id);
+    } catch {
+      // 決定は一度きり（DB のトリガー）。二度押しはここで落ちるが、
+      // 利用者から見れば「もう見送った」で同じなので黙って畳む
+    }
+  }, []);
+
+  /**
+   * 聞き返しの選択肢が押されたとき。
+   *
+   * 選択肢の文をそのまま次の発話として送る。サーバ側で道具を止めていないので、
+   * 「人が答えたものが道具の結果になる」形にはならないが、**打ち直させない**という
+   * 効果は同じ。片手で操作していることを前提にすると、ここが要点。
+   */
+  const answer = useCallback(
+    async (text: string) => {
+      await send(text);
     },
     [send],
   );
@@ -257,7 +285,8 @@ export function AgentPanel() {
             progress={progress}
             keyboardHeight={viewport?.height ?? 0}
             onApply={apply}
-            onPickCustomer={pickCustomer}
+            onReject={reject}
+            onAnswer={answer}
             onNavigate={navigateTo}
             onPickExample={send}
           />

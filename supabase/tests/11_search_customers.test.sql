@@ -9,7 +9,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(17);
+select plan(20);
 
 
 -- ── 道具 ────────────────────────────────────────────────
@@ -259,6 +259,42 @@ select is(
   app.plan_fact_add('e6c00000-0000-4000-8000-000000000099', array['ボルダリング']),
   null,
   '他スタッフの顧客には提案そのものを作らせない'
+);
+
+
+-- ── 苗字だけで引ける ────────────────────────────────────
+--
+-- 接客では「林さんゴルフ好きらしい」と苗字だけで話しかける。
+-- 1 文字の苗字（林・原・森・南）が引けないと、そこで会話が止まる。
+-- しかも「その人がいない」と「1 文字だから引かなかった」が区別できない形で止まる。
+
+select pg_temp.as_postgres();
+insert into public.customers (id, name, name_kana, staff_id)
+values ('e6c00000-0000-4000-8000-000000000020', '林 太郎',   'ハヤシ タロウ',   :'a_id'),
+       ('e6c00000-0000-4000-8000-000000000021', '小林 次郎', 'コバヤシ ジロウ', :'a_id'),
+       ('e6c00000-0000-4000-8000-000000000022', '林 花子',   'ハヤシ ハナコ',   :'a_id');
+
+select pg_temp.login_as(:'a_uid');
+
+select is(
+  jsonb_array_length(app.find_customers_by_name('林')),
+  2,
+  '1 文字の苗字でも引ける（林 太郎 と 林 花子）'
+);
+
+-- 1 文字を部分一致にすると台帳の半分が返る。前方一致に落としてあることを確かめる。
+select is(
+  (select count(*)::int from jsonb_array_elements(app.find_customers_by_name('林')) e
+    where e->>'name' = '小林 次郎'),
+  0,
+  '1 文字は前方一致。「林」で 小林 は拾わない'
+);
+
+-- 2 文字以上はこれまでどおり部分一致（カナや会社名でも引ける）。
+select is(
+  jsonb_array_length(app.find_customers_by_name('小林')),
+  1,
+  '2 文字以上は部分一致のまま'
 );
 
 

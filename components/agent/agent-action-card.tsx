@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import type { AgentAction, AgentCustomerRef } from "@/lib/types";
+import { isMemoOnly } from "@/lib/ai/action-sentence";
 import { cn } from "@/lib/utils";
 
 /** この店でまだ使われていない語か。適用するまで fact_labels には入らない */
@@ -138,13 +139,16 @@ export function AgentActionCard({
   const keep = action.kind === "add_fact"
     ? action.labelNames.filter((n) => !dropped.includes(n))
     : [];
-  // 語として立つもの＝この店で既に使われている語＋「パーソナルに追加」を入れた新語。
-  // 適用ハンドラ（lib/data/agent-apply.ts）の絞り込みと同じ式にしてある
-  const asLabel = keep.filter((n) => !isNewWord(action, n) || promoted.includes(n));
+  // **押したときに渡すものを先に組む。**見出しもこれを見る。
+  // 「見せた行き先」と「書き込む行き先」が別の式から出ていると、静かにずれる
+  // （メモに入ったのにトーストだけ「パーソナルに残しました」と言っていた）
+  const edited: AgentAction =
+    action.kind === "add_fact"
+      ? { ...action, labelNames: keep, promotedWords: promoted }
+      : action;
   // 見出しは**いまの行き先**に合わせる。トグルを入れた瞬間に「メモに追加」から
   // 「パーソナルに追加」へ変わる。押す前に、どこへ入るかが見出しで分かる
-  const memoOnly = action.kind === "add_fact" && asLabel.length === 0;
-  const label = memoOnly ? "メモに追加" : PROPOSAL_LABELS[action.kind];
+  const label = isMemoOnly(edited) ? "メモに追加" : PROPOSAL_LABELS[action.kind];
 
   return (
     <Proposal
@@ -156,13 +160,7 @@ export function AgentActionCard({
       rejected={rejected}
       onReject={onReject}
       disabled={action.kind === "add_fact" && keep.length === 0}
-      onApply={() =>
-        onApply(
-          action.kind === "add_fact"
-            ? { ...action, labelNames: keep, promotedWords: promoted }
-            : action,
-        )
-      }
+      onApply={() => onApply(edited)}
       onNavigate={onNavigate}
     >
       {action.kind === "add_fact" && (

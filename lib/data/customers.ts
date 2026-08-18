@@ -52,6 +52,7 @@ const CUSTOMER_COLUMNS = `
   embroideryName:embroidery_name,
   companyName:company_name, department, jobTitle:job_title, industry,
   familyInfo:family_info,
+  dominantHand:dominant_hand, dominantFoot:dominant_foot,
   staffId:staff_id, createdAt:created_at
 `;
 
@@ -409,6 +410,8 @@ function toRow(patch: Partial<Customer>): Record<string, unknown> {
     jobTitle: "job_title",
     industry: "industry",
     familyInfo: "family_info",
+    dominantHand: "dominant_hand",
+    dominantFoot: "dominant_foot",
     staffId: "staff_id",
     createdAt: "created_at",
   };

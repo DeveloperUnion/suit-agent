@@ -4,7 +4,7 @@ import { useCallback } from "react";
 import { ChevronRight } from "lucide-react";
 
 import { DiffBadge } from "@/components/common/diff-badge";
-import { EmptyState, SectionTitle } from "@/components/common/field";
+import { EmptyState, Field, SectionTitle } from "@/components/common/field";
 import { adjustmentLabel } from "@/lib/constants/adjustments";
 import { INPUT_METHOD_LABEL } from "@/lib/constants/labels";
 import { getSheetView, listSheets } from "@/lib/data/measurements";
@@ -56,6 +56,19 @@ export function MeasurementTab({
             <ChevronRight className="size-4" />
           </button>
         </div>
+
+        {/* 票が持つ身長・体重。アイテムごとの区画に入らないので、その手前に置く。
+            片方しか入っていない票もあるので、入っているものだけ出す */}
+        {view && (view.sheet.heightCm !== undefined || view.sheet.weightKg !== undefined) && (
+          <div className="flex flex-wrap gap-x-8 gap-y-2">
+            {view.sheet.heightCm !== undefined && (
+              <Field label="身長" value={`${view.sheet.heightCm} cm`} mono />
+            )}
+            {view.sheet.weightKg !== undefined && (
+              <Field label="体重" value={`${view.sheet.weightKg} kg`} mono />
+            )}
+          </div>
+        )}
 
         <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
           {sections.map((section) => (

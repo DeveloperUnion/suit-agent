@@ -166,8 +166,13 @@ migration を追記するだけ）と、冪等な `masters.sql` の 2 つで、�
 | `..._drop_order_photos` | 着装写真の撤回。バケット・表・関数・ポリシーを落とし、`delete_customer()` を写真抜きで差し替え |
 | `..._order_amount_breakdown` | 使わなかった金額 3 列を落とし、売上区分の内訳 4 列（すべて nullable）を足す |
 | `..._revenue_target_delete` | `revenue_targets` の DELETE を開ける（境界は INSERT / UPDATE と同じ） |
+| `..._dominant_side` | `customers` に `dominant_hand` / `dominant_foot`（right / left）。ビュー 2 本を作り直し、`customer_dossier()` にも足す |
 
-pgTAP 175 件。構造ガード（RLS 付け忘れ・`security_invoker` 忘れ）と、
+`c.*` で組んだビューは、列を足しても**自動では増えない**（`*` は作成時に展開されて
+固定される）。`customers` に列を足すときは `v_customers` と `v_approach_inputs` を
+落として作り直す — 列を減らすときと同じ手順になる。
+
+pgTAP 186 件。構造ガード（RLS 付け忘れ・`security_invoker` 忘れ）と、
 `lib/ai/` の import 制限は**わざと違反を作って検出することを確認済み**。
 
 アプリ側は `lib/data/*` 8 ファイルが supabase-js を見る。認証は

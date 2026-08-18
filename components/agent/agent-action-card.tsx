@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import type { AgentAction, AgentCustomerRef } from "@/lib/types";
 import { isMemoOnly } from "@/lib/ai/action-sentence";
+import { DOMINANT_SIDE_LABEL } from "@/lib/constants/customer-fields";
 import { cn } from "@/lib/utils";
 
 /** この店でまだ使われていない語か。適用するまで fact_labels には入らない */
@@ -247,9 +248,11 @@ export function AgentActionCard({
               <dt className="field-label">{c.label}</dt>
               {/* 現在値を必ず出す。何が何に変わるかを見ずに押させない */}
               <dd className="flex items-baseline gap-1.5">
-                <span className="text-muted-foreground line-through">{c.before || "（空）"}</span>
+                <span className="text-muted-foreground line-through">
+                  {fieldValueLabel(c.field, c.before) || "（空）"}
+                </span>
                 <ArrowRight className="size-3 text-muted-foreground" />
-                <span className="font-medium">{c.after}</span>
+                <span className="font-medium">{fieldValueLabel(c.field, c.after)}</span>
               </dd>
             </div>
           ))}
@@ -285,6 +288,19 @@ export function AgentActionCard({
 
 /** 最初に見せる人数。スマホの親指で流せる長さに抑える */
 const LIST_PREVIEW = 5;
+
+/**
+ * 差分に出す値の見せ方。
+ *
+ * 利き手・利き足は DB では right / left で持っているが、そのまま出すと
+ * 「right → left」と読ませることになる。押す前に何が変わるか分かることが
+ * このカードの役目なので、ここで日本語に直す（適用する値は変えない）。
+ */
+function fieldValueLabel(field: string, value: string | undefined): string {
+  if (value === undefined) return "";
+  if (field !== "dominantHand" && field !== "dominantFoot") return value;
+  return DOMINANT_SIDE_LABEL[value as keyof typeof DOMINANT_SIDE_LABEL] ?? value;
+}
 
 const PROPOSAL_LABELS: Record<string, string> = {
   // 語が付いた行は、パーソナルのチップとメモの両方に出る（同じ 1 行）。

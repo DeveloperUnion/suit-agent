@@ -10,7 +10,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(36);
+select plan(37);
 
 
 -- ── 道具 ────────────────────────────────────────────────
@@ -186,6 +186,21 @@ select throws_ok(
   $$ insert into public.customers (name, name_kana) values ('NULL カナ', null) $$,
   '23502', null,
   'カナに NULL は入らない（空文字に均して渡すこと）'
+);
+select pg_temp.as_postgres();
+
+
+-- ── 利き手・利き足 ──────────────────────────────────────
+--
+-- 仕立てはどちらかに合わせて 1 つ決める必要があるので「両利き」は入れない。
+-- 決めていないなら未設定（NULL）のままにする。
+
+select pg_temp.login_as(:'a_uid');
+select throws_ok(
+  $$ update public.customers set dominant_hand = 'both'
+      where id = 'c1111111-1111-4111-8111-111111111111' $$,
+  '23514', null,
+  '利き手は right / left だけ（「両利き」は入らない）'
 );
 select pg_temp.as_postgres();
 

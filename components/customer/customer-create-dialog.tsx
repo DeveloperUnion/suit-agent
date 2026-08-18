@@ -32,6 +32,7 @@ import {
 import { isLowConfidence } from "@/lib/ai/extraction";
 import { createCustomer, findSimilarCustomers } from "@/lib/data/customers";
 import { useQuery } from "@/lib/hooks/use-query";
+import type { Uuid } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -123,19 +124,38 @@ export function CustomerCreateDialog({
     ? Object.values(card.fields).filter((f) => isLowConfidence(f)).length
     : 0;
 
+  /**
+   * 失敗しても必ず saving を戻す。
+   *
+   * ここが素の await だったとき、登録が失敗すると saving が true のまま固まり、
+   * ボタンが disabled のまま**二度と押せなくなっていた**。ダイアログは一覧に
+   * 常時マウントされているので、閉じて開き直しても戻らない（再読み込みが要る）。
+   * 何が原因で失敗したかにかかわらず、押した人はもう一度試せる状態に戻す。
+   */
   const handleSubmit = async () => {
     if (!canSubmit) return;
     setSaving(true);
-    const id = await createCustomer({
-      name: name.trim(),
-      nameKana: nameKana.trim(),
-      phone: phone.trim() || undefined,
-      // 名刺から読めた項目。createCustomer は Partial<Customer> を受けるのでそのまま渡せる
-      ...Object.fromEntries(
-        Object.entries(extra).filter(([, v]) => v !== undefined && v.trim() !== ""),
-      ),
-    });
-    setSaving(false);
+    let id: Uuid;
+    try {
+      id = await createCustomer({
+        name: name.trim(),
+        nameKana: nameKana.trim(),
+        phone: phone.trim() || undefined,
+        // 名刺から読めた項目。createCustomer は Partial<Customer> を受けるのでそのまま渡せる
+        ...Object.fromEntries(
+          Object.entries(extra).filter(([, v]) => v !== undefined && v.trim() !== ""),
+        ),
+      });
+    } catch (error) {
+      // 読み取りの失敗（handleCard）と同じ出し方に揃える。無言で終わると、
+      // 押した人には「効かないボタン」としか見えない。
+      toast.error("登録できませんでした", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+      return;
+    } finally {
+      setSaving(false);
+    }
     reset();
     onOpenChange(false);
     toast.success("登録しました", { description: "続けてカルテに詳細を足せます。" });

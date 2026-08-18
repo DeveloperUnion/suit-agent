@@ -25,6 +25,7 @@ import {
   listSheets,
   toggleAdjustment,
   updateMeasurementValue,
+  updateSheetBody,
 } from "@/lib/data/measurements";
 import { useQuery } from "@/lib/hooks/use-query";
 import { useIsPhone } from "@/lib/hooks/use-media-query";
@@ -159,6 +160,26 @@ export function MeasurementSheetView({
                     ))}
                   </SelectContent>
                 </Select>
+
+                {/*
+                  身長・体重は票の属性。アイテムに紐づかないので採寸の表には入らず、
+                  かといって顧客に 1 つ持たせると上書きで推移が消える
+                  （「3kg痩せた」に票を並べて答えられなくなる）。測定日の隣に置く。
+                */}
+                <BodyMetric
+                  label="身長"
+                  unit="cm"
+                  value={view.sheet.heightCm}
+                  editable={editing}
+                  onCommit={(v) => void updateSheetBody(view.sheet.id, { heightCm: v })}
+                />
+                <BodyMetric
+                  label="体重"
+                  unit="kg"
+                  value={view.sheet.weightKg}
+                  editable={editing}
+                  onCommit={(v) => void updateSheetBody(view.sheet.id, { weightKg: v })}
+                />
 
                 <div className="ml-auto flex items-center gap-2">
                   <Button
@@ -362,6 +383,71 @@ function SideHeading({ label }: { label: string }) {
     <div className="flex items-center gap-2">
       <span className="h-3 w-0.5 bg-brand" />
       <span className="font-heading text-sm font-medium tracking-wide">{label}</span>
+    </div>
+  );
+}
+
+/**
+ * 票が持つ身長・体重の 1 つ。
+ *
+ * 打っている途中の値は送らず、離れたときに確定させる（採寸の数値欄と同じ作法）。
+ * 空にしたら NULL に戻す — 0 で埋めると身長 0cm の票ができる。
+ */
+function BodyMetric({
+  label,
+  unit,
+  value,
+  editable,
+  onCommit,
+}: {
+  label: string;
+  unit: string;
+  value: number | undefined;
+  editable: boolean;
+  onCommit: (value: number | undefined) => void;
+}) {
+  const [draft, setDraft] = useState(value === undefined ? "" : String(value));
+  // 測定日を切り替えると外から値が変わる。描画中に同期する（副作用にしない）
+  const [synced, setSynced] = useState(value);
+  if (value !== synced) {
+    setSynced(value);
+    setDraft(value === undefined ? "" : String(value));
+  }
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="field-label">{label}</span>
+      {editable ? (
+        <span className="flex items-baseline gap-1">
+          <input
+            value={draft}
+            inputMode="decimal"
+            aria-label={`${label}（${unit}）`}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => {
+              const trimmed = draft.trim();
+              if (trimmed === "") return onCommit(undefined);
+              const parsed = Number(trimmed);
+              if (Number.isFinite(parsed)) onCommit(parsed);
+              else setDraft(value === undefined ? "" : String(value));
+            }}
+            className={cn(
+              "tnum h-10 w-16 rounded-sm border border-input bg-card px-1.5 text-right font-mono text-sm",
+              "focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand/30",
+            )}
+          />
+          <span className="text-xs text-muted-foreground">{unit}</span>
+        </span>
+      ) : (
+        <span
+          className={cn(
+            "tnum font-mono text-sm",
+            value === undefined && "text-muted-foreground/50",
+          )}
+        >
+          {value === undefined ? "—" : `${value} ${unit}`}
+        </span>
+      )}
     </div>
   );
 }

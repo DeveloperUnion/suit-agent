@@ -1,4 +1,4 @@
-import type { IsoMonth } from "@/lib/types";
+import type { IsoDate, IsoMonth, Uuid } from "@/lib/types";
 import { supabase } from "@/lib/supabase/client";
 import { getCurrentStaffId, getViewingStaff, getViewingStaffId } from "@/lib/auth/current-staff";
 import { listCustomers } from "@/lib/data/customers";
@@ -15,11 +15,29 @@ import { formatMonthLabel, monthProgress, recentMonths, toIsoMonth } from "@/lib
  * 見えることになり、週次で手を打つ材料にならない。従来の集計もこの基準だった。
  */
 
+/**
+ * 一覧に出す注文 1 件。
+ *
+ * 顧客単位にまとめず注文単位で持つ。件数は注文の数なので、まとめると
+ * 押した数字と並ぶ行数が食い違う（同じ月に 2 着作る人がいる）。
+ */
+export type MonthOrder = {
+  id: Uuid;
+  customerId: Uuid;
+  customerName: string;
+  customerCompanyName?: string;
+  orderNumber: string;
+  orderedAt: IsoDate;
+  totalAmount: number;
+};
+
 export type MonthlyRevenuePoint = {
   month: IsoMonth;
   label: string;
   revenue: number;
   orderCount: number;
+  /** その月の注文。受注日の新しい順。件数と必ず同じ数だけ入る */
+  orders: MonthOrder[];
   /** 目標未設定は null。0 と区別して、線そのものを引かない */
   target: number | null;
   /** まだ締まっていない月。閉じた月と同列に比べられない */
@@ -67,9 +85,22 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     listApproaches(),
     // 集計の単位は「担当している顧客の注文」。受注者で数えると、同僚が
     // 代わりに受けた注文が自分の実績から抜け落ちる。
+    //
+    // staff_id で明示的に絞る。RLS 任せにしていたときは、管理者は全顧客を
+    // 読めるぶんダッシュボードに**全スタッフの注文が混ざっていた**
+    // （設定画面の listMonthlyRevenue は絞っていたので、同じ月の実績が
+    // 2 つの画面で違う数字になっていた）。
+    //
+    // キャンセルは数えない。売上でも件数でもないものを実績に入れると、
+    // 目標の達成率が実態より高く出る。v_customers.order_count も除外している。
     supabase()
       .from("orders")
-      .select("ordered_at, total_amount, customers!inner ( staff_id )")
+      .select(
+        "id, order_number, ordered_at, total_amount," +
+          " customers!inner ( id, name, company_name, staff_id )",
+      )
+      .eq("customers.staff_id", staffId ?? "")
+      .neq("status", "cancelled")
       .gte("ordered_at", `${months[0]}-01`),
     supabase()
       .from("revenue_targets")
@@ -81,23 +112,40 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     ((targets.data ?? []) as { month: string; amount: number }[]).map((t) => [t.month, t.amount]),
   );
 
-  const revenueByMonth = new Map<IsoMonth, { revenue: number; count: number }>();
+  // 金額・件数・一覧を同じ 1 本のループから作る。別々に数えると、
+  // 押した「N件」と開いた一覧の行数がずれても誰も気づけない。
+  const revenueByMonth = new Map<IsoMonth, { revenue: number; orders: MonthOrder[] }>();
   for (const row of orders.data ?? []) {
-    const o = row as unknown as { ordered_at: string; total_amount: number };
+    const o = row as unknown as {
+      id: string;
+      order_number: string;
+      ordered_at: string;
+      total_amount: number;
+      customers: { id: string; name: string; company_name: string | null };
+    };
     const month = o.ordered_at.slice(0, 7);
-    const entry = revenueByMonth.get(month) ?? { revenue: 0, count: 0 };
+    const entry = revenueByMonth.get(month) ?? { revenue: 0, orders: [] };
     entry.revenue += o.total_amount;
-    entry.count += 1;
+    entry.orders.push({
+      id: o.id,
+      customerId: o.customers.id,
+      customerName: o.customers.name,
+      customerCompanyName: o.customers.company_name ?? undefined,
+      orderNumber: o.order_number,
+      orderedAt: o.ordered_at,
+      totalAmount: o.total_amount,
+    });
     revenueByMonth.set(month, entry);
   }
 
   const monthly: MonthlyRevenuePoint[] = months.map((month, i) => {
-    const entry = revenueByMonth.get(month) ?? { revenue: 0, count: 0 };
+    const entry = revenueByMonth.get(month) ?? { revenue: 0, orders: [] };
     return {
       month,
       label: formatMonthLabel(month, months[i - 1]),
       revenue: entry.revenue,
-      orderCount: entry.count,
+      orderCount: entry.orders.length,
+      orders: entry.orders.sort((a, b) => b.orderedAt.localeCompare(a.orderedAt)),
       target: targetByMonth.get(month) ?? null,
       isCurrent: month === currentMonth,
     };

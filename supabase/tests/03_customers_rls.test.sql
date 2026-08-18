@@ -10,7 +10,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(34);
+select plan(37);
 
 
 -- ── 道具 ────────────────────────────────────────────────
@@ -157,6 +157,52 @@ select is(
   't-a@example.com',
   'staff_id を省略すると登録した人が担当になる'
 );
+
+
+-- ── カナ無しの登録 ──────────────────────────────────────
+--
+-- 名刺にフリガナが印字されていることは稀で、読みは推測させていない
+-- （外した読みが登録されると次の接客で使えない）。画面も「氏名だけで登録できます」と
+-- 書いてある。**カナが空のまま通らないと、名刺からの登録がその場で落ちる。**
+--
+-- 実際、空文字を NULL に均していたせいで name_kana の not null に当たり、
+-- 名刺経路の登録が毎回失敗していた。ここまでのテストが全部カナを渡していたので
+-- 一度も検出できなかった。空文字は空文字のまま入ること。
+
+select pg_temp.login_as(:'a_uid');
+insert into public.customers (name, name_kana) values ('無カナ 太郎', '');
+select pg_temp.as_postgres();
+select is(
+  (select name_kana from public.customers where name = '無カナ 太郎'),
+  '',
+  '★ カナが空でも登録できる（名刺にフリガナが無いのが普通）'
+);
+
+-- 契約の裏側。**空文字は入るが NULL は入らない。**この 2 つを並べて置くのは、
+-- アプリ側（lib/data/customers.ts の toRow）が「未入力は NULL に均す」を
+-- この 2 列にも適用してはいけない理由が、ここを読めば分かるようにするため。
+select pg_temp.login_as(:'a_uid');
+select throws_ok(
+  $$ insert into public.customers (name, name_kana) values ('NULL カナ', null) $$,
+  '23502', null,
+  'カナに NULL は入らない（空文字に均して渡すこと）'
+);
+select pg_temp.as_postgres();
+
+
+-- ── 利き手・利き足 ──────────────────────────────────────
+--
+-- 仕立てはどちらかに合わせて 1 つ決める必要があるので「両利き」は入れない。
+-- 決めていないなら未設定（NULL）のままにする。
+
+select pg_temp.login_as(:'a_uid');
+select throws_ok(
+  $$ update public.customers set dominant_hand = 'both'
+      where id = 'c1111111-1111-4111-8111-111111111111' $$,
+  '23514', null,
+  '利き手は right / left だけ（「両利き」は入らない）'
+);
+select pg_temp.as_postgres();
 
 
 -- ── 削除 ────────────────────────────────────────────────

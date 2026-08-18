@@ -386,6 +386,22 @@ export async function POST(request: Request) {
                 "その人が何をしているかは項目ではないので、propose_add_fact（分類は work）で残してください。",
             };
           }
+          // 利き手・利き足も値の側を検査する。日本語で「左利きです」と言われた
+          // ままの「左」を入れられると、DB の check 制約に当たって無音で失敗する。
+          const badSide = incoming.find(
+            (c) =>
+              (c.field === "dominantHand" || c.field === "dominantFoot") &&
+              c.value !== "right" &&
+              c.value !== "left",
+          );
+          if (badSide) {
+            return {
+              error:
+                `${CUSTOMER_FIELD_LABELS[badSide.field]}は right か left で入れてください` +
+                `（「${badSide.value}」は入りません）。` +
+                "両利きは登録できないので、どちらかに決まっていなければ書き換えないでください。",
+            };
+          }
           const changes = incoming
             .map((c) => ({
               field: c.field,

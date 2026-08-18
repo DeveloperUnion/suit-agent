@@ -1,22 +1,38 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { ChevronRight } from "lucide-react";
 
 import { DaysSinceDelivery } from "@/components/common/days-since-delivery";
 import { PageHeader } from "@/components/common/page-header";
 import { GoalPanel } from "@/components/dashboard/goal-panel";
+import { MonthOrdersPanel } from "@/components/dashboard/month-orders-panel";
 import { RevenueChart } from "@/components/dashboard/revenue-chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TRIGGER_LABEL } from "@/lib/constants/labels";
-import { getDashboardSummary } from "@/lib/data/dashboard";
+import { getDashboardSummary, type MonthlyRevenuePoint } from "@/lib/data/dashboard";
 import { useQuery } from "@/lib/hooks/use-query";
+import type { IsoMonth } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export function DashboardView() {
   const loader = useCallback(() => getDashboardSummary(), []);
   const { data, loading } = useQuery(loader, []);
+
+  /**
+   * どの月の購入者一覧を、どちらの数字から開いているか。
+   *
+   * 今月は「今月の目標」の件数からもグラフの棒からも開けるので、月だけでは
+   * どちらの下に出すかが決まらない。押した数字のすぐ下に出さないと、
+   * 何を押して何が出たのかが繋がらない。
+   */
+  const [open, setOpen] = useState<{ month: IsoMonth; from: "goal" | "chart" } | null>(null);
+
+  const toggle = (month: IsoMonth, from: "goal" | "chart") =>
+    setOpen((current) =>
+      current?.month === month && current.from === from ? null : { month, from },
+    );
 
   if (loading || !data) {
     return (
@@ -39,9 +55,22 @@ export function DashboardView() {
         }
       />
 
-      <GoalPanel status={data.thisMonth} orderCount={data.thisMonthOrderCount} />
+      <GoalPanel
+        status={data.thisMonth}
+        orderCount={data.thisMonthOrderCount}
+        ordersOpen={open?.from === "goal"}
+        onToggleOrders={() => toggle(data.thisMonth.month, "goal")}
+      >
+        {open?.from === "goal" && <MonthOrders points={data.monthly} month={open.month} />}
+      </GoalPanel>
 
-      <RevenueChart points={data.monthly} />
+      <RevenueChart
+        points={data.monthly}
+        openMonth={open?.from === "chart" ? open.month : null}
+        onToggleMonth={(month) => toggle(month, "chart")}
+      >
+        {open?.from === "chart" && <MonthOrders points={data.monthly} month={open.month} />}
+      </RevenueChart>
 
       <section className="flex flex-col gap-3 rounded-md border border-border bg-card p-4 sm:p-5">
         <header className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border pb-2">
@@ -99,5 +128,15 @@ export function DashboardView() {
         )}
       </section>
     </div>
+  );
+}
+
+/** 月から、その月の一覧を引き当てて出すだけの繋ぎ */
+function MonthOrders({ points, month }: { points: MonthlyRevenuePoint[]; month: IsoMonth }) {
+  const point = points.find((p) => p.month === month);
+  if (!point) return null;
+  const [year, m] = point.month.split("-");
+  return (
+    <MonthOrdersPanel monthLabel={`${year}年${Number(m)}月`} orders={point.orders} />
   );
 }

@@ -185,7 +185,9 @@ export const AGENT_TOOLS: Tool[] = [
                 "jobTitle=名刺に印字された肩書き（部長・代表取締役など。名刺に「歯科医師」と" +
                 "あればそれも入る） / " +
                 "industry=業種（勤務先が属する業界。決まった一覧から選ぶ） / " +
-                "familyInfo=ご家族のこと",
+                "familyInfo=ご家族のこと / " +
+                "dominantHand=利き手・dominantFoot=利き足（値は right か left。" +
+                "「両利き」は入れられないので、どちらかに決まっていなければ書き換えない）",
               enum: [
                 "nameKana",
                 "birthDate",
@@ -200,6 +202,8 @@ export const AGENT_TOOLS: Tool[] = [
                 "jobTitle",
                 "industry",
                 "familyInfo",
+                "dominantHand",
+                "dominantFoot",
               ],
             },
             value: { type: "string", description: "新しい値。日付は YYYY-MM-DD。" },

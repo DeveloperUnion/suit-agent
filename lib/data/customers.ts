@@ -52,6 +52,7 @@ const CUSTOMER_COLUMNS = `
   embroideryName:embroidery_name,
   companyName:company_name, department, jobTitle:job_title, industry,
   familyInfo:family_info,
+  dominantHand:dominant_hand, dominantFoot:dominant_foot,
   staffId:staff_id, createdAt:created_at
 `;
 
@@ -313,10 +314,13 @@ export async function findSimilarCustomers(input: {
   const mine = rows.filter((r) => !r.is_other_staff).map((r) => r.id);
   const detail = new Map<string, CustomerListItem>();
   if (mine.length > 0) {
-    const { data: full } = await supabase()
+    // error を捨てると、取得に失敗した自担当の顧客まで下の分岐で isOtherStaff に落ち、
+    // 「カルテを開く」が押せない行として無音で並ぶ（担当者名も他人のものに見える）。
+    const { data: full, error: fullError } = await supabase()
       .from("v_customers")
       .select(LIST_COLUMNS)
       .in("id", mine);
+    if (fullError) throw fullError;
     for (const c of full ?? []) {
       const item = clean(c as unknown as CustomerListItem);
       detail.set(item.id, item);
@@ -406,6 +410,8 @@ function toRow(patch: Partial<Customer>): Record<string, unknown> {
     jobTitle: "job_title",
     industry: "industry",
     familyInfo: "family_info",
+    dominantHand: "dominant_hand",
+    dominantFoot: "dominant_foot",
     staffId: "staff_id",
     createdAt: "created_at",
   };
@@ -417,7 +423,14 @@ function toRow(patch: Partial<Customer>): Record<string, unknown> {
     // id と staffId はここでは動かさない。担当の付け替えは
     // app.deactivate_staff()（引き継ぎ）だけの仕事にしてある。
     if (key === "id" || key === "staffId") continue;
-    row[column] = value === "" ? null : value;
+    // 空文字は「未入力」なので NULL に均す。**ただし NOT NULL の 2 列は除く。**
+    // 名刺にフリガナが印字されていることは稀で（読みは推測させていない）、
+    // カナが空のまま登録すると name_kana に NULL が入って 23502 で弾かれ、
+    // 「氏名だけで登録できます」と書いてある画面がその場で失敗していた。
+    row[column] = value === "" && !NOT_NULL_COLUMNS.has(column) ? null : value;
   }
   return row;
 }
+
+/** NULL を入れられない列。空文字は空文字のまま送る */
+const NOT_NULL_COLUMNS = new Set(["name", "name_kana"]);

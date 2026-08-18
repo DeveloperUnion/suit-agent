@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ANNIVERSARY_LABEL } from "@/lib/constants/labels";
+import { DOMINANT_SIDE_LABEL } from "@/lib/constants/customer-fields";
 import { INDUSTRIES } from "@/lib/constants/industries";
 import { PREFECTURES } from "@/lib/constants/prefectures";
 import {
@@ -20,9 +21,10 @@ import {
   updateCustomer,
   type CustomerListItem,
 } from "@/lib/data/customers";
+import { getLatestBodyMetrics } from "@/lib/data/measurements";
 import { useQuery } from "@/lib/hooks/use-query";
-import type { AnniversaryType, Uuid } from "@/lib/types";
-import { daysUntilNextAnniversary, formatDateLong } from "@/lib/utils/date";
+import type { AnniversaryType, DominantSide, Uuid } from "@/lib/types";
+import { daysUntilNextAnniversary, formatDateDot, formatDateLong } from "@/lib/utils/date";
 
 const INPUT = "h-11 bg-card";
 
@@ -31,6 +33,8 @@ const NO_PREFECTURE = "__none__";
 const NO_INDUSTRY = "__none__";
 /** 選択肢に無い業種を手で入れるための番兵 */
 const OTHER_INDUSTRY = "__other__";
+/** 利き手・利き足の未設定 */
+const NO_SIDE = "__none__";
 
 const isKnownIndustry = (value: string) => (INDUSTRIES as readonly string[]).includes(value);
 
@@ -242,6 +246,17 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
           )}
         />
 
+        {/* ── からだ ── */}
+        {/*
+          仕立ての前提になる 4 項目。持ち場は 2 つに分かれる。
+
+          利き手・利き足は生涯変わらないので顧客の列。身長・体重は時間で動くので
+          採寸票の属性で、ここでは**最新の 1 枚を読むだけ**にしてある。
+          両方をここで編集できるようにすると同じ数字が 2 箇所に入り、
+          どちらが正か分からなくなる（採寸履歴があるのに古い値が上に出る、が起きる）。
+        */}
+        <BodySection customer={customer} onSave={save} />
+
         {/* ── パーソナル ── */}
         {/*
           チップは表示だけ。「＋」で足せるが、消す口は下の「メモ」に 1 つだけ置いてある。
@@ -420,5 +435,119 @@ export function ProfileTab({ customer }: { customer: CustomerListItem }) {
         </section>
       </div>
     </div>
+  );
+}
+
+/**
+ * からだ。仕立ての前提になる 4 項目を 1 箇所に集める。
+ *
+ * 利き手・利き足は編集でき、身長・体重は読むだけ。同じ枠に編集できる項目と
+ * できない項目が混ざるので、身長・体重には測った日を必ず添えて「これは採寸票の値だ」と
+ * 分かるようにし、直しに行く先も書いておく。
+ */
+function BodySection({
+  customer,
+  onSave,
+}: {
+  customer: CustomerListItem;
+  onSave: (patch: Parameters<typeof updateCustomer>[1], label: string) => Promise<void>;
+}) {
+  const bodyLoader = useCallback(() => getLatestBodyMetrics(customer.id), [customer.id]);
+  const { data: body } = useQuery(bodyLoader, [customer.id]);
+
+  const measured = body?.measuredAt ? `${formatDateDot(body.measuredAt)} 採寸` : undefined;
+
+  return (
+    <EditableSection
+      title="からだ"
+      initial={() => ({
+        dominantHand: customer.dominantHand ?? NO_SIDE,
+        dominantFoot: customer.dominantFoot ?? NO_SIDE,
+      })}
+      onSave={(v) =>
+        onSave(
+          {
+            // 番兵は「未設定に戻す」。EditableSection の値は string に均されるので、
+            // 番兵を除いた残りが DominantSide であることをここで示す
+            dominantHand: v.dominantHand === NO_SIDE ? undefined : (v.dominantHand as DominantSide),
+            dominantFoot: v.dominantFoot === NO_SIDE ? undefined : (v.dominantFoot as DominantSide),
+          },
+          "からだ",
+        )
+      }
+      view={
+        <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
+          <Field
+            label="利き手"
+            value={customer.dominantHand && DOMINANT_SIDE_LABEL[customer.dominantHand]}
+          />
+          <Field
+            label="利き足"
+            value={customer.dominantFoot && DOMINANT_SIDE_LABEL[customer.dominantFoot]}
+          />
+          {/* 採寸票の値。いつ測ったかが分からない身長体重は、目の前の人に
+              当てはまるのか判断できないので、日付を外さない */}
+          <Field
+            label={measured ? `身長（${measured}）` : "身長"}
+            value={body?.heightCm !== undefined ? `${body.heightCm} cm` : undefined}
+            mono
+          />
+          <Field
+            label={measured ? `体重（${measured}）` : "体重"}
+            value={body?.weightKg !== undefined ? `${body.weightKg} kg` : undefined}
+            mono
+          />
+        </div>
+      }
+      edit={(v, set) => (
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
+            <SideField
+              label="利き手"
+              value={v.dominantHand}
+              onChange={(next) => set({ dominantHand: next })}
+            />
+            <SideField
+              label="利き足"
+              value={v.dominantFoot}
+              onChange={(next) => set({ dominantFoot: next })}
+            />
+          </div>
+          {/* ここで身長・体重も直せるようにすると、採寸票の値と 2 箇所に分かれる。
+              直す先を 1 つに保ったまま、どこへ行けばよいかだけを伝える */}
+          <p className="text-sm text-muted-foreground">
+            身長・体重は採寸票に入ります。右上のシルエットから採寸を開いて入力してください。
+          </p>
+        </div>
+      )}
+    />
+  );
+}
+
+/** 右 / 左 / 未設定。Select は空文字を値に取れないので番兵を置く */
+function SideField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: DominantSide | typeof NO_SIDE) => void;
+}) {
+  return (
+    <FormField label={label}>
+      <Select value={value} onValueChange={(next) => onChange(next as DominantSide)}>
+        <SelectTrigger className={`${INPUT} w-full`}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={NO_SIDE}>未設定</SelectItem>
+          {/* 「両利き」は入れない。仕立てはどちらかに合わせて 1 つ決める必要があり、
+              決めていないことが決めた顔をして残るのを避ける */}
+          <SelectItem value="right">{DOMINANT_SIDE_LABEL.right}</SelectItem>
+          <SelectItem value="left">{DOMINANT_SIDE_LABEL.left}</SelectItem>
+        </SelectContent>
+      </Select>
+    </FormField>
   );
 }

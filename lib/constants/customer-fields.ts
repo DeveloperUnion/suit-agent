@@ -21,4 +21,9 @@ export const CUSTOMER_FIELD_LABELS: Record<CustomerFieldKey, string> = {
   jobTitle: "役職",
   industry: "業種",
   familyInfo: "ご家族",
+  dominantHand: "利き手",
+  dominantFoot: "利き足",
 };
+
+/** 利き手・利き足の表示。DB は right / left で持ち、画面と会話では日本語で扱う */
+export const DOMINANT_SIDE_LABEL = { right: "右", left: "左" } as const;

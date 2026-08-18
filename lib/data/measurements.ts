@@ -242,6 +242,8 @@ async function insertSheet(input: {
   inputMethod: MeasurementSheet["inputMethod"];
   sections: MeasurementSection[];
   adjustments: AppliedAdjustment[];
+  heightCm?: number;
+  weightKg?: number;
   note?: string;
 }): Promise<Uuid> {
   // recorded_by_staff_id は渡さない。DB の default が app.current_staff_id()。
@@ -251,6 +253,8 @@ async function insertSheet(input: {
       customer_id: input.customerId,
       measured_at: input.measuredAt,
       input_method: input.inputMethod,
+      height_cm: input.heightCm ?? null,
+      weight_kg: input.weightKg ?? null,
       note: input.note ?? null,
     })
     .select("id")
@@ -314,6 +318,10 @@ export async function createSheetFromPrevious(customerId: Uuid): Promise<Uuid> {
       { itemTypeId: "pants", values: {} },
     ],
     adjustments: previous?.adjustments ?? [],
+    // 身長・体重も前回値を引き継ぐ。毎回測り直すものではなく、
+    // 変わったときだけ直せばよい（この関数の「差分だけ入力できる」方針どおり）。
+    heightCm: previous?.heightCm,
+    weightKg: previous?.weightKg,
   });
 }
 
@@ -331,6 +339,50 @@ export async function createSheetFromImport(input: {
   note?: string;
 }): Promise<Uuid> {
   return insertSheet({ ...input, inputMethod: "ocr" });
+}
+
+/**
+ * 票そのものが持つ値（身長・体重）を書き換える。
+ *
+ * アイテム非依存なので measurement_values には入らない。票の属性として持つのは
+ * 「3kg痩せた」に票を並べて答えられるようにするためで、顧客に 1 つ持つと
+ * 上書きされて推移が消える。
+ */
+export async function updateSheetBody(
+  sheetId: Uuid,
+  patch: { heightCm?: number; weightKg?: number },
+): Promise<void> {
+  const row: Record<string, number | null> = {};
+  // 空欄は NULL に戻す。0 で埋めない —「未入力」と「0」は別物で、
+  // 埋めると身長 0cm の採寸票ができる。
+  if ("heightCm" in patch) row.height_cm = patch.heightCm ?? null;
+  if ("weightKg" in patch) row.weight_kg = patch.weightKg ?? null;
+  if (Object.keys(row).length === 0) return;
+
+  const { error } = await supabase().from("measurement_sheets").update(row).eq("id", sheetId);
+  if (error) throw error;
+  bump();
+}
+
+/**
+ * 最新の採寸票の身長・体重。カルテの「からだ」に出すためだけのもの。
+ *
+ * 採寸日を必ず一緒に返す。いつ測った値かが分からない身長体重は、
+ * 目の前の人に当てはまるのかを判断できない。
+ */
+export async function getLatestBodyMetrics(customerId: Uuid): Promise<{
+  heightCm?: number;
+  weightKg?: number;
+  measuredAt?: IsoDate;
+}> {
+  const sheets = await fetchSheets(customerId);
+  const latest = sheets[0];
+  if (!latest) return {};
+  return {
+    heightCm: latest.heightCm,
+    weightKg: latest.weightKg,
+    measuredAt: latest.measuredAt,
+  };
 }
 
 export async function updateMeasurementValue(

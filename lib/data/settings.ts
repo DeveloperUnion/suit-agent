@@ -217,6 +217,9 @@ export async function listMonthlyRevenue(
     .from("orders")
     .select("ordered_at, total_amount, customers!inner ( staff_id )")
     .eq("customers.staff_id", staffId)
+    // キャンセルは実績に入れない。ダッシュボードと同じ定義にしておかないと、
+    // 同じ月の「実績」が 2 つの画面で違う数字になる。
+    .neq("status", "cancelled")
     .gte("ordered_at", `${year}-01-01`)
     .lte("ordered_at", `${year}-12-31`);
   if (error) throw error;

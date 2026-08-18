@@ -94,6 +94,9 @@ export type CustomerNgNote = {
   createdAt: IsoDateTime;
 };
 
+/** 利き手・利き足。DB の check 制約と同じ 2 値 */
+export type DominantSide = "right" | "left";
+
 export type Customer = {
   id: Uuid;
   name: string;
@@ -132,6 +135,16 @@ export type Customer = {
    * customer_anniversaries の担当。
    */
   familyInfo?: string;
+
+  /**
+   * 利き手・利き足。袖丈の左右差と股下差の前提になるので、記録ではなく列で持つ。
+   * 生涯変わらないため人に付ける（時間で動く身長・体重は採寸票側）。
+   *
+   * 「両利き」は入れない。仕立てはどちらかに合わせて 1 つ決める必要があり、
+   * 両方を許すと決めていないことが決めた顔をして残る。迷うなら未設定のまま。
+   */
+  dominantHand?: DominantSide;
+  dominantFoot?: DominantSide;
 
   /*
    * 趣味・好み・タグ・メモ・NG は列として持たない。
@@ -584,7 +597,9 @@ export type CustomerFieldKey =
   | "department"
   | "jobTitle"
   | "industry"
-  | "familyInfo";
+  | "familyInfo"
+  | "dominantHand"
+  | "dominantFoot";
 
 /** 答えの根拠になった記録 1 件。カルテの該当行へ飛ばすのに要るものだけ持つ */
 export type AgentCitation = {

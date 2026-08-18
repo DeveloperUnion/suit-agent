@@ -1,4 +1,5 @@
 import type { MonthlyRevenuePoint } from "@/lib/data/dashboard";
+import type { IsoMonth } from "@/lib/types";
 import { formatAmount } from "@/lib/utils/date";
 import { cn } from "@/lib/utils";
 
@@ -11,7 +12,20 @@ import { cn } from "@/lib/utils";
  * 当月はまだ締まっておらず、閉じた月と同列に比べられない。
  * それを不透明度で示し、色相は使わない（色相は良し悪しの判断に取ってある）。
  */
-export function RevenueChart({ points }: { points: MonthlyRevenuePoint[] }) {
+export function RevenueChart({
+  points,
+  openMonth,
+  onToggleMonth,
+  children,
+}: {
+  points: MonthlyRevenuePoint[];
+  /** 購入者一覧を開いている月。バーの強調に使う */
+  openMonth: IsoMonth | null;
+  /** バーを押したとき。注文が 0 件の月は押せる形にしない */
+  onToggleMonth: (month: IsoMonth) => void;
+  /** 開いている購入者一覧。図の下に置く */
+  children?: React.ReactNode;
+}) {
   const max = Math.max(1, ...points.flatMap((p) => [p.revenue, p.target ?? 0]));
   const closedWithTarget = points.filter((p) => !p.isCurrent && p.target !== null).length;
 
@@ -23,42 +37,62 @@ export function RevenueChart({ points }: { points: MonthlyRevenuePoint[] }) {
       </header>
 
       <div className="flex items-end gap-1 sm:gap-1.5">
-        {points.map((point) => (
-          <div key={point.month} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
-            <div
-              className="relative h-32 w-full"
-              title={`${point.label} ¥${formatAmount(point.revenue)}（${
-                point.target === null ? "目標未設定" : `目標 ¥${formatAmount(point.target)}`
-              }／${point.orderCount}件）`}
-            >
+        {points.map((point) => {
+          const open = point.month === openMonth;
+          const label = `${point.label} ¥${formatAmount(point.revenue)}（${
+            point.target === null ? "目標未設定" : `目標 ¥${formatAmount(point.target)}`
+          }／${point.orderCount}件）`;
+
+          return (
+            <div key={point.month} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
+              {/*
+                バーそのものを押して、その月の購入者一覧を開く。
+                件数は title の hover にしか出ていなかったので、タッチ端末では
+                そもそも読めなかった。押せるようにしたことで両方が片付く。
+                注文が無い月は押しても出すものが無いので、ボタンにしない。
+              */}
+              <button
+                type="button"
+                disabled={point.orderCount === 0}
+                onClick={() => onToggleMonth(point.month)}
+                aria-pressed={open}
+                aria-label={`${label}。押すとご購入者の一覧が開きます`}
+                title={label}
+                className="relative h-32 w-full rounded-t-[3px] transition-colors enabled:hover:bg-accent/40 disabled:cursor-default"
+              >
+                <span
+                  className={cn(
+                    "absolute bottom-0 left-0 w-full rounded-t-[3px]",
+                    point.isCurrent ? "bg-brand-fill/45" : "bg-brand-fill",
+                    // 開いている月は、下の一覧がどの棒のものかが分かるよう縁取る
+                    open && "ring-2 ring-brand ring-offset-1 ring-offset-card",
+                  )}
+                  style={{
+                    height: `${Math.max(point.revenue === 0 ? 0 : 2, (point.revenue / max) * 100)}%`,
+                  }}
+                />
+                {point.target !== null && (
+                  <span
+                    className="absolute left-0 w-full border-t border-dashed border-thread/60"
+                    style={{ bottom: `${(point.target / max) * 100}%` }}
+                    aria-hidden
+                  />
+                )}
+              </button>
               <span
                 className={cn(
-                  "absolute bottom-0 w-full rounded-t-[3px]",
-                  point.isCurrent ? "bg-brand-fill/45" : "bg-brand-fill",
+                  "tnum whitespace-nowrap font-mono text-[0.625rem]",
+                  point.isCurrent || open ? "text-foreground" : "text-muted-foreground",
                 )}
-                style={{
-                  height: `${Math.max(point.revenue === 0 ? 0 : 2, (point.revenue / max) * 100)}%`,
-                }}
-              />
-              {point.target !== null && (
-                <span
-                  className="absolute w-full border-t border-dashed border-thread/60"
-                  style={{ bottom: `${(point.target / max) * 100}%` }}
-                  aria-hidden
-                />
-              )}
+              >
+                {point.label}
+              </span>
             </div>
-            <span
-              className={cn(
-                "tnum whitespace-nowrap font-mono text-[0.625rem]",
-                point.isCurrent ? "text-foreground" : "text-muted-foreground",
-              )}
-            >
-              {point.label}
-            </span>
-          </div>
-        ))}
+          );
+        })}
       </div>
+
+      {children}
 
       {/* 図から読めることは書かない。破線だけは図では言えないので注記する */}
       {closedWithTarget === 0 && (

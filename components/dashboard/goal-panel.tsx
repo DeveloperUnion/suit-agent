@@ -18,13 +18,31 @@ import { cn } from "@/lib/utils";
 export function GoalPanel({
   status,
   orderCount,
+  ordersOpen,
+  onToggleOrders,
+  children,
 }: {
   status: GoalStatus;
   /** 今月の受注件数。金額だけだと、単価の大きい1本で埋めたのか数を積んだのか分からない */
   orderCount: number;
+  /** 購入者一覧が開いているか。件数の見た目と aria-expanded に使う */
+  ordersOpen: boolean;
+  /** 件数を押したとき。0 件のときは押せる形にしない */
+  onToggleOrders: () => void;
+  /** 開いている購入者一覧。パネルの中に置き、押した数字を画面に残す */
+  children?: React.ReactNode;
 }) {
   const [year, month] = status.month.split("-");
   const progressPct = Math.round(status.progress * 100);
+
+  const count = (
+    <OrderCount
+      count={orderCount}
+      open={ordersOpen}
+      onToggle={onToggleOrders}
+      monthLabel={`${year}年${Number(month)}月`}
+    />
+  );
 
   if (status.target === null) {
     return (
@@ -39,9 +57,10 @@ export function GoalPanel({
             設定で登録する
           </Link>
         </p>
-        <p className="tnum font-mono text-sm">
-          実績 ¥{formatAmount(status.actual)}（{orderCount}件）
+        <p className="tnum flex items-baseline gap-1 font-mono text-sm">
+          実績 ¥{formatAmount(status.actual)}（{count}）
         </p>
+        {children}
       </section>
     );
   }
@@ -71,7 +90,7 @@ export function GoalPanel({
           </span>
         </div>
         <Figure label="目標" value={`¥${formatAmount(status.target)}`} />
-        <Figure label="実績" value={`¥${formatAmount(status.actual)}`} note={`${orderCount}件`} />
+        <Figure label="実績" value={`¥${formatAmount(status.actual)}`} note={count} />
         <Figure
           label="残り"
           value={status.remaining === 0 ? "達成" : `¥${formatAmount(status.remaining ?? 0)}`}
@@ -93,7 +112,45 @@ export function GoalPanel({
           aria-hidden
         />
       </div>
+
+      {children}
     </section>
+  );
+}
+
+/**
+ * 実績の横の件数。押すとその月の購入者一覧が開く。
+ *
+ * 数字がそのままボタンになっているので、押せることが見た目で分からない。
+ * 破線の下線を敷いて、色は brand に振る（実線にすると数字が読みにくくなる）。
+ * 0 件のときはボタンにしない — 押しても何も出ないものを押させない。
+ */
+function OrderCount({
+  count,
+  open,
+  onToggle,
+  monthLabel,
+}: {
+  count: number;
+  open: boolean;
+  onToggle: () => void;
+  monthLabel: string;
+}) {
+  if (count === 0) return <span className="tnum font-mono">0件</span>;
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      aria-label={`${monthLabel}の${count}件の注文をご購入者で見る`}
+      className={cn(
+        "tnum font-mono underline decoration-dashed underline-offset-4 transition-colors",
+        open ? "text-brand decoration-solid" : "text-brand/90 hover:text-brand",
+      )}
+    >
+      {count}件
+    </button>
   );
 }
 
@@ -120,7 +177,15 @@ function Header({ year, month }: { year: string; month: string }) {
   );
 }
 
-function Figure({ label, value, note }: { label: string; value: string; note?: string }) {
+function Figure({
+  label,
+  value,
+  note,
+}: {
+  label: string;
+  value: string;
+  note?: React.ReactNode;
+}) {
   return (
     <div className="flex flex-col gap-0.5">
       <span className="field-label">{label}</span>

@@ -39,6 +39,7 @@ import {
 import { createCustomer, findSimilarCustomers } from "@/lib/data/customers";
 import { useQuery } from "@/lib/hooks/use-query";
 import type { OrderItemFabric } from "@/lib/data/orders";
+import type { Uuid } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -127,7 +128,16 @@ export function OrderSheetImportDialog({
 
   const handlePickNew = async () => {
     if (!canPickNew) return;
-    const id = await createCustomer({ name: newName.trim(), nameKana: newKana.trim() });
+    let id: Uuid;
+    try {
+      id = await createCustomer({ name: newName.trim(), nameKana: newKana.trim() });
+    } catch (error) {
+      // 握り潰すと、押しても何も起きないボタンになる（取り込みは先へ進めない）
+      toast.error("顧客を登録できませんでした", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+      return;
+    }
     update({ customerId: id });
     toast.success("顧客を登録しました", { description: "続けて発注書を取り込みます。" });
   };

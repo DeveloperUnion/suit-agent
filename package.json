@@ -13,6 +13,7 @@
     "db:reset": "supabase db reset",
     "db:test": "supabase test db",
     "db:dev-seed": "tsx scripts/generate-dev-seed.ts",
+    "db:demo-seed": "tsx scripts/generate-demo-seed.ts",
     "eval": "tsx --env-file=.env.local scripts/eval-agent.ts"
   },
   "dependencies": {

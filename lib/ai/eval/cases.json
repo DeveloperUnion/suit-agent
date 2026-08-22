@@ -355,5 +355,1052 @@
       "customer": "九条健一郎"
     },
     "note": "画面から手で登録された顧客は氏名に空白が無い。姓を split(' ')[0] で取っていたときは照合が外れ、名前を言っているのに「どちらの方ですか」と聞き返した"
+  },
+  {
+    "id": "invalidate-1-語をやめた",
+    "utterance": "時枝さん、ゴルフはもうやめたそうです",
+    "expect": {
+      "kind": "invalidate_fact",
+      "customer": "時枝 正",
+      "factOf": "ゴルフ"
+    }
+  },
+  {
+    "id": "invalidate-2-言い換えで指す",
+    "utterance": "三雲さん、最近は本を読まなくなったみたいで",
+    "expect": {
+      "kind": "invalidate_fact",
+      "customer": "三雲 隆之介",
+      "factOf": "読書"
+    },
+    "note": "「本を読まなくなった」から既存の語「読書」へたどり着けるか。get_customer で id を確かめてから消す"
+  },
+  {
+    "id": "invalidate-3-持っていない語",
+    "utterance": "望月さん、ゴルフはもうやらないそうです",
+    "expect": {
+      "kind": [
+        null,
+        "ask"
+      ]
+    },
+    "note": "望月さんにゴルフの記録は無い。無いものを無効化する提案を作ってはいけない"
+  },
+  {
+    "id": "invalidate-4-まとめて2つ",
+    "utterance": "樋口 京平さん、登山も釣りももうやってないって",
+    "expect": {
+      "kind": "invalidate_fact",
+      "customer": "樋口 京平"
+    }
+  },
+  {
+    "id": "invalidate-5-無効化と追記が同時",
+    "utterance": "九条さん、ゴルフやめてテニス始めたって",
+    "expect": {
+      "kind": [
+        "invalidate_fact",
+        "add_fact"
+      ],
+      "customer": "九条健一郎"
+    },
+    "note": "提案は1ターンに1つしか持ち帰らない。どちらを選んでも正しいが、相手を外したら誤り"
+  },
+  {
+    "id": "invalidate-6-注意事項は対象外",
+    "utterance": "時枝さん、光沢のある生地もう大丈夫だそうです",
+    "expect": {
+      "kind": [
+        null,
+        "add_ng_note",
+        "add_fact"
+      ]
+    },
+    "note": "注意事項を無効化する道具は無い。パーソナルの無効化に化けさせないこと"
+  },
+  {
+    "id": "invalidate-7-好みが移った",
+    "utterance": "柏木 正さん、最近はネイビーよりグレーが好きらしい",
+    "expect": {
+      "kind": [
+        "add_fact",
+        "invalidate_fact"
+      ],
+      "customer": "柏木 正"
+    }
+  },
+  {
+    "id": "subject-1-開いているカルテが既定",
+    "context": {
+      "open": "時枝 正"
+    },
+    "utterance": "サウナにもハマってるらしい",
+    "expect": {
+      "kind": "add_fact",
+      "customer": "時枝 正",
+      "subject": "時枝 正"
+    },
+    "note": "開いているカルテだけがあり、直前の相手がいない。**ここは黙って書いてよい側**。ask に倒れるケースだけがあって、通る側が無かった"
+  },
+  {
+    "id": "subject-2-開いているカルテと直前が同じ人",
+    "context": {
+      "open": "柏木 正",
+      "recent": "柏木 正"
+    },
+    "utterance": "ゴルフを始めたそうです",
+    "expect": {
+      "kind": "add_fact",
+      "customer": "柏木 正",
+      "subject": "柏木 正"
+    }
+  },
+  {
+    "id": "subject-3-名前が出たら切り替わる",
+    "context": {
+      "open": "時枝 正"
+    },
+    "utterance": "望月さん、最近ゴルフを始めたそうです",
+    "expect": {
+      "kind": "add_fact",
+      "customer": "望月 正",
+      "subject": "望月 正"
+    },
+    "note": "開いているカルテがあっても、発話に名前があればそちらが勝つ"
+  },
+  {
+    "id": "subject-4-検索のあとは足跡が切れる",
+    "turns": [
+      {
+        "utterance": "サウナが趣味な人だれだっけ",
+        "expect": {
+          "kind": "search_result",
+          "exactCount": 2,
+          "subject": null
+        }
+      },
+      {
+        "utterance": "その人、誕生日が3月3日らしい",
+        "expect": {
+          "kind": [
+            "ask",
+            null
+          ]
+        }
+      }
+    ],
+    "note": "相手が1人に定まらなかったターンのあとは、遡らずに聞き返す"
+  },
+  {
+    "id": "subject-5-3ターン目で別人",
+    "turns": [
+      {
+        "utterance": "三雲さん、最近ゴルフを始めたそうです",
+        "expect": {
+          "kind": "add_fact",
+          "customer": "三雲 隆之介",
+          "subject": "三雲 隆之介"
+        }
+      },
+      {
+        "utterance": "あと出張も多いって",
+        "expect": {
+          "kind": [
+            null,
+            "add_fact"
+          ]
+        }
+      },
+      {
+        "utterance": "柏木 和馬さんは写真が趣味だそうです",
+        "expect": {
+          "kind": "add_fact",
+          "customer": "柏木 和馬",
+          "subject": "柏木 和馬"
+        }
+      }
+    ],
+    "note": "2ターン目は「出張多い」を既に持っているので提案が作れない。3ターン目で名前が出たら、そちらへ確実に移ること"
+  },
+  {
+    "id": "subject-6-読んだだけの相手を引き継ぐ",
+    "turns": [
+      {
+        "utterance": "三雲さん、最近ゴルフを始めたそうです",
+        "expect": {
+          "kind": "add_fact",
+          "customer": "三雲 隆之介"
+        }
+      },
+      {
+        "utterance": "柏木 和馬さんってどんな人だっけ",
+        "expect": {
+          "kind": null,
+          "subject": "柏木 和馬"
+        }
+      },
+      {
+        "utterance": "最近ロードバイクにも乗り始めたって",
+        "expect": {
+          "kind": "add_fact",
+          "customer": "柏木 和馬"
+        }
+      }
+    ],
+    "note": "提案の相手ではなく、直前に**読んだ**相手を引き継ぐ"
+  },
+  {
+    "id": "subject-7-AからBに行って戻る",
+    "turns": [
+      {
+        "utterance": "望月さん、最近ゴルフを始めたそうです",
+        "expect": {
+          "kind": "add_fact",
+          "customer": "望月 正"
+        }
+      },
+      {
+        "utterance": "天野さんはワインもお好きだって",
+        "expect": {
+          "kind": "add_fact",
+          "customer": "天野 健一郎"
+        }
+      },
+      {
+        "utterance": "望月さんの話に戻るけど、釣りも始めたらしい",
+        "expect": {
+          "kind": "add_fact",
+          "customer": "望月 正",
+          "subject": "望月 正"
+        }
+      }
+    ],
+    "note": "話題が往復する。最後は名前が出ているので迷う余地はない"
+  },
+  {
+    "id": "subject-8-別人の名前が出ているのに前の相手へ書かない",
+    "turns": [
+      {
+        "utterance": "九条さん、最近ワインにハマってるって",
+        "expect": {
+          "kind": "add_fact",
+          "customer": "九条健一郎"
+        }
+      },
+      {
+        "utterance": "樋口さんも詳しいらしいですよ",
+        "expect": {
+          "kind": "ask",
+          "options": 2
+        }
+      }
+    ],
+    "note": "樋口さんは2人いる。前の相手（九条さん）へ書きにいくのは誤り"
+  },
+  {
+    "id": "subject-9-カルテを開いたままずっと別人の話",
+    "context": {
+      "open": "時枝 正"
+    },
+    "turns": [
+      {
+        "utterance": "柏木 和馬さん、最近ゴルフを始めたそうです",
+        "expect": {
+          "kind": "add_fact",
+          "customer": "柏木 和馬"
+        }
+      },
+      {
+        "utterance": "あとワインも好きだって",
+        "expect": {
+          "kind": "add_fact",
+          "customer": "柏木 和馬"
+        }
+      }
+    ],
+    "note": "開いているカルテは時枝さんだが、話は一貫して柏木 和馬さん。開いているほうへ引き戻されないこと"
+  },
+  {
+    "id": "subject-10-聞き返しのあと名前なし",
+    "turns": [
+      {
+        "utterance": "柏木さん、ロードバイクを始めたそうです",
+        "expect": {
+          "kind": "ask",
+          "options": 2
+        }
+      },
+      {
+        "utterance": "あと出張も増えたって",
+        "expect": {
+          "kind": [
+            "ask",
+            null
+          ]
+        }
+      }
+    ],
+    "note": "まだ相手が決まっていない。決まらないまま2つ目の事実を書きにいかない"
+  },
+  {
+    "id": "subject-11-直前の相手だけ、カルテは閉じている",
+    "context": {
+      "recent": "望月 正"
+    },
+    "utterance": "読書もお好きだそうです",
+    "expect": {
+      "kind": "add_fact",
+      "customer": "望月 正",
+      "subject": "望月 正"
+    }
+  },
+  {
+    "id": "count-5-和集合",
+    "utterance": "ゴルフかワインのどちらかをやる人",
+    "expect": {
+      "kind": "search_result",
+      "exactCount": 4,
+      "includes": [
+        "時枝 正",
+        "九条健一郎",
+        "三雲 隆之介",
+        "天野 健一郎"
+      ]
+    }
+  },
+  {
+    "id": "count-6-2つとも",
+    "utterance": "読書が趣味で出張も多い人",
+    "expect": {
+      "kind": "search_result",
+      "exactCount": 3,
+      "includes": [
+        "柏木 和馬",
+        "三雲 隆之介",
+        "天野 健一郎"
+      ]
+    }
+  },
+  {
+    "id": "count-7-色と柄",
+    "utterance": "チャコールと無地の両方が好きな人",
+    "expect": {
+      "kind": "search_result",
+      "exactCount": 3,
+      "includes": [
+        "時枝 正",
+        "望月 正",
+        "三雲 隆之介"
+      ]
+    }
+  },
+  {
+    "id": "count-8-場面の交差",
+    "utterance": "登壇もするし式典も多い人",
+    "expect": {
+      "kind": "search_result",
+      "exactCount": 2,
+      "includes": [
+        "柏木 和馬",
+        "三雲 隆之介"
+      ]
+    }
+  },
+  {
+    "id": "count-9-否定",
+    "utterance": "無地が好きじゃない人",
+    "expect": {
+      "kind": "search_result",
+      "exactCount": 4
+    }
+  },
+  {
+    "id": "count-10-2名",
+    "utterance": "サウナ好きな人って誰だっけ",
+    "expect": {
+      "kind": "search_result",
+      "exactCount": 2,
+      "includes": [
+        "望月 正",
+        "柏木 和馬"
+      ]
+    }
+  },
+  {
+    "id": "count-11-1名だけ",
+    "utterance": "写真が趣味の人いる？",
+    "expect": {
+      "kind": "search_result",
+      "exactCount": 1,
+      "includes": [
+        "樋口 奏"
+      ]
+    }
+  },
+  {
+    "id": "count-12-該当なし",
+    "utterance": "スキーをやる人っている？",
+    "expect": {
+      "kind": [
+        "search_result",
+        null
+      ]
+    },
+    "note": "語彙に無く、該当者もいない。0 件を「近い人」で埋めないこと"
+  },
+  {
+    "id": "search-4-抽象-落ち着いた",
+    "utterance": "なんか落ち着いた雰囲気の人っていたっけ",
+    "expect": {
+      "kind": [
+        "search_result",
+        null
+      ]
+    },
+    "note": "語に落ちない問い。freeText → 意味検索の経路。似た人を該当者として答えないこと"
+  },
+  {
+    "id": "search-5-抽象-フォーマル寄り",
+    "utterance": "かっちりした場面で着ることが多い人",
+    "expect": {
+      "kind": [
+        "search_result",
+        null
+      ]
+    }
+  },
+  {
+    "id": "search-6-括りで言われる2",
+    "utterance": "インドア派の人だれかいる？",
+    "expect": {
+      "kind": [
+        "search_result",
+        null
+      ]
+    },
+    "note": "一覧の語（読書・写真・サウナ）へ展開できるか"
+  },
+  {
+    "id": "search-7-担当の人数",
+    "utterance": "担当のお客さんって何人いる？",
+    "expect": {
+      "kind": [
+        "search_result",
+        null
+      ]
+    },
+    "note": "語のない全件。数えられるなら答えてよいが、当てずっぽうの数を言わないこと"
+  },
+  {
+    "id": "update-3-メール",
+    "utterance": "時枝さんのメール、tokieda@example.jp に変わったそうです",
+    "expect": {
+      "kind": "update_customer",
+      "customer": "時枝 正",
+      "field": "email"
+    }
+  },
+  {
+    "id": "update-4-住所",
+    "utterance": "望月さん、住所が神奈川県横浜市西区1-2-3に変わったって",
+    "expect": {
+      "kind": "update_customer",
+      "customer": "望月 正",
+      "field": "address"
+    }
+  },
+  {
+    "id": "update-5-居住地",
+    "utterance": "樋口 京平さん、埼玉から千葉に引っ越したそうです",
+    "expect": {
+      "kind": "update_customer",
+      "customer": "樋口 京平"
+    },
+    "note": "address と residencePrefecture のどちらでもよい。相手を外したら誤り"
+  },
+  {
+    "id": "update-6-勤務先",
+    "utterance": "九条さん、野村證券から大和証券株式会社に移られたそうです",
+    "expect": {
+      "kind": "update_customer",
+      "customer": "九条健一郎",
+      "field": "companyName"
+    }
+  },
+  {
+    "id": "update-7-肩書き",
+    "utterance": "三雲さん、代表取締役になられたそうです",
+    "expect": {
+      "kind": "update_customer",
+      "customer": "三雲 隆之介",
+      "field": "jobTitle"
+    }
+  },
+  {
+    "id": "update-8-家族",
+    "utterance": "柏木 和馬さん、お子さんが生まれたそうです",
+    "expect": {
+      "kind": [
+        "update_customer",
+        "add_fact"
+      ],
+      "customer": "柏木 和馬"
+    }
+  },
+  {
+    "id": "update-9-ネーム刺繍",
+    "utterance": "時枝さんのネーム刺繍、TADASHI.T にしてほしいとのことです",
+    "expect": {
+      "kind": "update_customer",
+      "customer": "時枝 正",
+      "field": "embroideryName"
+    }
+  },
+  {
+    "id": "update-10-フリガナ",
+    "utterance": "樋口 奏さんのフリガナ、ひぐち かなで ではなく ひぐち そう だそうです",
+    "expect": {
+      "kind": "update_customer",
+      "customer": "樋口 奏",
+      "field": "nameKana"
+    }
+  },
+  {
+    "id": "update-11-業種",
+    "utterance": "天野さんの勤務先、運輸じゃなくて小売だそうです",
+    "expect": {
+      "kind": "update_customer",
+      "customer": "天野 健一郎",
+      "field": "industry"
+    }
+  },
+  {
+    "id": "update-12-部署",
+    "utterance": "柏木 正さん、開発本部から法務部に異動されたって",
+    "expect": {
+      "kind": "update_customer",
+      "customer": "柏木 正",
+      "field": "department"
+    }
+  },
+  {
+    "id": "update-13-境界-職業は列にしない",
+    "utterance": "望月さん、ご実家の歯科医院をやってるらしい",
+    "expect": {
+      "kind": "add_fact",
+      "customer": "望月 正"
+    },
+    "note": "「何をしている人か」は項目ではない。jobTitle や industry に化けさせないこと"
+  },
+  {
+    "id": "update-14-境界-一覧にない業種",
+    "utterance": "柏木 和馬さんの業種、スポーツジムだそうです",
+    "expect": {
+      "kind": [
+        "add_fact",
+        "update_customer"
+      ],
+      "customer": "柏木 和馬"
+    },
+    "note": "業種は決まった一覧から選ぶ。「スポーツジム」は無いので、事実として残すのが正しい"
+  },
+  {
+    "id": "fact-4-抽象な言い回し",
+    "utterance": "柏木 和馬さん、最近だいぶインドア寄りになってきたみたいで",
+    "expect": {
+      "kind": "add_fact",
+      "customer": "柏木 和馬"
+    }
+  },
+  {
+    "id": "fact-5-既存語へ寄せる2",
+    "utterance": "樋口 京平さん、山登りによく行くって言ってました",
+    "expect": {
+      "kind": "add_fact",
+      "customer": "樋口 京平"
+    },
+    "note": "「山登り」→ 既存の「登山」。すでに持っている語なので、提案が作れないのが正しいこともある"
+  },
+  {
+    "id": "fact-6-すでに持っている語",
+    "utterance": "時枝さん、ゴルフがお好きだそうです",
+    "expect": {
+      "kind": null
+    },
+    "note": "時枝さんはすでにゴルフを持っている。**「登録済みです」と答えるのは正しいが、提案は作らない**"
+  },
+  {
+    "id": "fact-7-屋号は語にしない",
+    "utterance": "望月さん、ご実家が『まるふく』という和菓子屋さんだそうです",
+    "expect": {
+      "kind": "add_fact",
+      "customer": "望月 正"
+    },
+    "note": "屋号は店で共有する語にならない。聞いたまま本文に残す"
+  },
+  {
+    "id": "fact-8-1発話に事実が2つ",
+    "utterance": "九条さん、サウナにハマってるのと、あと光沢のある生地は苦手だって",
+    "expect": {
+      "kind": [
+        "add_fact",
+        "add_ng_note"
+      ],
+      "customer": "九条健一郎"
+    },
+    "note": "提案は1ターンに1つ。**取りこぼす側があるのは仕様**だが、相手だけは外さないこと。九条さんはサウナも「光沢が苦手」も持っていないので、どちらの提案も作れる状態にしてある"
+  },
+  {
+    "id": "fact-9-家族のこと",
+    "utterance": "三雲さん、息子さんが来年大学受験だそうです",
+    "expect": {
+      "kind": [
+        "add_fact",
+        "update_customer"
+      ],
+      "customer": "三雲 隆之介"
+    }
+  },
+  {
+    "id": "fact-10-副業",
+    "utterance": "柏木 正さん、副業でサーフショップをやってるらしい",
+    "expect": {
+      "kind": "add_fact",
+      "customer": "柏木 正"
+    }
+  },
+  {
+    "id": "fact-11-体型の変化",
+    "utterance": "天野さん、最近5キロ痩せたっておっしゃってました",
+    "expect": {
+      "kind": "add_fact",
+      "customer": "天野 健一郎"
+    }
+  },
+  {
+    "id": "fact-12-とても短い",
+    "utterance": "望月さん、釣りも",
+    "expect": {
+      "kind": "add_fact",
+      "customer": "望月 正",
+      "labels": [
+        "釣り"
+      ]
+    }
+  },
+  {
+    "id": "fact-13-伝聞の伝聞",
+    "utterance": "柏木 和馬さんが、樋口さんはワインに詳しいって言ってました",
+    "expect": {
+      "kind": "ask",
+      "options": 2
+    },
+    "note": "樋口さんは2人。話し手（柏木 和馬さん）のカルテへ書かないこと"
+  },
+  {
+    "id": "fact-14-過去の話",
+    "utterance": "三雲さん、昔は登山をやってたらしいですよ",
+    "expect": {
+      "kind": "add_fact",
+      "customer": "三雲 隆之介"
+    }
+  },
+  {
+    "id": "fact-15-何も無い人に初めて",
+    "utterance": "古賀さん、ロードバイクにハマってるそうです",
+    "expect": {
+      "kind": "add_fact",
+      "customer": "古賀 悠人"
+    },
+    "note": "記録が1行も無い顧客。ここが通らないと、新規のお客様に何も残せない"
+  },
+  {
+    "id": "cite-1-趣味を聞く",
+    "utterance": "時枝さんの趣味って何だっけ",
+    "expect": {
+      "kind": null,
+      "citation": true
+    },
+    "note": "記録から答えるので出典が要る。サーバが実在 id と突き合わせているので、true は「実在する行から答えた」と同義"
+  },
+  {
+    "id": "cite-2-好みの色",
+    "utterance": "柏木 和馬さんってどんな色が好きだっけ",
+    "expect": {
+      "kind": null,
+      "citation": true
+    }
+  },
+  {
+    "id": "cite-3-はいで答える",
+    "utterance": "時枝さんってゴルフやるんだっけ？",
+    "expect": {
+      "kind": null,
+      "citation": true
+    },
+    "note": "一言で答えるときも、記録から引いたなら出典を付ける"
+  },
+  {
+    "id": "cite-4-記念日は出典にならない",
+    "utterance": "時枝さんの結婚記念日っていつだっけ",
+    "expect": {
+      "kind": null,
+      "citation": false
+    },
+    "note": "記念日は customer_facts ではないので、引ける id が無い。**無いものを作らせない**ための対"
+  },
+  {
+    "id": "cite-5-採寸は出典にならない",
+    "utterance": "時枝さんの前回の着丈っていくつだった？",
+    "expect": {
+      "kind": null,
+      "citation": false
+    }
+  },
+  {
+    "id": "cite-6-無い情報",
+    "utterance": "樋口 奏さんの出身大学ってわかる？",
+    "expect": {
+      "kind": null,
+      "citation": false
+    }
+  },
+  {
+    "id": "cite-7-何も無い人",
+    "utterance": "古賀さんってどんな人だっけ",
+    "expect": {
+      "kind": null,
+      "citation": false
+    },
+    "note": "記録が1行も無い。「ありません」と答えるのが正しく、埋めてはいけない"
+  },
+  {
+    "id": "read-4-注意事項",
+    "utterance": "時枝さんに気をつけることってあったっけ",
+    "expect": {
+      "kind": null
+    }
+  },
+  {
+    "id": "read-5-注文履歴",
+    "utterance": "三雲さんの注文って直近いつだった？",
+    "expect": {
+      "kind": null
+    }
+  },
+  {
+    "id": "ng-2-断られた",
+    "utterance": "柏木 和馬さん、前にダブルをお勧めしたら断られました",
+    "expect": {
+      "kind": "add_ng_note",
+      "customer": "柏木 和馬"
+    }
+  },
+  {
+    "id": "ng-3-連絡の都合",
+    "utterance": "三雲さん、平日の昼間は電話しないでほしいそうです",
+    "expect": {
+      "kind": "add_ng_note",
+      "customer": "三雲 隆之介"
+    }
+  },
+  {
+    "id": "ng-4-やんわりした否定",
+    "utterance": "望月さん、派手めの裏地はあまり気が進まなそうでした",
+    "expect": {
+      "kind": "add_ng_note",
+      "customer": "望月 正"
+    },
+    "note": "はっきり断られてはいない。取りこぼすと次の接客で外すので、こちらへ倒す"
+  },
+  {
+    "id": "ng-5-好みとの境目-好きな側",
+    "utterance": "樋口 京平さん、ストライプがお好きだそうです",
+    "expect": {
+      "kind": "add_fact",
+      "customer": "樋口 京平"
+    },
+    "note": "下の ng-6 と対。同じ語でも、肯定はパーソナル"
+  },
+  {
+    "id": "ng-6-好みとの境目-苦手な側",
+    "utterance": "樋口 京平さん、ストライプは苦手だそうです",
+    "expect": {
+      "kind": "add_ng_note",
+      "customer": "樋口 京平"
+    }
+  },
+  {
+    "id": "ng-7-素材",
+    "utterance": "九条さん、化繊は肌に合わないとのことでした",
+    "expect": {
+      "kind": "add_ng_note",
+      "customer": "九条健一郎"
+    }
+  },
+  {
+    "id": "ng-8-もう勧めないで",
+    "utterance": "天野さん、ピークドラペルはもう勧めないでほしいそうです",
+    "expect": {
+      "kind": "add_ng_note",
+      "customer": "天野 健一郎"
+    }
+  },
+  {
+    "id": "ng-9-触れない話題",
+    "utterance": "柏木 正さん、ご家族の話には触れないほうがいいです",
+    "expect": {
+      "kind": "add_ng_note",
+      "customer": "柏木 正"
+    }
+  },
+  {
+    "id": "neg-9-指示",
+    "utterance": "古賀さんにメールを送っておいて",
+    "expect": {
+      "kind": null
+    }
+  },
+  {
+    "id": "neg-10-こちらの意図",
+    "utterance": "柏木 和馬さんを今度ゴルフに誘ってみるかな",
+    "expect": {
+      "kind": null
+    }
+  },
+  {
+    "id": "neg-11-在庫",
+    "utterance": "ネイビーの生地って在庫あったっけ",
+    "expect": {
+      "kind": null
+    }
+  },
+  {
+    "id": "neg-12-他スタッフの売上",
+    "utterance": "白髭さんの今月の売上っていくら？",
+    "expect": {
+      "kind": null
+    }
+  },
+  {
+    "id": "neg-13-個人情報の横流し",
+    "utterance": "時枝さんの電話番号を古賀さんに教えておいて",
+    "expect": {
+      "kind": null
+    },
+    "note": "扱えないうえに、やってはいけない。聞き返しにも倒さないこと"
+  },
+  {
+    "id": "neg-14-予約状況",
+    "utterance": "来週の予約ってどうなってる？",
+    "expect": {
+      "kind": null
+    }
+  },
+  {
+    "id": "neg-15-雑談",
+    "utterance": "今日ひまだね",
+    "expect": {
+      "kind": null
+    }
+  },
+  {
+    "id": "ask-3-同姓が2人-柏木",
+    "utterance": "柏木さん、ゴルフを始めたそうです",
+    "expect": {
+      "kind": "ask",
+      "options": 2
+    }
+  },
+  {
+    "id": "ask-4-同姓で会社まで同じ",
+    "utterance": "樋口さん、サウナにハマってるそうです",
+    "expect": {
+      "kind": "ask",
+      "options": 2
+    },
+    "note": "樋口さんは2人とも日本生命。**選択肢の手がかりに会社名が効かない**ので、氏名で選ぶことになる"
+  },
+  {
+    "id": "ask-5-下の名前が同じ",
+    "utterance": "健一郎さん、写真が趣味だそうです",
+    "expect": {
+      "kind": "ask",
+      "options": 2
+    },
+    "note": "九条健一郎さんと天野 健一郎さん。空白のある氏名と無い氏名が混ざっている"
+  },
+  {
+    "id": "ask-6-どの項目か分からない",
+    "utterance": "時枝さん、あれが変わったそうです",
+    "expect": {
+      "kind": [
+        "ask",
+        null
+      ]
+    }
+  },
+  {
+    "id": "ask-7-聞き取れなかっただけ",
+    "utterance": "三雲さん、その、えーと",
+    "expect": {
+      "kind": null
+    },
+    "note": "中身を推測した二択を作らせない。返答でそのまま聞き直すのが正しい"
+  },
+  {
+    "id": "ask-8-できないことは聞き返さない",
+    "utterance": "誰かの今日の予定を教えて",
+    "expect": {
+      "kind": null
+    },
+    "note": "相手を絞っても答えられない。propose_ask は「できるふり」になる"
+  },
+  {
+    "id": "anniv-2-誕生日-何も無い人",
+    "utterance": "古賀さん、お誕生日が4月2日だそうです",
+    "expect": {
+      "kind": [
+        "add_anniversary",
+        "update_customer"
+      ],
+      "customer": "古賀 悠人"
+    }
+  },
+  {
+    "id": "anniv-3-結婚記念日",
+    "utterance": "柏木 正さん、結婚記念日が9月20日だそうです",
+    "expect": {
+      "kind": "add_anniversary",
+      "customer": "柏木 正"
+    }
+  },
+  {
+    "id": "anniv-4-その他の記念日",
+    "utterance": "九条さん、10月1日がお店の開店記念日だそうです",
+    "expect": {
+      "kind": "add_anniversary",
+      "customer": "九条健一郎"
+    }
+  },
+  {
+    "id": "anniv-5-年つき",
+    "utterance": "三雲さん、2015年6月14日にご結婚されたそうです",
+    "expect": {
+      "kind": "add_anniversary",
+      "customer": "三雲 隆之介"
+    }
+  },
+  {
+    "id": "anniv-6-相対日付",
+    "utterance": "天野さん、来月の3日が奥様のお誕生日だそうです",
+    "expect": {
+      "kind": [
+        "add_anniversary",
+        "add_fact",
+        null
+      ],
+      "customer": "天野 健一郎"
+    },
+    "note": "顧客本人の記念日ではない。日付の解釈と、誰の記念日かの両方が問われる"
+  },
+  {
+    "id": "anniv-7-すでにある記念日",
+    "utterance": "時枝さん、結婚記念日は10月8日でしたよね",
+    "expect": {
+      "kind": [
+        null,
+        "add_anniversary"
+      ]
+    },
+    "note": "すでに 2006-10-08 で入っている。同じものを二重に作らないほうが望ましい"
+  },
+  {
+    "id": "approach-3-曖昧な言い方",
+    "utterance": "望月さんには一応声をかけておきました",
+    "expect": {
+      "kind": "resolve_approach",
+      "customer": "望月 正",
+      "status": "done"
+    }
+  },
+  {
+    "id": "approach-4-2人まとめて",
+    "utterance": "時枝さんと九条さんに連絡しました",
+    "expect": {
+      "kind": "resolve_approach"
+    },
+    "note": "提案は1ターンに1つしか返せない。どちらか一方になる"
+  },
+  {
+    "id": "approach-5-未来形",
+    "utterance": "柏木 和馬さんにはあとで連絡します",
+    "expect": {
+      "kind": null
+    },
+    "note": "まだ連絡していない。畳んではいけない"
+  },
+  {
+    "id": "approach-6-断られた",
+    "utterance": "三雲さん、今回はいらないとのことでした",
+    "expect": {
+      "kind": "resolve_approach",
+      "customer": "三雲 隆之介",
+      "status": "skipped"
+    }
+  },
+  {
+    "id": "approach-7-つながらなかった",
+    "utterance": "樋口 京平さんに電話したけど出ませんでした",
+    "expect": {
+      "kind": [
+        "resolve_approach",
+        null
+      ],
+      "customer": "樋口 京平"
+    },
+    "note": "連絡は試みたが済んでいない。畳むかどうかは判断が割れる"
+  },
+  {
+    "id": "name-2-肩書きで呼ぶ",
+    "utterance": "時枝部長、サウナにハマってるそうです",
+    "expect": {
+      "kind": "add_fact",
+      "customer": "時枝 正"
+    }
+  },
+  {
+    "id": "name-3-様づけ",
+    "utterance": "三雲様、最近ゴルフを始められたそうです",
+    "expect": {
+      "kind": "add_fact",
+      "customer": "三雲 隆之介"
+    }
+  },
+  {
+    "id": "name-4-くんづけ",
+    "utterance": "九条くん、写真が趣味だって",
+    "expect": {
+      "kind": "add_fact",
+      "customer": "九条健一郎"
+    },
+    "note": "空白の無い氏名 × 敬称。name-1 の別パターン"
+  },
+  {
+    "id": "name-5-カタカナ-音声入力",
+    "utterance": "トキエダさん、サウナにハマってるそうです",
+    "expect": {
+      "kind": "add_fact",
+      "customer": "時枝 正"
+    },
+    "note": "**いまは落ちる見込み。**DB は name_kana を search_key に含むので「トキエダ」で引けるが、checkSubject の mentionsName() は漢字の氏名からしか照合候補を作らない。spoken_name が差し戻され、名前を言っているのに聞き返される。直すなら lib/ai/spoken-name.ts にカナを渡す1箇所"
+  },
+  {
+    "id": "name-6-会社名を添えて呼ぶ",
+    "utterance": "三菱商事の時枝さん、サウナを始めたそうです",
+    "expect": {
+      "kind": "add_fact",
+      "customer": "時枝 正"
+    }
   }
 ]

@@ -1402,5 +1402,39 @@
       "kind": "add_fact",
       "customer": "時枝 正"
     }
+  },
+  {
+    "id": "update-15-利き手",
+    "utterance": "三雲さん、左利きだそうです",
+    "expect": {
+      "kind": "update_customer",
+      "customer": "三雲 隆之介",
+      "field": "dominantHand",
+      "value": "left"
+    },
+    "note": "**値まで見る。**利き手の列は right / left しか入らない（DB の CHECK）。「左」「左利き」と日本語で書かれても提案は作れてしまい、人が「適用」を押した瞬間に落ちる"
+  },
+  {
+    "id": "update-16-利き足",
+    "utterance": "望月さん、ボールは右足で蹴るとのことでした",
+    "expect": {
+      "kind": "update_customer",
+      "customer": "望月 正",
+      "field": "dominantFoot",
+      "value": "right"
+    },
+    "note": "利き手と利き足を取り違えないこと。日本語の言い回しから right へ落とせるか"
+  },
+  {
+    "id": "update-17-両利きは倒さない",
+    "utterance": "柏木 和馬さん、両利きらしいですよ",
+    "expect": {
+      "kind": [
+        null,
+        "add_fact"
+      ],
+      "customer": "柏木 和馬"
+    },
+    "note": "「両利き」はこの列に入れられない。**どちらかへ倒して書き換えるのが誤り。**事実として残すか、何もしないかのどちらか"
   }
 ]

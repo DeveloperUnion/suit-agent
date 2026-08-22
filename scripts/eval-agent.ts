@@ -36,6 +36,16 @@ type Expectation = {
   customer?: string;
   labels?: string[];
   field?: string;
+  /**
+   * 書き換え後の値。**field と対で使う。**
+   *
+   * 種類と項目だけ見ていると、**DB の CHECK に落ちる値が素通りする。**
+   * 利き手は right / left しか入らないのに、モデルは日本語で「左」と書ける。
+   * 提案を作るところまでは通るので、**人が「適用」を押した瞬間に落ちる**
+   * （agent-schema.ts の冒頭にある、存在しない分類 `life` で外部キー違反を
+   * 出したのと同じ形）。ここで値まで見て、その一段を塞ぐ。
+   */
+  value?: string;
   status?: string;
 
   /**
@@ -229,8 +239,10 @@ function judge(
     return "wrong_count";
   }
   if (expect.field) {
-    const changes = (action?.changes ?? []) as { field: string }[];
-    if (!changes.some((c) => c.field === expect.field)) return "mismatch";
+    const changes = (action?.changes ?? []) as { field: string; after?: string }[];
+    const change = changes.find((c) => c.field === expect.field);
+    if (!change) return "mismatch";
+    if (expect.value !== undefined && change.after !== expect.value) return "mismatch";
   }
   if (expect.labels) {
     const labels = (action?.labelNames ?? []) as string[];

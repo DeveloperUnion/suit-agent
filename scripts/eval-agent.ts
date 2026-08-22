@@ -10,7 +10,10 @@
  * **CI には入れない。**実 API を叩くので鍵と課金と非決定性を持ち込むことになり、
  * 1 ヶ月で無効化される。無効化された門は、門が無いより悪い。
  *
- * ローカルの DB と dev-seed が前提。トークンは**人と同じ経路**で取る —
+ * ローカルの DB と dev-seed が前提。**本番には向けられない** — サインインが
+ * Mailpit からメールを拾う作りで、本番にその口が無いため。
+ *
+ * トークンは**人と同じ経路**で取る —
  * Magic Link を要求し、Mailpit に届いたメールからリンクの token_hash を拾って
  * verify する。JWT を自作しないのは、ローカルの GoTrue が ES256 で署名して
  * いるからで、HS256 で作ったものは getClaims に弾かれる。ついでに
@@ -34,6 +37,29 @@ type Expectation = {
   labels?: string[];
   field?: string;
   status?: string;
+
+  /**
+   * 出典が付いたか。**記録から答えたのに出典が無い**のと、
+   * **言い換えたのに出典を付けた**のは、どちらも別の壊れ方をする。
+   *
+   * サーバは本文中の [[factId]] を、そのターンに実際に返した記録の id と
+   * 突き合わせて、無いものを捨てている。つまり true は
+   * 「実在する行から答えた」と同義になる。
+   */
+  citation?: boolean;
+  /** 聞き返しの選択肢の数。「2 人から選ばせる」が「3 人並べる」に化けたら落とす */
+  options?: number;
+  /** 検索結果に必ず入る人。**件数だけだと「正しい数の別人」が素通りする** */
+  includes?: string[];
+  /** 無効化の対象。facts[].label に入っているべき語 */
+  factOf?: string;
+  /**
+   * そのターンの相手（subjectCustomerId）。氏名で書く。
+   *
+   * **null は「相手が決まらない」ことの検査。**検索や、同姓が 2 人出た聞き返しの
+   * あとは足跡が切れるのが正しい。未指定（キーごと書かない）とは区別する。
+   */
+  subject?: string | null;
 };
 type Turn = { utterance: string; expect: Expectation };
 type Case = {
@@ -66,6 +92,8 @@ type Verdict =
   | "reply_drift"
   /** 種類は合っているのに件数が違う。「両方」に和集合を返す類 */
   | "wrong_count"
+  /** そのターンの相手が違う。**次のターンの宛先になる値**なので、ここのずれは伝播する */
+  | "wrong_subject"
   | "error";
 
 const BASE = process.env.EVAL_BASE_URL ?? "http://localhost:3000";
@@ -127,6 +155,8 @@ type DoneEvent = {
   action?: Record<string, unknown>;
   /** そのターンが誰の話だったか。次のターンの「直前の相手」になる */
   subjectCustomerId?: string | null;
+  /** 本文の [[factId]] のうち、サーバが実在する記録と突き合わせて残したもの */
+  citations?: { id: string }[];
 };
 
 /**
@@ -163,7 +193,13 @@ function judge(
   expect: Expectation,
   action: Record<string, unknown> | undefined,
   reply: string,
+  citations: { id: string }[],
 ): Verdict {
+  // **出典は提案の有無と無関係に見る。**提案を出さずに答えるターン
+  // （「どんな人だっけ」）こそ、記録から答えているかが問われる。
+  if (expect.citation !== undefined && expect.citation !== (citations.length > 0)) {
+    return "mismatch";
+  }
   const got = (action?.kind as string | undefined) ?? null;
   if (Array.isArray(expect.kind)) {
     // 「どれでもよい」。外したときだけ、提案を作ったかどうかで呼び分ける
@@ -179,6 +215,13 @@ function judge(
   if (got === null) return "omission";
   if (got !== expect.kind) return "mismatch";
 
+  // 聞き返しの選択肢。**「誰かを選ばせる」形になっているかは数で決まる。**
+  // 2 人から選ばせるはずが 3 人並んだら、候補の絞り込みが効いていない。
+  if (expect.options !== undefined) {
+    const options = (action?.options ?? []) as unknown[];
+    if (options.length !== expect.options) return "wrong_count";
+  }
+
   const customer = (action?.customer as { name?: string } | undefined)?.name;
   if (expect.customer && customer !== expect.customer) return "mismatch";
   if (expect.status && action?.status !== expect.status) return "mismatch";
@@ -192,6 +235,18 @@ function judge(
   if (expect.labels) {
     const labels = (action?.labelNames ?? []) as string[];
     if (!expect.labels.every((l) => labels.includes(l))) return "mismatch";
+  }
+  // **検索結果の顔ぶれ。**件数だけを見ていると「正しい数の別人」が素通りする
+  // （除外の条件を取り違えても、数だけは合うことがある）。
+  if (expect.includes) {
+    const names = ((action?.customers ?? []) as { name?: string }[]).map((c) => c.name);
+    if (!expect.includes.every((n) => names.includes(n))) return "mismatch";
+  }
+  // 無効化の対象。id ではなく語で書く（id は実行のたびに変わる）
+  if (expect.factOf) {
+    const facts = (action?.facts ?? []) as { label?: string; body?: string }[];
+    const hit = facts.some((f) => f.label === expect.factOf || f.body?.includes(expect.factOf!));
+    if (!hit) return "mismatch";
   }
 
   // **返答文も見る。**構造だけ見ていると、カードは正しいのに「別人の名前を言う」が
@@ -231,8 +286,9 @@ async function main() {
   const all = JSON.parse(
     readFileSync(new URL("../lib/ai/eval/cases.json", import.meta.url), "utf8"),
   ) as Case[];
-  // 直したケースだけ回せるようにしておく（`npm run eval -- multi`）。
-  // 34 件を毎回流すと数分かかり、1 件直すたびに全部を待つことになる
+  // 直したケースだけ回せるようにしておく（`npm run eval -- invalidate`）。
+  // 全件を毎回流すと数分かかり、1 件直すたびに全部を待つことになる。
+  // id の接頭辞が束になっている（fact- / subject- / cite- / neg- …）
   const only = process.argv[2];
   const cases = only ? all.filter((c) => c.id.includes(only)) : all;
   if (cases.length === 0) {
@@ -251,7 +307,11 @@ async function main() {
       cases.flatMap((c) =>
         [
           c.expect?.customer,
+          c.expect?.subject,
+          ...(c.expect?.includes ?? []),
           ...(c.turns ?? []).map((t) => t.expect.customer),
+          ...(c.turns ?? []).map((t) => t.expect.subject),
+          ...(c.turns ?? []).flatMap((t) => t.expect.includes ?? []),
           c.context?.open,
           c.context?.recent,
         ].filter(Boolean),
@@ -268,9 +328,15 @@ async function main() {
     process.exit(1);
   }
 
-  const rows: { id: string; verdict: Verdict; got: string; ms: number; reply: string }[] = [];
+  type Row = { id: string; verdict: Verdict; got: string; ms: number; reply: string };
 
-  for (const c of cases) {
+  /**
+   * 1 件のケースを最後まで回す。
+   *
+   * **ケース同士は独立している。**提案は誰も適用しないので DB は 1 行も動かず、
+   * 会話の履歴もケースの中で閉じている。だから並べても壊れない。
+   */
+  const runCase = async (c: Case): Promise<Row> => {
     const startedAt = Date.now();
     const turns: Turn[] = c.turns ?? [{ utterance: c.utterance!, expect: c.expect! }];
     // 会話は積み上げる。宛先の引き継ぎは、履歴と「直前の相手」が揃って初めて再現する
@@ -283,6 +349,7 @@ async function main() {
     for (const turn of turns) {
       let action: Record<string, unknown> | undefined;
       let subject: string | null = null;
+      let citations: { id: string }[] = [];
       try {
         const res = await fetch(`${BASE}/api/agent`, {
           method: "POST",
@@ -302,6 +369,7 @@ async function main() {
         action = done.action;
         reply = done.reply ?? "";
         subject = (done.subjectCustomerId as string | null | undefined) ?? null;
+        citations = done.citations ?? [];
       } catch (error) {
         verdict = "error";
         reply = `エラー: ${error instanceof Error ? error.message : String(error)}`;
@@ -309,10 +377,20 @@ async function main() {
       }
 
       got = (action?.kind as string | undefined) ?? "—";
-      const v = judge(turn.expect, action, reply);
+      const v = judge(turn.expect, action, reply, citations);
       if (v !== "match") {
         verdict = v;
         break;
+      }
+      // **そのターンの相手。**judge() の中では見られない — 氏名から id を引くのに
+      // await が要るため。`subject: null`（相手が決まらないのが正解）と、
+      // キーごと書いていない（見ない）を区別する。
+      if ("subject" in turn.expect) {
+        const want = turn.expect.subject ? ((await idOf(turn.expect.subject)) ?? null) : null;
+        if (subject !== want) {
+          verdict = "wrong_subject";
+          break;
+        }
       }
       // 「直前の相手」の引き継ぎ方は画面と揃える（lib/ai/agent.ts の lastCustomerId）。
       // サーバが決めた相手をそのまま使い、決まらなかったターンで足跡は切れる
@@ -321,15 +399,39 @@ async function main() {
       history.push({ role: "user", body: turn.utterance }, { role: "assistant", body: reply });
     }
 
-    rows.push({
+    process.stdout.write(".");
+    return {
       id: c.id,
       verdict,
       got,
       ms: Date.now() - startedAt,
       reply: reply.replace(/\s+/g, " ").slice(0, 60),
-    });
-    process.stdout.write(".");
-  }
+    };
+  };
+
+  /*
+   * 同時に走らせる本数。
+   *
+   * 直列だと 134 件 × 多ターンで 1 回 15 分かかり、**1 行直して回すができない**。
+   * 4 本にすると 4 分前後に落ちる。
+   *
+   * レート制限に当たったら EVAL_CONCURRENCY=1 で直列に戻せる。
+   * 上げすぎないこと — 429 は「落ちた」に数えられるので、**モデルの劣化と
+   * 見分けが付かない結果**になる。
+   */
+  const concurrency = Math.max(1, Number(process.env.EVAL_CONCURRENCY ?? 4));
+  const rows: Row[] = new Array(cases.length);
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, cases.length) }, async () => {
+      for (;;) {
+        const index = cursor++;
+        if (index >= cases.length) return;
+        // 添字で書き戻す。並べても**出力の順序は cases.json のまま**にする
+        rows[index] = await runCase(cases[index]);
+      }
+    }),
+  );
   process.stdout.write("\n\n");
 
   const mark: Record<Verdict, string> = {
@@ -340,6 +442,7 @@ async function main() {
     over_ask: "✗ 聞きすぎ",
     reply_drift: "✗ 文言ずれ",
     wrong_count: "✗ 件数ちがい",
+    wrong_subject: "✗ 宛先ちがい",
     error: "! 落ちた",
   };
   for (const r of rows) {
@@ -357,6 +460,8 @@ async function main() {
   console.log(`聞きすぎ      ${count("over_ask")}   ← 聞き返せば済むと思っている`);
   console.log(`文言ずれ      ${count("reply_drift")}   ← カードと返答が別のことを言う`);
   console.log(`件数ちがい    ${count("wrong_count")}   ← 種類は合っているのに数が違う`);
+  // ここがずれると、**次のターンの宛先まで連れていかれる**
+  console.log(`宛先ちがい    ${count("wrong_subject")}   ← そのターンの相手が違う`);
   console.log(`落ちた        ${count("error")}`);
   const p50 = [...rows].sort((a, b) => a.ms - b.ms)[Math.floor(rows.length / 2)]?.ms;
   console.log(`所要 中央値   ${p50}ms`);

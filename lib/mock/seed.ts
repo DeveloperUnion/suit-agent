@@ -14,17 +14,22 @@ import type {
 } from "@/lib/types";
 import type { OrderItemFabric } from "@/lib/data/orders";
 import { addDays, daysAgo, toIsoDate, toIsoMonth } from "@/lib/utils/date";
+import { COMPANIES, GIVEN_NAMES, SURNAMES } from "@/lib/mock/names";
 
 /**
  * 開発用のデモデータ。
  *
- * アプリはこれを読まない。scripts/generate-dev-seed.ts が
- * supabase/dev-seed.sql を吐くための素として使うだけ。
+ * アプリはこれを読まない。scripts/generate-dev-seed.ts（ローカル）と
+ * scripts/generate-demo-seed.ts（本番の検証用）が SQL を吐くための素。
  * mulberry32 で決定的なので、生成し直しても同じデータが出る。
+ *
+ * **細川（staff-1）の担当 10 名は PINNED_STAFF1 に書き下してある。**
+ * eval の「件数の正」がそこに乗っているので、店全体を何名に増やしても動かない。
+ * 規模を変えるときは shape.perStaff（＝他のスタッフの人数）を触ること。
  */
 
 /** 構造を変えたら上げる */
-export const SEED_VERSION = 19;
+export const SEED_VERSION = 20;
 
 /**
  * 決定的な擬似乱数。リセットのたびに同じデータが再現されるようにする
@@ -77,41 +82,6 @@ const FABRICS: OrderItemFabric[] = [
 
 // ── 顧客生成用のプール ───────────────────────────────────
 
-const SURNAMES = [
-  ["時枝", "ときえだ"], ["黒田", "くろだ"], ["篠原", "しのはら"], ["宮下", "みやした"],
-  ["古賀", "こが"], ["近藤", "こんどう"], ["蓮見", "はすみ"], ["天野", "あまの"],
-  ["白石", "しらいし"], ["越智", "おち"], ["風間", "かざま"], ["三雲", "みくも"],
-  ["瀬川", "せがわ"], ["名取", "なとり"], ["樋口", "ひぐち"], ["望月", "もちづき"],
-  ["日下部", "くさかべ"], ["朝倉", "あさくら"], ["八木", "やぎ"], ["笠井", "かさい"],
-  ["峰岸", "みねぎし"], ["磯部", "いそべ"], ["神谷", "かみや"], ["都築", "つづき"],
-  ["柏木", "かしわぎ"], ["水無瀬", "みなせ"], ["緒方", "おがた"], ["志村", "しむら"],
-  ["鮫島", "さめじま"], ["東海林", "しょうじ"], ["九条", "くじょう"], ["真鍋", "まなべ"],
-];
-
-const GIVEN_NAMES = [
-  ["正", "ただし"], ["彰久", "あきひさ"], ["涼太", "りょうた"], ["健一郎", "けんいちろう"],
-  ["昂", "たかし"], ["悠人", "ゆうと"], ["和馬", "かずま"], ["宗一", "そういち"],
-  ["理", "おさむ"], ["伸吾", "しんご"], ["拓真", "たくま"], ["聡", "さとし"],
-  ["隆之介", "りゅうのすけ"], ["直樹", "なおき"], ["京平", "きょうへい"], ["奏", "かなで"],
-];
-
-const COMPANIES: [string, string][] = [
-  ["三菱商事株式会社", "総合商社"],
-  ["株式会社電通", "広告・マーケティング"],
-  ["日本生命保険相互会社", "保険"],
-  ["野村證券株式会社", "証券"],
-  ["株式会社リクルート", "人材"],
-  ["アンダーソン・毛利・友常法律事務所", "法律"],
-  ["株式会社ジェイ・エス・アーキ", "建築設計"],
-  ["医療法人社団 青葉会", "医療"],
-  ["株式会社サイバーエージェント", "IT・ソフトウェア"],
-  ["三井不動産株式会社", "不動産"],
-  ["株式会社みずほ銀行", "銀行"],
-  ["株式会社小田原製作所", "製造"],
-  ["有限会社ハヤカワ工務店", "建設"],
-  ["株式会社ロジコム物流", "運輸・物流"],
-  ["税理士法人 谷口会計", "会計・税務"],
-];
 
 const JOB_TITLES = ["代表取締役", "取締役", "執行役員", "本部長", "部長", "次長", "課長", "マネージャー", "主任", ""];
 const DEPARTMENTS = ["営業本部", "経営企画部", "財務部", "人事部", "法務部", "開発本部", "管理部", ""];
@@ -157,9 +127,26 @@ const CITIES: Record<string, string[]> = {
 const HOBBIES = ["ゴルフ", "クラシック音楽鑑賞", "登山", "ワイン", "サーフィン", "写真", "読書", "サウナ", "釣り", "ロードバイク"];
 const SCENES = ["商談", "式典", "会食", "日常業務", "登壇", "冠婚葬祭"];
 
+/**
+ * 注意事項の文例。**「外すと事故になること」だけを並べる。**
+ * 好み（「ネイビーが好き」）はパーソナル側の担当なので、ここには入れない。
+ */
+const NG_NOTES = [
+  "光沢の強い生地は好まない。",
+  "前回ピークドラペルを提案して断られている。",
+  "ダブルは着ないとのこと。",
+  "平日昼間の連絡は避ける（会議が多い）。",
+  "ウール100%以外は肌に合わないとのこと。",
+  "裏地の派手な色は好まれない。",
+  "前回、袖丈が長いとのお申し出あり。次回は要確認。",
+  "ご家族の話題には触れないこと。",
+  "喫煙者。喫煙可の席をご案内する。",
+  "急ぎの納期は受けない方針とのこと。",
+];
+
 // ── 顧客の生成 ──────────────────────────────────────────
 
-type Built = {
+export type Built = {
   customers: Customer[];
   anniversaries: CustomerAnniversary[];
   facts: CustomerFact[];
@@ -171,7 +158,7 @@ type Built = {
 };
 
 /** 採寸票の実物（private/採寸データ.jpg）をそのまま投入する */
-function tokiedaSheets(customerId: string): MeasurementSheet[] {
+function tokiedaSheets(customerId: string, staffId: string): MeasurementSheet[] {
   // 体型変化が読めるよう、同一顧客で 3 回分の測定を持たせる
   const make = (
     id: string,
@@ -245,20 +232,255 @@ function tokiedaSheets(customerId: string): MeasurementSheet[] {
   });
 
   return [
-    make("sheet-tokieda-1", "2024-09-14", "staff-1", {
+    make("sheet-tokieda-1", "2024-09-14", staffId, {
       bust: 96, ef: 52, waist: 80.5, hip: 102, thigh: 62, knee: 40, vestBust: 94.5, vestEf: 47.5,
     }, false),
-    make("sheet-tokieda-2", "2025-11-22", "staff-1", {
+    make("sheet-tokieda-2", "2025-11-22", staffId, {
       bust: 98.5, ef: 53.5, waist: 83, hip: 104, thigh: 63.5, knee: 41, vestBust: 97, vestEf: 49,
     }, false),
-    make("sheet-tokieda-3", "2026-07-06", "staff-1", {
+    make("sheet-tokieda-3", "2026-07-06", staffId, {
       bust: 101, ef: 55, waist: 85.5, hip: 106, thigh: 65, knee: 42, vestBust: 99.5, vestEf: 50.5,
     }, true),
   ];
 }
 
-function buildAll(): Built {
-  const rand = mulberry32(20260804);
+// ── 細川（staff-1）の担当 10 名 ─────────────────────────
+//
+// **この 10 名は乱数から外して、ここに書き下してある。**
+//
+// eval の「件数の正」がここに乗っているため。`lib/ai/eval/cases.json` は
+// 「ゴルフが趣味な人 = 3 名」「ネイビー = 4 名」「ゴルフじゃない人 = 7 名」を
+// 期待していて、担当が 1 人増減するだけで全部が書き直しになる。
+//
+// 以前は時枝さんだけが特別扱いで、残り 9 名は乱数の引き当てだった。そのため
+// **人数や順序を変えた瞬間に氏名が総入れ替えになり**、eval を回すと
+// 「7 名中 6 名が見つからない」= モデルが劣化したように見える結果が出た
+// （scripts/eval-agent.ts の事前チェックは、この事故のあとに足したもの）。
+//
+// ここに固定した以上、店全体を何名に増やしても細川さんの担当は動かない。
+// 規模の検証は staff-2 / staff-3 側の人数で行う。
+//
+// 意図して仕込んである引っかかり:
+//   - 同姓が 2 組（柏木 正 / 柏木 和馬、樋口 京平 / 樋口 奏）→ 聞き返しが正解になる
+//   - 樋口の 2 人は**勤務先まで同じ**。選択肢の手がかりに会社名が効かない
+//   - 下の名前が同じ 3 人（時枝 正 / 柏木 正 / 望月 正）
+//   - 「健一郎」が 2 人（九条健一郎 / 天野 健一郎）
+//   - 九条健一郎だけ**氏名に空白が無い**。画面から手で登録された顧客はこの形で、
+//     氏名を split(" ")[0] で姓として扱うコードはここで落ちる
+//   - 古賀 悠人は氏名と電話だけ。「何も記録が無い人」に問いかけたときの答えを見る
+
+type PinnedCustomer = {
+  name: string;
+  nameKana: string;
+  tier: Tier;
+  birthDate?: string;
+  companyName?: string;
+  department?: string;
+  jobTitle?: string;
+  industry?: string;
+  residencePrefecture?: string;
+  familyInfo?: string;
+  embroideryName?: string;
+  /** ラベルになる語。[表記, 分類] */
+  labels?: [string, string][];
+  /** ラベルにならない走り書き。これが「メモ」の行き先 */
+  memos?: string[];
+  ngNotes?: string[];
+  firstPurchase?: string;
+  wedding?: string;
+};
+
+const PINNED_STAFF1: PinnedCustomer[] = [
+  {
+    name: "時枝 正", nameKana: "ときえだ ただし", tier: "thick",
+    birthDate: "1978-03-19",
+    companyName: "三菱商事株式会社", department: "エネルギーソリューション本部",
+    jobTitle: "部長", industry: "総合商社", residencePrefecture: "東京都",
+    familyInfo: "妻・長男（高校生）・長女（中学生）", embroideryName: "T.TOKIEDA",
+    labels: [
+      ["ゴルフ", "hobby"], ["ワイン", "hobby"],
+      ["ネイビー", "preference"], ["チャコール", "preference"],
+      ["無地", "preference"], ["ストライプ", "preference"], ["ブリティッシュ", "preference"],
+      ["商談", "scene"], ["会食", "scene"], ["式典", "scene"],
+      ["出張多い", "lifestyle"],
+    ],
+    memos: ["高橋様のご紹介で来店。", "ご子息の成人式スーツの相談を受けている（2027年予定）。"],
+    ngNotes: ["光沢の強い生地は好まない。", "前回ピークドラペルを提案して断られている。"],
+    firstPurchase: "2021-04-17", wedding: "2006-10-08",
+  },
+  {
+    name: "柏木 正", nameKana: "かしわぎ ただし", tier: "thick",
+    birthDate: "1985-04-17",
+    companyName: "三井不動産株式会社", department: "開発本部",
+    jobTitle: "課長", industry: "不動産", residencePrefecture: "東京都",
+    familyInfo: "妻・長男（中学生）",
+    labels: [
+      ["サーフィン", "hobby"],
+      ["ネイビー", "preference"], ["チャコール", "preference"], ["チェック", "preference"],
+      ["ソフト", "preference"],
+      ["冠婚葬祭", "scene"],
+    ],
+    firstPurchase: "2023-05-11",
+  },
+  {
+    name: "望月 正", nameKana: "もちづき ただし", tier: "standard",
+    birthDate: "1971-06-22",
+    companyName: "日本生命保険相互会社", department: "財務部",
+    jobTitle: "部長", industry: "保険", residencePrefecture: "神奈川県",
+    familyInfo: "妻・長男・次男",
+    labels: [
+      ["サウナ", "hobby"],
+      ["チャコール", "preference"], ["ブラウン", "preference"], ["無地", "preference"],
+      ["スリム", "preference"],
+      ["商談", "scene"],
+    ],
+    firstPurchase: "2024-02-28",
+  },
+  {
+    // 氏名と電話だけ。要件どおり「登録しただけ」の状態を 1 人だけ担当に混ぜる
+    name: "古賀 悠人", nameKana: "こが ゆうと", tier: "minimal",
+  },
+  {
+    name: "樋口 京平", nameKana: "ひぐち きょうへい", tier: "standard",
+    birthDate: "1962-08-06",
+    companyName: "日本生命保険相互会社", department: "経営企画部",
+    jobTitle: "マネージャー", industry: "保険", residencePrefecture: "埼玉県",
+    familyInfo: "妻・長男（中学生）",
+    labels: [
+      ["登山", "hobby"], ["釣り", "hobby"],
+      ["ネイビー", "preference"], ["無地", "preference"], ["ソフト", "preference"],
+      ["冠婚葬祭", "scene"], ["登壇", "scene"], ["会食", "scene"],
+    ],
+    firstPurchase: "2023-02-13",
+  },
+  {
+    // 空白の無い氏名。画面から手で登録された顧客はこうなる
+    name: "九条健一郎", nameKana: "くじょうけんいちろう", tier: "standard",
+    birthDate: "1984-05-06",
+    companyName: "野村證券株式会社", department: "開発本部",
+    jobTitle: "本部長", industry: "証券", residencePrefecture: "宮城県",
+    familyInfo: "妻のみ",
+    labels: [
+      ["ゴルフ", "hobby"],
+      ["グレー", "preference"], ["ブラウン", "preference"], ["チェック", "preference"],
+      ["ソフト", "preference"],
+      ["冠婚葬祭", "scene"],
+      ["出張多い", "lifestyle"],
+    ],
+    firstPurchase: "2024-08-09",
+  },
+  {
+    name: "柏木 和馬", nameKana: "かしわぎ かずま", tier: "standard",
+    birthDate: "1988-07-08",
+    companyName: "株式会社小田原製作所", department: "人事部",
+    jobTitle: "部長", industry: "製造", residencePrefecture: "福岡県",
+    familyInfo: "妻のみ",
+    labels: [
+      ["サウナ", "hobby"], ["読書", "hobby"],
+      ["グレー", "preference"], ["ブラウン", "preference"], ["無地", "preference"],
+      ["ブリティッシュ", "preference"],
+      ["商談", "scene"], ["登壇", "scene"], ["式典多め", "scene"],
+      ["出張多い", "lifestyle"],
+    ],
+    firstPurchase: "2024-07-28",
+  },
+  {
+    name: "樋口 奏", nameKana: "ひぐち かなで", tier: "standard",
+    birthDate: "1992-02-21",
+    companyName: "日本生命保険相互会社", department: "人事部",
+    industry: "保険", residencePrefecture: "東京都",
+    familyInfo: "妻・長女（小学生）・次女",
+    labels: [
+      ["写真", "hobby"],
+      ["ブラウン", "preference"], ["チェック", "preference"], ["ソフト", "preference"],
+      ["日常業務", "scene"], ["商談", "scene"], ["式典多め", "scene"],
+    ],
+    firstPurchase: "2022-04-10",
+  },
+  {
+    name: "三雲 隆之介", nameKana: "みくも りゅうのすけ", tier: "standard",
+    birthDate: "1979-10-06",
+    companyName: "株式会社小田原製作所", department: "経営企画部",
+    jobTitle: "取締役", industry: "製造", residencePrefecture: "東京都",
+    familyInfo: "妻のみ",
+    labels: [
+      ["ワイン", "hobby"], ["読書", "hobby"],
+      ["ネイビー", "preference"], ["チャコール", "preference"], ["無地", "preference"],
+      ["ソフト", "preference"],
+      ["冠婚葬祭", "scene"], ["日常業務", "scene"], ["登壇", "scene"], ["式典多め", "scene"],
+      ["出張多い", "lifestyle"],
+    ],
+    firstPurchase: "2022-06-27",
+  },
+  {
+    name: "天野 健一郎", nameKana: "あまの けんいちろう", tier: "standard",
+    birthDate: "1962-05-05",
+    companyName: "株式会社ロジコム物流", department: "営業本部",
+    jobTitle: "マネージャー", industry: "運輸・物流", residencePrefecture: "東京都",
+    familyInfo: "妻のみ",
+    labels: [
+      ["読書", "hobby"], ["ゴルフ", "hobby"],
+      ["グレー", "preference"], ["無地", "preference"], ["ブリティッシュ", "preference"],
+      ["商談", "scene"], ["式典多め", "scene"],
+      ["出張多い", "lifestyle"],
+    ],
+    firstPurchase: "2023-11-21",
+  },
+];
+
+
+// ── どれだけ作るか ──────────────────────────────────────
+
+/**
+ * 顧客の厚み。実店舗の名簿は均一ではないので、3 層に分ける。
+ *
+ * thick    … 採寸 2〜3 枚・注文 3〜6 件・注意事項・記念日。カルテが埋まっている人
+ * standard … 語 5〜7・注文 1〜3 件・初回購入日。ふつうの常連
+ * minimal  … 氏名とカナと電話だけ。**要件どおり「登録しただけ」の状態**
+ *
+ * minimal を混ぜるのは、一覧に「—」が並ぶ状態と、
+ * 「その人については何も記録がありません」と答える経路を残しておくため。
+ */
+export type Tier = "thick" | "standard" | "minimal";
+
+export type SeedShape = {
+  /**
+   * スタッフごとに何名**生成する**か。
+   * PINNED_STAFF1 の 10 名はここに含まれない（pinnedStaffId の担当に別途足される）。
+   */
+  perStaff: { staffId: string; count: number }[];
+  /**
+   * 固定の 10 名を誰の担当にするか。null なら作らない。
+   *
+   * 本番には staff-1 が存在しないので、実在のスタッフ id を渡す。
+   * 時枝さんの採寸票は紙の実物（private/採寸データ.jpg）をそのまま起こしたもので、
+   * デモとして一番見せたい記録なので、**本番でも作る側に倒してある**。
+   */
+  pinnedStaffId: string | null;
+  /** thick と standard の割合。残りが minimal */
+  tiers: { thick: number; standard: number };
+  seed: number;
+};
+
+/**
+ * ローカル（`npm run db:reset`）の既定。
+ *
+ * 細川さんは固定の 10 名だけ。増やしたぶんは白髭さん・野﨑さんへ寄せる。
+ * **600 名の中から担当 10 名を正確に引けるか**を確かめたいので、
+ * 店全体の規模は本番と揃えてある（店全体で同姓が増えるほど名寄せは厳しくなる）。
+ */
+export const DEFAULT_SHAPE: SeedShape = {
+  pinnedStaffId: "staff-1",
+  perStaff: [
+    { staffId: "staff-2", count: 295 },
+    { staffId: "staff-3", count: 295 },
+  ],
+  tiers: { thick: 0.13, standard: 0.67 },
+  seed: 20260804,
+};
+
+export function buildAll(shape: SeedShape = DEFAULT_SHAPE): Built {
+  const rand = mulberry32(shape.seed);
   const pick = <T,>(arr: T[]): T => arr[Math.floor(rand() * arr.length)];
   const pickSome = <T,>(arr: T[], n: number): T[] => {
     const copy = [...arr];
@@ -277,32 +499,64 @@ function buildAll(): Built {
   const orderItems: OrderItem[] = [];
   const approachTasks: ApproachTask[] = [];
 
-  const TOTAL = 50;
-  // 先頭 8 名は「厚い顧客」— 採寸・注文・やり取りが揃っている
-  const THICK = 8;
+  /**
+   * 誰を、どの担当で、どの厚みで作るか。**先に全部決めてから回す。**
+   *
+   * 固定の 10 名を先頭に置き、そのあとに生成ぶんを並べる。順序を決め打ちに
+   * するのは、乱数の消費順が変わると生成ぶんの氏名が総入れ替えになるため
+   * （固定の 10 名は乱数を一切引かないので、後ろの人数を変えても影響しない）。
+   */
+  const pinnedStaffId = shape.pinnedStaffId;
+  const specs: { staffId: string; tier: Tier; pinned?: PinnedCustomer }[] = [
+    ...(pinnedStaffId
+      ? PINNED_STAFF1.map((pinned) => ({ staffId: pinnedStaffId, tier: pinned.tier, pinned }))
+      : []),
+    ...shape.perStaff.flatMap(({ staffId, count }) =>
+      Array.from({ length: count }, (_, n): { staffId: string; tier: Tier } => ({
+        staffId,
+        // 層は割合で切る。乱数で決めると、担当ごとの厚みの比率が振れて
+        // 「この人だけ採寸票が 1 枚も無い」が起きる
+        tier:
+          n < Math.round(count * shape.tiers.thick)
+            ? "thick"
+            : n < Math.round(count * (shape.tiers.thick + shape.tiers.standard))
+              ? "standard"
+              : "minimal",
+      })),
+    ),
+  ];
+
+  const pinnedNames = new Set(PINNED_STAFF1.map((c) => c.name));
 
   // 居住地は順に配る。薄い顧客を飛ばすので、県ごとの人数が欠けないよう別に数える
   let residenceCursor = 0;
 
-  for (let i = 0; i < TOTAL; i++) {
-    const id = `cust-${String(i + 1).padStart(3, "0")}`;
-    const isTokieda = i === 0;
-    const thick = i < THICK;
-    // 薄い顧客は要件どおり「氏名＋連絡手段だけ」の状態も混ぜる
-    const minimal = !thick && i % 5 === 4;
+  for (let i = 0; i < specs.length; i++) {
+    const spec = specs[i];
+    const id = `cust-${String(i + 1).padStart(4, "0")}`;
+    const pinned = spec.pinned;
+    const thick = spec.tier === "thick";
+    const minimal = spec.tier === "minimal";
 
-    const [sn, snKana] = isTokieda ? SURNAMES[0] : pick(SURNAMES.slice(1));
-    const [gn, gnKana] = isTokieda ? GIVEN_NAMES[0] : pick(GIVEN_NAMES);
-    const [companyName, industry] = pick(COMPANIES);
+    // 固定の 10 名と同じ氏名は生成ぶんに作らせない。
+    // 店全体に「時枝 正」が 2 人いると、担当が違っても紛らわしいだけで
+    // 得るものが無い（同姓の検証は PINNED_STAFF1 に意図して仕込んである）。
+    let sn = "", snKana = "", gn = "", gnKana = "";
+    do {
+      [sn, snKana] = pick(SURNAMES);
+      [gn, gnKana] = pick(GIVEN_NAMES);
+    } while (pinnedNames.has(`${sn} ${gn}`) || pinnedNames.has(`${sn}${gn}`));
+    const [pickedCompany, pickedIndustry] = pick(COMPANIES);
+    const companyName = pinned?.companyName ?? pickedCompany;
+    const industry = pinned?.industry ?? pickedIndustry;
 
     // 薄い顧客は居住地も未設定。一覧で「—」が出る状態を残しておく
-    const residencePrefecture = minimal
-      ? undefined
-      : RESIDENCES[residenceCursor++ % RESIDENCES.length];
-
+    const residencePrefecture =
+      pinned?.residencePrefecture ??
+      (minimal ? undefined : RESIDENCES[residenceCursor++ % RESIDENCES.length]);
 
     // 顧客の担当。同じ顧客の採寸・受注・送信もこの人が行った想定にする
-    const staffId = pick(STAFF).id;
+    const staffId = spec.staffId;
 
     // パーソナル。移行後の姿を直接作る（もとは hobbies / preferences / tags の 3 列だった）。
     // ラベルになる語だけをチップにし、ならないものは走り書きとして本文だけ持つ。
@@ -319,35 +573,46 @@ function buildAll(): Built {
 
     // 初回購入日は顧客の列としては持たない（表示されるだけだった）。
     // 記念日としては意味があるので customer_anniversaries に残す。
-    const firstPurchase = minimal ? undefined : daysAgo(int(200, 1600));
+    const generatedFirstPurchase = minimal ? undefined : daysAgo(int(200, 1600));
+    const firstPurchase = pinned?.firstPurchase ?? generatedFirstPurchase;
 
-    // 1 人だけ、姓と名のあいだに空白を入れない。
+    // 生成ぶんも 1 割は姓と名のあいだに空白を入れない。
     //
     // 実際に画面から手で登録された顧客はこの形になる（「横川尚隆」）。
     // 全員が空白ありだと、氏名を `split(" ")[0]` で姓として扱うコードが
     // 手元では通ってしまう。**それで「横川くん」と名前を言っているのに
     // 誰の話か聞き返される**不具合が本番の使い方でだけ出た。
-    // eval は細川（STAFF[0]）で入るので、その担当かつ**同姓のいない**顧客に付ける
-    // （同姓がいると、聞き返すのが正解になってしまい照合の検証にならない）
-    const handTyped = i === 26;
+    // 固定の 10 名では九条健一郎がこの形（PINNED_STAFF1 を見よ）。
+    const handTyped = rand() < 0.1;
+
+    // 乱数は層によらず**必ず同じ回数だけ引く**。条件で引いたり引かなかったり
+    // すると、薄い顧客を 1 人足しただけで以降の氏名が全部ずれる。
+    const generatedBirth = `19${int(62, 92)}-${String(int(1, 12)).padStart(2, "0")}-${String(int(1, 28)).padStart(2, "0")}`;
+    const generatedPhone = `090-${int(1000, 9999)}-${int(1000, 9999)}`;
+    const generatedDepartment = pick(DEPARTMENTS) || undefined;
+    const generatedJobTitle = pick(JOB_TITLES) || undefined;
+    const generatedFamily = pick(["妻・長男（中学生）", "妻・長女（小学生）・次女", "独身", "妻のみ", "妻・長男・次男"]);
+    const generatedAddress = residencePrefecture
+      ? `${residencePrefecture}${pick(CITIES[residencePrefecture])}${int(1, 5)}-${int(1, 30)}-${int(1, 20)}`
+      : undefined;
 
     const customer: Customer = {
       id,
-      name: handTyped ? `${sn}${gn}` : `${sn} ${gn}`,
-      nameKana: handTyped ? `${snKana}${gnKana}` : `${snKana} ${gnKana}`,
-      birthDate: minimal ? undefined : `19${int(62, 92)}-${String(int(1, 12)).padStart(2, "0")}-${String(int(1, 28)).padStart(2, "0")}`,
+      name: pinned?.name ?? (handTyped ? `${sn}${gn}` : `${sn} ${gn}`),
+      nameKana: pinned?.nameKana ?? (handTyped ? `${snKana}${gnKana}` : `${snKana} ${gnKana}`),
+      birthDate: pinned ? pinned.birthDate : minimal ? undefined : generatedBirth,
       gender: "male",
-      phone: `090-${int(1000, 9999)}-${int(1000, 9999)}`,
+      // 薄い顧客も連絡手段だけは持つ。**まったく連絡できない行は作らない**
+      phone: generatedPhone,
       email: minimal ? undefined : `${snKana}@example.com`,
-      address: residencePrefecture
-        ? `${residencePrefecture}${pick(CITIES[residencePrefecture])}${int(1, 5)}-${int(1, 30)}-${int(1, 20)}`
-        : undefined,
+      address: minimal ? undefined : generatedAddress,
       residencePrefecture,
       companyName: minimal ? undefined : companyName,
-      department: minimal ? undefined : pick(DEPARTMENTS) || undefined,
-      jobTitle: minimal ? undefined : pick(JOB_TITLES) || undefined,
+      department: pinned ? pinned.department : minimal ? undefined : generatedDepartment,
+      jobTitle: pinned ? pinned.jobTitle : minimal ? undefined : generatedJobTitle,
       industry: minimal ? undefined : industry,
-      familyInfo: minimal ? undefined : pick(["妻・長男（中学生）", "妻・長女（小学生）・次女", "独身", "妻のみ", "妻・長男・次男"]),
+      familyInfo: pinned ? pinned.familyInfo : minimal ? undefined : generatedFamily,
+      embroideryName: pinned?.embroideryName,
       staffId,
       createdAt: daysAgo(int(30, 1700)),
     };
@@ -378,44 +643,39 @@ function buildAll(): Built {
       if (v === "出張多い") own(v, { name: v, categoryKey: "lifestyle" });
     }
 
-    if (isTokieda) {
-      customer.name = "時枝 正";
-      customer.nameKana = "ときえだ ただし";
-      customer.birthDate = "1978-03-19";
-      customer.companyName = "三菱商事株式会社";
-      customer.department = "エネルギーソリューション本部";
-      customer.jobTitle = "部長";
-      customer.industry = "総合商社";
-      customer.embroideryName = "T.TOKIEDA";
-      customer.familyInfo = "妻・長男（高校生）・長女（中学生）";
-      customer.staffId = "staff-1";
-
-      // 自動生成ぶんを捨てて、壁打ちで見ていた内容に置き換える
+    // 固定の 10 名は、自動生成ぶんを丸ごと捨てて書き下したものに置き換える。
+    // **乱数は上で引き終えている**ので、ここで捨てても後続の顧客はずれない。
+    if (pinned) {
       facts.length = factsBefore;
-      for (const v of ["ゴルフ", "ワイン"]) own(v, { name: v, categoryKey: "hobby" });
-      for (const v of ["ネイビー", "チャコール"]) own(v, { name: v, categoryKey: "preference" });
-      for (const v of ["無地", "ストライプ"]) own(v, { name: v, categoryKey: "preference" });
-      own("ブリティッシュ", { name: "ブリティッシュ", categoryKey: "preference" });
-      for (const v of ["商談", "会食", "式典"]) own(v, { name: v, categoryKey: "scene" });
-      own("出張多い", { name: "出張多い", categoryKey: "lifestyle" });
+      for (const [label, categoryKey] of pinned.labels ?? []) {
+        own(label, { name: label, categoryKey });
+      }
       // ラベルにならない話。これが「メモ」の行き先
-      own("高橋様のご紹介で来店。");
-      own("ご子息の成人式スーツの相談を受けている（2027年予定）。");
+      for (const memo of pinned.memos ?? []) own(memo);
 
-      ngNotes.push(
-        {
-          id: `ng-${id}-1`,
+      pinned.ngNotes?.forEach((body, n) => {
+        ngNotes.push({
+          id: `ng-${id}-${n + 1}`,
           customerId: id,
-          body: "光沢の強い生地は好まない。",
+          body,
           createdAt: customer.createdAt,
-        },
-        {
-          id: `ng-${id}-2`,
+        });
+      });
+    }
+
+    // 注意事項。**厚い顧客には必ず 1 件は入れる。**
+    //
+    // カルテの一番上に無条件で出る枠なので、1 件も無いデータだけで開発していると
+    // 「枠ごと消える」表示を一度も見ないまま出すことになる。
+    if (!pinned && thick) {
+      for (const body of pickSome(NG_NOTES, int(1, 2))) {
+        ngNotes.push({
+          id: `ng-${id}-${ngNotes.length}`,
           customerId: id,
-          body: "前回ピークドラペルを提案して断られている。",
+          body,
           createdAt: customer.createdAt,
-        },
-      );
+        });
+      }
     }
 
     customers.push(customer);
@@ -429,23 +689,23 @@ function buildAll(): Built {
         id: `anv-${id}-f`,
         customerId: id,
         type: "first_purchase",
-        date: isTokieda ? "2021-04-17" : firstPurchase,
+        date: firstPurchase,
         label: "初回購入記念日",
       });
     }
-    if (isTokieda) {
+    if (pinned?.wedding) {
       anniversaries.push({
         id: `anv-${id}-w`,
         customerId: id,
         type: "wedding",
-        date: "2006-10-08",
+        date: pinned.wedding,
         label: "結婚記念日",
       });
     }
 
-    // 採寸票
-    if (isTokieda) {
-      sheets.push(...tokiedaSheets(id));
+    // 採寸票。時枝さんだけは実物の採寸票（private/採寸データ.jpg）をそのまま入れる
+    if (pinned?.name === "時枝 正") {
+      sheets.push(...tokiedaSheets(id, staffId));
     } else if (thick) {
       const count = int(2, 3);
       let bust = int(88, 104);
@@ -506,6 +766,8 @@ function buildAll(): Built {
     }
 
     // 注文
+    // 時枝さんだけは注文 4 件で固定（壁打ちで見ていた履歴をそのまま残す）
+    const isTokieda = pinned?.name === "時枝 正";
     const orderCount = isTokieda ? 4 : thick ? int(3, 6) : minimal ? 0 : int(1, 3);
     /** この顧客の最終お渡しが何日前か。お渡し後フォローの起点になる */
     let lastDeliveryDays: number | null = null;
@@ -645,7 +907,7 @@ function buildAll(): Built {
  * シードの受注量と桁がずれ、棒が床に張り付いて達成率が常に一桁になる
  * ——グラフの読み方そのものが確かめられなくなる。
  */
-function buildRevenueTargets(
+export function buildRevenueTargets(
   customers: Customer[],
   orders: Order[],
 ): RevenueTarget[] {
@@ -661,10 +923,15 @@ function buildRevenueTargets(
     yearlyByStaff.set(staffId, (yearlyByStaff.get(staffId) ?? 0) + order.totalAmount);
   }
 
+  // **STAFF 定数ではなく、実際に顧客を持っている担当から作る。**
+  // 本番の uuid で生成したときに staff-1..3 の目標が混ざると、
+  // どのスタッフにも紐づかない行が本番へ流れる。
+  const staffIds = [...new Set(customers.map((c) => c.staffId))];
+
   const targets: RevenueTarget[] = [];
-  for (const staff of STAFF) {
+  for (const staffId of staffIds) {
     // 実績の月平均より少し上に置く。達成した月と届かなかった月が両方出る高さ
-    const monthly = (yearlyByStaff.get(staff.id) ?? 0) / 12;
+    const monthly = (yearlyByStaff.get(staffId) ?? 0) / 12;
     const base = Math.max(200_000, Math.round((monthly * 1.1) / 50_000) * 50_000);
 
     for (let offset = -11; offset <= 6; offset++) {
@@ -673,8 +940,8 @@ function buildRevenueTargets(
       // 3月・9月は入荷期で受注が伸びるため高めに置く
       const seasonal = [3, 9].includes(date.getMonth() + 1) ? 1.2 : 1;
       targets.push({
-        id: `tgt-${staff.id}-${month}`,
-        staffId: staff.id,
+        id: `tgt-${staffId}-${month}`,
+        staffId,
         month,
         amount: Math.round((base * seasonal) / 50_000) * 50_000,
       });
@@ -683,8 +950,8 @@ function buildRevenueTargets(
   return targets;
 }
 
-export function createSeedDatabase(): DemoDataset {
-  const built = buildAll();
+export function createSeedDatabase(shape: SeedShape = DEFAULT_SHAPE): DemoDataset {
+  const built = buildAll(shape);
   return {
     version: SEED_VERSION,
     session: { staffId: STAFF[0].id },

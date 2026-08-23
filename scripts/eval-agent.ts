@@ -63,6 +63,21 @@ type Expectation = {
   includes?: string[];
   /** 無効化の対象。facts[].label に入っているべき語 */
   factOf?: string;
+  /** 返答に必ず入る文字列。数や名前を言い切れたかを見る */
+  replyIncludes?: string[];
+  /**
+   * 返答に入ってはいけない文字列。省略すると断り文句（REFUSAL_WORDS）を見る。
+   *
+   * **kind: null のケースでこそ効く。**「前回の注文いつだった？」は提案を作らないのが
+   * 正しいが、「できません」と答えたら失敗で、その 2 つを kind では区別できない。
+   */
+  replyExcludes?: string[] | "refusal";
+  /** 注文の数。**exactCount（人の数）と混ぜない。**混ぜたら検査の意味が無い */
+  orderCount?: number;
+  /** 注文を引いた結果の人数 */
+  customerCount?: number;
+  /** 売上の範囲。store は管理者だけが取れる */
+  scope?: "mine" | "store";
   /**
    * そのターンの相手（subjectCustomerId）。氏名で書く。
    *
@@ -104,7 +119,29 @@ type Verdict =
   | "wrong_count"
   /** そのターンの相手が違う。**次のターンの宛先になる値**なので、ここのずれは伝播する */
   | "wrong_subject"
+  /**
+   * **できるのに断った。**
+   *
+   * kind: null は「提案を作らない」の意味でしかなく、「答えた」と「できませんと
+   * 言った」を区別できない。注文と売上を読めるようにした変更が効いているかは、
+   * まさにその区別のところに出るので、mismatch に畳まず独立した行にする。
+   */
+  | "false_refusal"
   | "error";
+
+/**
+ * 断り文句。**できることを断っていないか**を見るために持つ。
+ *
+ * プロンプト §1 は「できないことは、できるふりをしない」と「できることを
+ * できないと言うのも同じ誤り」の両方を要求している。後者を見る手段が無かった。
+ */
+const REFUSAL_WORDS = [
+  "できません",
+  "扱えません",
+  "お答えできません",
+  "分かりません",
+  "わかりません",
+];
 
 const BASE = process.env.EVAL_BASE_URL ?? "http://localhost:3000";
 const SUPABASE = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:54321";
@@ -210,6 +247,21 @@ function judge(
   if (expect.citation !== undefined && expect.citation !== (citations.length > 0)) {
     return "mismatch";
   }
+  // **できることを断っていないか。**kind の検査より先に見る —
+  // 「提案を作らない」が正しいターンでも、断ってよいターンとは限らない。
+  const excludes =
+    expect.replyExcludes === "refusal"
+      ? REFUSAL_WORDS
+      : Array.isArray(expect.replyExcludes)
+        ? expect.replyExcludes
+        : [];
+  if (excludes.some((w) => reply.includes(w))) {
+    return excludes === REFUSAL_WORDS ? "false_refusal" : "mismatch";
+  }
+  if (expect.replyIncludes && !expect.replyIncludes.every((w) => reply.includes(w))) {
+    return "reply_drift";
+  }
+
   const got = (action?.kind as string | undefined) ?? null;
   if (Array.isArray(expect.kind)) {
     // 「どれでもよい」。外したときだけ、提案を作ったかどうかで呼び分ける
@@ -238,6 +290,15 @@ function judge(
   if (expect.exactCount !== undefined && action?.exactCount !== expect.exactCount) {
     return "wrong_count";
   }
+  // 注文の数と人の数は**別のフィールドで**見る。1 つの数で両方を検査すると、
+  // 「今月何件」と「今月何人」を取り違えたまま通ってしまう
+  if (expect.orderCount !== undefined && action?.orderCount !== expect.orderCount) {
+    return "wrong_count";
+  }
+  if (expect.customerCount !== undefined && action?.customerCount !== expect.customerCount) {
+    return "wrong_count";
+  }
+  if (expect.scope !== undefined && action?.scope !== expect.scope) return "mismatch";
   if (expect.field) {
     const changes = (action?.changes ?? []) as { field: string; after?: string }[];
     const change = changes.find((c) => c.field === expect.field);
@@ -455,6 +516,7 @@ async function main() {
     reply_drift: "✗ 文言ずれ",
     wrong_count: "✗ 件数ちがい",
     wrong_subject: "✗ 宛先ちがい",
+    false_refusal: "✗ できるのに断った",
     error: "! 落ちた",
   };
   for (const r of rows) {

@@ -6,10 +6,14 @@ import { ArrowRight, Check, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { useOrderDraft } from "@/components/order/order-draft-provider";
 import type { AgentAction, AgentCustomerRef } from "@/lib/types";
 import { isMemoOnly } from "@/lib/ai/action-sentence";
 import { DOMINANT_SIDE_LABEL } from "@/lib/constants/customer-fields";
+import { ORDER_PURPOSE_LABEL } from "@/lib/constants/labels";
+import { ITEM_TYPE_MAP } from "@/lib/constants/measurement-fields";
 import { cn } from "@/lib/utils";
+import { formatAmount, formatDateDot } from "@/lib/utils/date";
 
 /** この店でまだ使われていない語か。適用するまで fact_labels には入らない */
 function isNewWord(action: AgentAction, name: string): boolean {
@@ -53,6 +57,7 @@ export function AgentActionCard({
   // 「語として登録」を押した新語。**既定は空** — 新しい語は走り書きのまま残る
   const [promoted, setPromoted] = useState<string[]>([]);
   const [expanded, setExpanded] = useState(false);
+  const { setOrderDraft } = useOrderDraft();
 
   if (action.kind === "search_result") {
     // 大きい一覧は畳む。**落としているのではなく畳んでいる**と機械が言い切るので、
@@ -104,6 +109,184 @@ export function AgentActionCard({
             </ul>
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (action.kind === "order_list") {
+    const shown = expanded ? action.orders : action.orders.slice(0, LIST_PREVIEW);
+    const hidden = action.orders.length - shown.length;
+    return (
+      <div className="flex flex-col gap-3">
+        {/* **注文の数と人の数を両方出す。**片方だけだと「今月何件？」と
+            「今月何人？」の答えが同じ数字に見える。合計額も並べる */}
+        <span className="field-label">
+          {action.countMeans} — {action.orderCount} 件 / {action.customerCount} 名 /{" "}
+          {formatAmount(action.totalAmount)}
+        </span>
+
+        {/* 引けなかった分を黙らせない。生地は色名の部分一致でしか引けないので、
+            紙に生地名が無い注文は静かに落ちる（色系統の列を持たない判断の帰結） */}
+        {action.fabricUnknownCount > 0 && (
+          <span className="text-xs text-muted-foreground">
+            ほかに、生地名が入っていない注文が {action.fabricUnknownCount} 件あります。
+          </span>
+        )}
+
+        <ul className="flex flex-col gap-2">
+          {shown.map((order) => (
+            <li key={order.orderId}>
+              <OrderRow order={order} onNavigate={onNavigate} />
+            </li>
+          ))}
+        </ul>
+
+        {hidden > 0 && (
+          <Button variant="ghost" className="h-11 sm:h-9" onClick={() => setExpanded(true)}>
+            残り {hidden} 件を見る
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  if (action.kind === "revenue") {
+    return (
+      <div className="flex flex-col gap-3">
+        {/* 何をどう数えた数字かを先に出す。金額は「どの範囲の」で意味が変わる */}
+        <span className="field-label">
+          {action.scopeLabel} — {action.countsBy}
+        </span>
+
+        <ul className="flex flex-col gap-1.5">
+          {action.months.map((m) => (
+            <li key={m.month} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+              <span className="tnum w-16 shrink-0 font-mono text-xs text-muted-foreground">
+                {m.month}
+              </span>
+              <span className="tnum font-mono text-sm font-medium">
+                {formatAmount(m.revenue)}
+              </span>
+              <span className="text-xs text-muted-foreground">{m.orderCount} 件</span>
+              {/* 目標は自分の担当のときだけ。店全体では扱わない */}
+              {m.target != null && m.rate != null && (
+                <span className="text-xs text-muted-foreground">
+                  目標 {formatAmount(m.target)} / {Math.round(m.rate * 100)}%
+                </span>
+              )}
+              {/* 今月は途中なので、月の進み具合を添える。
+                  README「図から読めることは書かない」に従い、
+                  「順調です」のような判断の文は置かない */}
+              {m.isCurrent && (
+                <span className="text-xs text-muted-foreground">
+                  （今月・{Math.round(m.monthProgress * 100)}% 経過）
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+
+        {/* 店全体のときだけ。**どの期間の内訳かを必ず添える** */}
+        {action.byStaff && action.byStaff.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <span className="field-label">{action.byStaffMeans ?? "スタッフ別"}</span>
+            <ul className="flex flex-col gap-1">
+              {action.byStaff.map((b) => (
+                <li key={b.staffName} className="flex items-baseline justify-between gap-3">
+                  <span className="truncate text-sm">{b.staffName}</span>
+                  <span className="tnum shrink-0 font-mono text-sm">
+                    {formatAmount(b.revenue)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => onNavigate("/dashboard")}
+          className="w-fit text-xs text-brand underline-offset-4 hover:underline"
+        >
+          ダッシュボードで見る
+        </button>
+      </div>
+    );
+  }
+
+  if (action.kind === "order_draft") {
+    const d = action.draft;
+    return (
+      <div className="flex flex-col gap-3 rounded-md border border-brand/25 bg-accent/40 p-3">
+        <div className="flex flex-col gap-1">
+          {/* **「注文を登録する」と書かない。**押した瞬間に書き込まれる他のカードと
+              同じに見えると、承認が演劇になる。ここで起きるのは画面が開くことだけ */}
+          <span className="field-label">注文の登録へ進む</span>
+          <span className="text-sm font-medium">{action.customer.name} 様</span>
+          {action.subjectFrom !== "spoken_name" && (
+            <span className="text-xs text-muted-foreground">
+              {ORIGIN_NOTE[action.subjectFrom]}
+            </span>
+          )}
+        </div>
+
+        {/* 拾えたものを並べる。**金額は無い** — 紙にも会話にも無い項目なので、
+            ここに空欄として出しても埋められない */}
+        <dl className="flex flex-col gap-1 text-sm">
+          {d.orderedAt && (
+            <div className="flex items-baseline gap-2">
+              <dt className="field-label">受注日</dt>
+              <dd>{formatDateDot(d.orderedAt)}</dd>
+            </div>
+          )}
+          {d.items && d.items.length > 0 && (
+            <div className="flex items-baseline gap-2">
+              <dt className="field-label">アイテム</dt>
+              <dd>{d.items.map((i) => ITEM_LABEL[i] ?? i).join("・")}</dd>
+            </div>
+          )}
+          {d.fabric?.fabricColorName && (
+            <div className="flex items-baseline gap-2">
+              <dt className="field-label">生地</dt>
+              <dd>{d.fabric.fabricColorName}</dd>
+            </div>
+          )}
+          {d.purpose && (
+            <div className="flex items-baseline gap-2">
+              <dt className="field-label">用途</dt>
+              <dd>{ORDER_PURPOSE_LABEL[d.purpose]}</dd>
+            </div>
+          )}
+        </dl>
+
+        {action.quote && (
+          <span className="text-xs text-muted-foreground">「{action.quote}」より</span>
+        )}
+
+        <Button
+          className="h-11 w-full sm:h-9 sm:w-fit"
+          onClick={() => {
+            setOrderDraft({
+              // 中身が同じ下書きを 2 回渡されても取り違えないための id。
+              // ここでしか作らないので、カードごとに 1 つで足りる
+              id: `${action.customer.id}:${action.quote ?? ""}:${Object.keys(d).join(",")}`,
+              customerId: action.customer.id,
+              orderedAt: d.orderedAt,
+              arrivedAt: d.arrivedAt,
+              purpose: d.purpose,
+              items: d.items,
+              fabric: d.fabric,
+              quote: action.quote,
+            });
+            onNavigate(`/customers/${action.customer.id}?order=new`);
+          }}
+        >
+          注文の登録へ
+        </Button>
+        {/* 何が足りないのかを先に言う。開いてから気づくと、聞き直しになる */}
+        <span className="text-xs text-muted-foreground">
+          金額（税込）は画面で入れてください。ここではまだ登録されません。
+        </span>
       </div>
     );
   }
@@ -227,7 +410,7 @@ export function AgentActionCard({
                       {/* オフのままだと何が残るのかを書く。「残らない」と読まれない */}
                       <span className="text-xs text-muted-foreground">
                         {on
-                          ? "この店の語になり、ほかのお客様にも付けられます"
+                          ? "ほかのお客様にも付けられるようになります"
                           : "オフのままなら、メモとして残ります"}
                       </span>
                     </Switch>
@@ -320,6 +503,11 @@ const ANNIVERSARY_LABELS: Record<string, string> = {
 };
 
 /** 提案カードの外枠。種類が増えても、見出し・根拠・ボタンの並びは動かさない */
+/** アイテムの表示名。マスタ（lib/constants/measurement-fields.ts）から引く */
+const ITEM_LABEL: Record<string, string> = Object.fromEntries(
+  Object.entries(ITEM_TYPE_MAP).map(([id, t]) => [id, t.name]),
+);
+
 const ORIGIN_NOTE: Record<string, string> = {
   open_karte: "いま開いているカルテから",
   recent_topic: "さきほどの話から",
@@ -462,6 +650,50 @@ function CustomerRow({
           ))}
         </span>
       </div>
+      <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
+    </button>
+  );
+}
+
+/**
+ * 注文 1 件の行。
+ *
+ * CustomerRow を流用しない。**見たいものが違う** — あちらは「誰か」で、
+ * こちらは「いつ・いくら・何の生地か」。飛び先も注文履歴タブにする。
+ */
+function OrderRow({
+  order,
+  onNavigate,
+}: {
+  order: Extract<AgentAction, { kind: "order_list" }>["orders"][number];
+  onNavigate: (href: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onNavigate(`/customers/${order.customer.id}?tab=orders`)}
+      className="flex min-h-11 w-full items-center gap-3 rounded-md border border-border bg-card p-3 text-left transition-colors hover:border-brand/40 active:bg-accent/40"
+    >
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <span className="flex flex-wrap items-baseline gap-x-2">
+          <span className="truncate text-sm font-medium">{order.customer.name}</span>
+          <span className="tnum font-mono text-xs text-muted-foreground">
+            {order.orderNumber}
+          </span>
+        </span>
+        <span className="flex flex-wrap items-baseline gap-x-3 text-xs text-muted-foreground">
+          {order.deliveryDate && (
+            <span>
+              {/* **予定と実績を同じ見た目にしない。**まだ渡していない日付を
+                  「お渡し」と書くと、渡した相手として扱われる */}
+              {order.deliveryIsPlanned ? "お渡し予定 " : "お渡し "}
+              {formatDateDot(order.deliveryDate)}
+            </span>
+          )}
+          {order.fabricColorName && <span className="truncate">{order.fabricColorName}</span>}
+        </span>
+      </div>
+      <span className="tnum shrink-0 font-mono text-sm">{formatAmount(order.totalAmount)}</span>
       <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
     </button>
   );

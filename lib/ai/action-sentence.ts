@@ -55,6 +55,17 @@ export function isMemoOnly(action: AgentAction): boolean {
   return action.kind === "add_fact" && factLabelNames(action).length === 0;
 }
 
+
+/**
+ * 金額の整形。
+ *
+ * **lib/utils/date.ts の formatAmount を使わない。**あちらは画面の部品で、
+ * ここは会話の文（読み上げられることもある）。桁区切りだけを当てて「円」を付ける。
+ */
+function formatYen(amount: number): string {
+  return `${amount.toLocaleString("ja-JP")} 円`;
+}
+
 /** 「何を数えたか」。数と必ずセットで出す */
 function searchScope(action: Extract<AgentAction, { kind: "search_result" }>): string {
   const words = action.keyword ? action.keyword.split("・").filter(Boolean) : [];
@@ -103,6 +114,42 @@ export function actionSentence(action: AgentAction): string | null {
         ? `${what}該当する方はいませんでした。`
         : `${what}該当は ${action.exactCount} 名です。`;
     }
+
+    case "order_list": {
+      // **countMeans を必ず先に置く。**「12 件です」だけだと、何を数えた 12 件か
+      // 分からない。search_result で「両方」と聞かれて和集合の数を答えた事故と同じ形。
+      const head =
+        action.orderCount === 0
+          ? `${action.countMeans}の注文はありませんでした。`
+          : `${action.countMeans}の注文は ${action.orderCount} 件（${action.customerCount} 名）` +
+            `、合計 ${formatYen(action.totalAmount)}です。`;
+      // 引けなかった分を黙らせない。生地は色名の部分一致でしか引けないので、
+      // 紙に生地名が無い注文は静かに落ちる。
+      return action.fabricUnknownCount > 0
+        ? `${head}ほかに、生地名が入っていない注文が ${action.fabricUnknownCount} 件あります。`
+        : head;
+    }
+
+    case "revenue": {
+      const m = action.months.find((x) => x.isCurrent) ?? action.months[0];
+      if (!m) return `${action.scopeLabel}の売上は出せませんでした。`;
+      const head = `${action.scopeLabel}の ${m.month} は ${formatYen(m.revenue)}`;
+      // 目標は自分の担当のときだけ。店全体では扱わない（画面で検算できないため）。
+      const tail =
+        m.target != null && m.rate != null
+          ? `（目標 ${formatYen(m.target)} の ${Math.round(m.rate * 100)}%）です。`
+          : action.targetAvailable
+            ? "です。目標は入っていません。"
+            : "です。店全体では目標を扱えません。";
+      return `${head}${tail}`;
+    }
+
+    case "order_draft":
+      // **「登録しました」と読まれない言い方にする。**まだ何も書かれていない
+      return (
+        `${subject(action.customer.name, action.subjectFrom)}の注文の登録画面へ送ります。` +
+        `金額（税込）は画面で入れてください。`
+      );
 
     case "ask":
       // 質問文はモデルが書いてよい（構造の言い換えではなく、会話そのものなので）

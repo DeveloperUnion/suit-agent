@@ -7,6 +7,7 @@ import {
 } from "next/font/google";
 import { AgentDock } from "@/components/agent/agent-dock";
 import { AgentProvider } from "@/components/agent/agent-provider";
+import { OrderDraftProvider } from "@/components/order/order-draft-provider";
 import { AppShell } from "@/components/layout/app-shell";
 import { AuthGate } from "@/components/layout/auth-gate";
 import { Toaster } from "@/components/ui/sonner";
@@ -83,10 +84,17 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             （守っているのは DB のほうで、この画面は入れないことを説明するためにある）。
           */}
           <AuthGate>
-            <AgentProvider>
-              <AppShell>{children}</AppShell>
-              <AgentDock />
-            </AgentProvider>
+            {/*
+              OrderDraftProvider は AgentProvider の外側。会話のカードが下書きを積み、
+              カルテ（AppShell の中）が取り出すので、両方より上にいる必要がある。
+              値を URL に載せない理由はプロバイダの JSDoc に書いてある。
+            */}
+            <OrderDraftProvider>
+              <AgentProvider>
+                <AppShell>{children}</AppShell>
+                <AgentDock />
+              </AgentProvider>
+            </OrderDraftProvider>
           </AuthGate>
         </TooltipProvider>
         {/* 右下は AI アシスタントの FAB が占めているので、その上に積む */}

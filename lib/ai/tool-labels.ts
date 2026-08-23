@@ -13,13 +13,16 @@ export const TOOL_LABELS: Record<string, string> = {
   search_customers: "顧客を探しています",
   find_customer: "お名前を照合しています",
   get_customer: "カルテを読んでいます",
+  search_orders: "注文を調べています",
+  get_revenue: "売上を集計しています",
   propose_add_fact: "パーソナルの追記をまとめています",
   propose_add_ng_note: "注意事項をまとめています",
   propose_update_customer: "現在の値と見比べています",
   propose_add_anniversary: "記念日をまとめています",
   propose_invalidate_fact: "対象の記録を確かめています",
   propose_resolve_approach: "アプローチを確かめています",
-  propose_ask_customer: "候補を並べています",
+  propose_order_draft: "注文の内容をまとめています",
+  propose_ask: "候補を並べています",
 };
 
 /** 道具の名前が増えても画面が黙らないように、既定を持つ */

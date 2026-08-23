@@ -26,6 +26,7 @@ import {
 import { ITEM_TYPE_MAP } from "@/lib/constants/measurement-fields";
 import { listSheets } from "@/lib/data/measurements";
 import { createOrder, type OrderItemFabric } from "@/lib/data/orders";
+import type { OrderDraft } from "@/components/order/order-draft-provider";
 import { useQuery } from "@/lib/hooks/use-query";
 import type { ItemTypeId, OrderPurpose } from "@/lib/types";
 import { addDays, formatAmount, formatDateDot, toIsoDate } from "@/lib/utils/date";
@@ -39,7 +40,15 @@ const ITEM_TYPES: ItemTypeId[] = ["jacket", "pants", "vest"];
  *
  * 主動線は工場発注書の取り込み（components/measurement/order-sheet-import-dialog.tsx）で、
  * ここはその逃げ道。紙がまだ出ていない受注を先に入れたいときに使う。
- * 入口も取り込み画面の中のリンクだけにしてある。
+ * 入口は取り込み画面の中のリンクと、**会話から送られた下書き**の 2 つだけ。
+ *
+ * カルテのヘッダーにボタンは置かない。常設すると「取り込みと手入力のどちらを使うか」を
+ * 毎回選ばせることになる（発注書 1 枚から寸法・補正・生地・日付が同時に入るのに対し、
+ * 手入力は同じものを 5 ステップに分解し直す）。会話からの導線は、実際に受注日や
+ * アイテムを聞き取れたときにだけ出るので、選ばせてはいない。
+ *
+ * **下書きに金額は入らない。**税込の売上金額は紙にも会話にも無い唯一の必須項目で、
+ * ここで人が入れる。
  */
 export function OrderCreateDialog({
   customerId,
@@ -47,6 +56,7 @@ export function OrderCreateDialog({
   open,
   onOpenChange,
   onOpenMeasurement,
+  initialDraft,
 }: {
   customerId: string;
   customerName: string;
@@ -54,6 +64,8 @@ export function OrderCreateDialog({
   onOpenChange: (open: boolean) => void;
   /** 体型が変わっていた場合に採寸ビューへ送る */
   onOpenMeasurement: () => void;
+  /** 会話から送られた下書き。金額は含まれない */
+  initialDraft?: OrderDraft;
 }) {
   const today = toIsoDate(new Date());
 
@@ -68,6 +80,9 @@ export function OrderCreateDialog({
   const [saving, setSaving] = useState(false);
   const [gapOpen, setGapOpen] = useState(false);
 
+  // 閉じている間は無いものとして扱う（閉じた状態で下書きが差し替わっても何も起きない）
+  const draft = open ? initialDraft : undefined;
+
   const sheetsLoader = useCallback(() => listSheets(customerId), [customerId]);
   const { data: sheets } = useQuery(sheetsLoader, [customerId, open]);
 
@@ -79,8 +94,17 @@ export function OrderCreateDialog({
     void listSheets(customerId).then((sheetList) => {
       if (!alive) return;
       setSheetId(sheetList[0]?.id ?? "");
-      setSelected(Object.fromEntries(ITEM_TYPES.map((type) => [type, type !== "vest"])));
-      setFabric({});
+      // 会話から拾えたものだけ埋める。拾えなかった項目は今までどおりの既定値
+      setSelected(
+        draft?.items?.length
+          ? Object.fromEntries(ITEM_TYPES.map((type) => [type, draft.items!.includes(type)]))
+          : Object.fromEntries(ITEM_TYPES.map((type) => [type, type !== "vest"])),
+      );
+      setFabric(draft?.fabric ?? {});
+      if (draft?.orderedAt) setOrderedAt(draft.orderedAt);
+      if (draft?.arrivedAt) setArrivedAt(draft.arrivedAt);
+      if (draft?.purpose) setPurpose(draft.purpose);
+      // **金額は下書きから入れない。**紙にも会話にも無い値で、人が入れると決まっている
       setTotalAmount(0);
       setBreakdown({});
       // このダイアログは閉じてもマウントされたまま（customer-detail-view）。
@@ -90,7 +114,10 @@ export function OrderCreateDialog({
     return () => {
       alive = false;
     };
-  }, [open, customerId]);
+    // **draft そのものを依存にしない。**毎レンダー新しいオブジェクトになるので、
+    // 入力中にリセットが走る。id だけを見る。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, customerId, draft?.id]);
 
   const selectedItems = ITEM_TYPES.filter((t) => selected[t]);
   // 金額は必須。parseAmount が負数も非数も 0 に丸めるので、判定はこれ 1 つで足りる。
@@ -140,6 +167,14 @@ export function OrderCreateDialog({
             <DialogDescription className="sr-only">
               使う寸法・生地・アイテム・受注情報を入力して注文を登録します。
             </DialogDescription>
+            {/* 図から読めないことなので置く（README「画面に文章を置くかどうか」）。
+                会話から来たときだけ、何が起きたのかと、何が足りないのかを言う */}
+            {draft && (
+              <p className="pt-1 text-xs text-muted-foreground">
+                会話から取り込みました。金額（税込）を入れてください。
+                {draft.quote && `「${draft.quote}」より`}
+              </p>
+            )}
           </DialogHeader>
 
           <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto p-4 sm:p-6">

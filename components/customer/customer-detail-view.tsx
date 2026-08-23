@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, FileUp, MoreHorizontal, Trash2 } from "lucide-react";
 
 import { useAgentContext } from "@/components/agent/agent-provider";
@@ -14,6 +15,7 @@ import { ProfileTab } from "@/components/customer/tabs/profile-tab";
 import { MeasurementSheetView } from "@/components/measurement/measurement-sheet-view";
 import { OrderSheetImportDialog } from "@/components/measurement/order-sheet-import-dialog";
 import { OrderCreateDialog } from "@/components/order/order-create-dialog";
+import { useOrderDraft, type OrderDraft } from "@/components/order/order-draft-provider";
 import { SilhouetteThumb } from "@/components/silhouette/silhouette-thumb";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,13 +41,29 @@ const TABS = [
 export function CustomerDetailView({
   customerId,
   initialTab,
+  openOrder,
 }: {
   customerId: string;
   /** アプローチリストから遷移してきたときに開くタブ */
   initialTab?: string;
+  /** 会話の「注文の登録へ」から来たか（?order=new） */
+  openOrder?: boolean;
 }) {
+  const router = useRouter();
+  const { consumeOrderDraft } = useOrderDraft();
+
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [orderOpen, setOrderOpen] = useState(false);
+  /**
+   * 会話から送られた下書き。**レンダー中に 1 回だけ取り出す。**
+   *
+   * effect の中で setState すると、開いた直後にもう一度描き直すことになる
+   * （React の set-state-in-effect）。初期値として取り出せば 1 回で済む。
+   * 取り出した時点で Provider からは消えるので、次に手で開いても残らない。
+   */
+  const [orderDraft, setOrderDraft] = useState<OrderDraft | undefined>(() =>
+    openOrder ? (consumeOrderDraft(customerId) ?? undefined) : undefined,
+  );
+  const [orderOpen, setOrderOpen] = useState(Boolean(openOrder));
   const [importOpen, setImportOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   /** 取り込んだ直後に、その票を開いた状態で採寸ビューへ戻すため */
@@ -59,6 +77,21 @@ export function CustomerDetailView({
 
   const silhouetteLoader = useCallback(() => getSilhouetteState(customerId), [customerId]);
   const { data: silhouette } = useQuery(silhouetteLoader, [customerId]);
+
+  /**
+   * URL から `?order=new` を外す。
+   *
+   * 残したまま戻る操作をすると、下書きの無い空の登録画面がまた開く。
+   * 開く判断そのものは上の初期値でもう済んでいるので、ここは掃除だけ。
+   */
+  useEffect(() => {
+    if (!openOrder) return;
+    router.replace(`/customers/${customerId}${tab === "profile" ? "" : `?tab=${tab}`}`, {
+      scroll: false,
+    });
+    // tab は初期値から動かないので依存に入れない
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openOrder, customerId, router]);
 
   // AI アシスタントに「いま誰のカルテを見ているか」を伝える。
   // 名前を言わずに「ゴルフが趣味らしい」と話しかけられるようにするため
@@ -247,8 +280,13 @@ export function CustomerDetailView({
         customerId={customerId}
         customerName={customer.name}
         open={orderOpen}
-        onOpenChange={setOrderOpen}
+        onOpenChange={(next) => {
+          setOrderOpen(next);
+          // 閉じたら下書きも捨てる。次に手で開いたときに残っていない
+          if (!next) setOrderDraft(undefined);
+        }}
         onOpenMeasurement={() => setSheetOpen(true)}
+        initialDraft={orderDraft}
       />
 
       <CustomerDeleteDialog

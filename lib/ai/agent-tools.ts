@@ -96,9 +96,136 @@ export async function findCustomer(ctx: ToolContext, name: string): Promise<Name
   });
 }
 
-/** その人の記録を丸ごと。「どんな人だっけ」に検索は要らない */
-export async function getCustomer(ctx: ToolContext, customerId: string): Promise<unknown> {
-  return rpc<unknown>(ctx, "customer_dossier", { p_customer_id: customerId });
+/**
+ * その人の記録を丸ごと。「どんな人だっけ」に検索は要らない。
+ *
+ * 採寸は既定で最新 1 枚。**履歴まで既定にしない** — 人の記録がベクトルの海に埋もれる。
+ * 「最近痩せた？」のように体型の変化を聞かれたときだけ深さを上げる。
+ */
+export async function getCustomer(
+  ctx: ToolContext,
+  customerId: string,
+  measurementDetail = 1,
+): Promise<unknown> {
+  return rpc<unknown>(ctx, "customer_dossier", {
+    p_customer_id: customerId,
+    p_measurement_detail: measurementDetail,
+  });
+}
+
+export type OrderSearchResult = {
+  /** 何を数えたか。**数と必ずセットで持ち回る** */
+  countMeans: string;
+  scopeLabel: string;
+  orderCount: number;
+  customerCount: number;
+  totalAmount: number;
+  /**
+   * 紙に生地名が入っていない注文の数。
+   *
+   * 色系統（navy / gray）はテーブルに無いので、生地は色名の**部分一致**でしか引けない。
+   * 引けなかった分を名乗らないと、落ちた注文に誰も気づけない。
+   */
+  fabricUnknownCount: number;
+  orders: {
+    orderId: string;
+    customerId: string;
+    customerName: string;
+    customerNameKana: string;
+    companyName: string | null;
+    orderNumber: string;
+    orderedAt: string;
+    deliveryDate: string | null;
+    /** お渡し日がまだ空で、納品日から出した予定の日付か */
+    deliveryIsPlanned: boolean;
+    status: string;
+    purpose: string;
+    fabricColorName: string | null;
+    fabricProductNumber: string | null;
+    totalAmount: number;
+  }[];
+  /** 条件が 1 つも来なかったとき。全件は返さない */
+  error?: string;
+};
+
+/**
+ * 注文を軸に引く。**顧客ではなく注文を返す。**
+ *
+ * scope は持たない（SQL 側で自担当固定）。他人の顧客の注文を返す口を作ると、
+ * モデルが宛先にできる customerId の供給源が 1 つ増える。
+ */
+export async function searchOrders(
+  ctx: ToolContext,
+  input: {
+    orderedMonth?: string;
+    orderedFrom?: string;
+    orderedTo?: string;
+    deliveryMonth?: string;
+    deliveryFrom?: string;
+    deliveryTo?: string;
+    fabric?: string;
+    purpose?: string;
+    minAmount?: number;
+    maxAmount?: number;
+    undelivered?: boolean;
+  },
+): Promise<OrderSearchResult> {
+  return rpc<OrderSearchResult>(ctx, "search_orders", {
+    p_viewing_staff_id: ctx.viewingStaffId,
+    p_ordered_month: input.orderedMonth ?? null,
+    p_ordered_from: input.orderedFrom ?? null,
+    p_ordered_to: input.orderedTo ?? null,
+    p_delivery_month: input.deliveryMonth ?? null,
+    p_delivery_from: input.deliveryFrom ?? null,
+    p_delivery_to: input.deliveryTo ?? null,
+    p_fabric: input.fabric ?? null,
+    p_purpose: input.purpose ?? null,
+    p_min_amount: input.minAmount ?? null,
+    p_max_amount: input.maxAmount ?? null,
+    p_undelivered: input.undelivered ?? false,
+  });
+}
+
+export type RevenueSummary = {
+  scope: "mine" | "store";
+  scopeRequested: "mine" | "store";
+  /** 店全体を頼まれたが管理者ではなかった。**黙って自担当に落とさないための旗** */
+  scopeDenied: boolean;
+  scopeLabel: string;
+  today: string;
+  countsBy: string;
+  /** 店全体では目標を扱わない（人が画面で検算できない数字になるため） */
+  targetAvailable: boolean;
+  months: {
+    month: string;
+    revenue: number;
+    orderCount: number;
+    target: number | null;
+    rate: number | null;
+    remaining: number | null;
+    monthProgress: number;
+    isCurrent: boolean;
+  }[];
+  byStaffMeans: string | null;
+  byStaff: { staffName: string; revenue: number; orderCount: number }[] | null;
+};
+
+/**
+ * 月次の実績と目標。
+ *
+ * **「今月」を TS 側で作らない。**サーバは UTC で走るので、月初の 9 時間だけ
+ * 画面（ブラウザ = JST）と別の月を指す。境界は SQL の中で JST から決めている。
+ */
+export async function revenueSummary(
+  ctx: ToolContext,
+  input: { storeWide?: boolean; month?: string; months?: number },
+): Promise<RevenueSummary> {
+  return rpc<RevenueSummary>(ctx, "revenue_summary", {
+    p_viewing_staff_id: ctx.viewingStaffId,
+    p_store_wide: input.storeWide ?? false,
+    p_month: input.month ?? null,
+    p_months: input.months ?? 3,
+  });
 }
 
 // ── 提案を組み立てる（書き込まない） ────────────────────

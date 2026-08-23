@@ -104,8 +104,15 @@ export async function applyAgentAction(action: AgentAction): Promise<void> {
       await resolveApproach(action.customer.id, action.status);
       return;
 
-    // 検索結果と聞き返しは、押して書き込むものではない
+    // 検索結果・注文の一覧・売上・聞き返しは、押して書き込むものではない。
+    // **新しい表示専用の種類を足したら、必ずここにも足す。**
+    // 忘れると switch を素通りして、カードの「適用」で静かに何も起きない。
     case "search_result":
+    case "order_list":
+    case "revenue":
+    // 注文の下書きは画面へ送るだけ。**ここでは何も書かない** —
+    // 書けるようにすると、金額の必須と合計の一致確認を迂回する経路が生まれる
+    case "order_draft":
     case "ask":
       return;
   }

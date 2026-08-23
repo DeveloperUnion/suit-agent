@@ -514,6 +514,97 @@ export type AgentAction =
       similar?: { customer: AgentCustomerRef; content: string }[];
     }
   /**
+   * 注文を横断で引いた結果。**表示するだけで、押して書き込むものではない。**
+   *
+   * search_result と同じく、数は一覧とは別のフィールドで持つ。加えてここは
+   * **注文の数と人の数を両方**返す。「今月何件作った？」と「今月何人にお渡し？」は
+   * 別の問いで、1 つの数で答えると必ずどちらかが嘘になる。
+   */
+  | {
+      kind: "order_list";
+      /** 何を数えたか。数と必ずセットで出す（search_result の兄弟） */
+      countMeans: string;
+      scopeLabel: string;
+      orderCount: number;
+      customerCount: number;
+      totalAmount: number;
+      /**
+       * 紙に生地名が入っていない注文の数。
+       *
+       * 色系統を持たない判断（20260811082718_orders.sql）の帰結で、生地は
+       * 色名の部分一致でしか引けない。**0 でなければ必ず画面に出す** —
+       * 件数だけ言い切ると、落ちた注文に誰も気づけない。
+       */
+      fabricUnknownCount: number;
+      orders: {
+        orderId: Uuid;
+        customer: AgentCustomerRef;
+        orderNumber: string;
+        orderedAt: IsoDate;
+        deliveryDate?: IsoDate;
+        /** お渡し日がまだ空で、納品日から出した予定の日付か */
+        deliveryIsPlanned: boolean;
+        purpose: OrderPurpose;
+        fabricColorName?: string;
+        totalAmount: number;
+      }[];
+    }
+  /**
+   * 月次の実績と目標。**表示するだけ。**
+   *
+   * 既定は自分の担当で、店全体は管理者だけ。**店全体では目標を扱わない** —
+   * 各人の目標の合計はダッシュボードのどこにも出ておらず、人が画面で検算できない
+   * 数字になるため（「AI しか知らない数字」を作らない）。
+   */
+  | {
+      kind: "revenue";
+      scope: "mine" | "store";
+      scopeLabel: string;
+      countsBy: string;
+      targetAvailable: boolean;
+      months: {
+        month: IsoMonth;
+        revenue: number;
+        orderCount: number;
+        target?: number;
+        rate?: number;
+        remaining?: number;
+        monthProgress: number;
+        isCurrent: boolean;
+      }[];
+      byStaffMeans?: string;
+      byStaff?: { staffName: string; revenue: number; orderCount: number }[];
+    }
+  /**
+   * 聞き取った注文を、登録画面へ送る。**書き込みでも提案でもない第 3 の器。**
+   *
+   * 押しても何も書かれない — 注文の登録画面が、拾えた値を入れた状態で開くだけ。
+   * **金額（税込）を持たない**のがこの形の理由で、あれは紙にも会話にも無い唯一の
+   * 必須項目なので、人が画面で入れるしかない。カードの中で入力させると、
+   * 合計の一致確認（AmountGapDialog）まで作り直すことになる。
+   *
+   * Proposal の枠（適用する / 違う）は使わない。押した瞬間に書き込まれる他のカードと
+   * 見た目が同じだと、承認が演劇になる。
+   */
+  | {
+      kind: "order_draft";
+      customer: AgentCustomerRef;
+      subjectFrom: SubjectOrigin;
+      draft: {
+        orderedAt?: IsoDate;
+        arrivedAt?: IsoDate;
+        purpose?: OrderPurpose;
+        items?: ItemTypeId[];
+        fabric?: {
+          fabricProductNumber?: string;
+          fabricColorNumber?: string;
+          fabricColorName?: string;
+          fabricComposition?: string;
+        };
+      };
+      quote?: string;
+    }
+  /**
    * 決められなかったので人に聞く。
    *
    * 顧客の取り違えだけでなく、**あらゆる曖昧さの落ちる先**。用途を「同姓が複数」に

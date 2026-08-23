@@ -157,10 +157,10 @@ function AddLabelDialog({
       const label = existing ?? (await createLabel({ name, categoryKey: category || categoryKey! }));
       // 原文はラベル名そのもの。手で足すときに一言を強いると入力自体が減る
       await addFact({ customerId, labelId: label.id, body: name });
-      toast.success(`${label.name} を足しました`);
+      toast.success(`${label.name} を追加しました`);
       close();
     } catch {
-      toast.error("足せませんでした。すでに入っているかもしれません。");
+      toast.error("追加できませんでした。すでに入っているかもしれません。");
     } finally {
       setPending(false);
     }
@@ -170,16 +170,16 @@ function AddLabelDialog({
     <Dialog open={open} onOpenChange={(next) => !next && close()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>パーソナルを足す</DialogTitle>
+          <DialogTitle>パーソナルに追加</DialogTitle>
           <DialogDescription>
-            すでにある語なら候補から選んでください。表記が揺れると、同じ趣味の方が
+            同じものがすでにあれば候補から選んでください。表記が揺れると、同じ趣味の方が
             ひとまとまりで引けなくなります。
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="fact-label">語</Label>
+            <Label htmlFor="fact-label">パーソナル</Label>
             <Input
               id="fact-label"
               value={value}
@@ -206,7 +206,7 @@ function AddLabelDialog({
               2 回目以降は「これは趣味か仕事か」の判断が発生しない */}
           {isNew && (
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="fact-category">分類（新しい語です）</Label>
+              <Label htmlFor="fact-category">分類（この店で初めて使う言葉です）</Label>
               <Select value={category || categoryKey || ""} onValueChange={setCategory}>
                 <SelectTrigger id="fact-category" className="h-11 w-full bg-card">
                   <SelectValue />
@@ -228,7 +228,7 @@ function AddLabelDialog({
             キャンセル
           </Button>
           <Button onClick={() => void submit()} disabled={pending || !value.trim()}>
-            足す
+            追加
           </Button>
         </DialogFooter>
       </DialogContent>

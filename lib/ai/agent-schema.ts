@@ -117,8 +117,79 @@ export const AGENT_TOOLS: Tool[] = [
     "get_customer",
     "その顧客の記録を丸ごと読む（パーソナル・注意事項・記念日・注文履歴・最新の採寸）。" +
       "「どんな人だっけ」「前回の着丈は」に答えるときはこれ。",
-    { customerId },
+    {
+      customerId,
+      measurements: {
+        type: "integer",
+        description:
+          "採寸を何枚まで詳しく読むか。**既定の 1 のままでよい。**" +
+          "「最近痩せた？」「前より細くなった？」のように**体型の変化**を聞かれたときだけ " +
+          "3 くらいを渡す。上げると項目まで読めるが、そのぶん人の記録が埋もれる。",
+      },
+    },
     ["customerId"],
+  ),
+  fn(
+    "search_orders",
+    "注文を引く。**返るのは顧客ではなく注文**で、件数・人数・合計額を別々に返す。" +
+      "「今月お渡しの方」「ネイビーで作った方」「50 万以上のご注文」はこれ。" +
+      "**引けるのはあなたの担当の顧客の注文だけ**です（店全体は指定できません）。" +
+      "**条件を 1 つも渡さないとエラーになります。**全件は返しません。",
+    {
+      orderedMonth: {
+        type: "string",
+        description: "受注した月。YYYY-MM の形（例 2026-08）。**月の終わりは計算しないこと** — こちらで出します。",
+      },
+      orderedFrom: { type: "string", description: "受注日の下限。YYYY-MM-DD。月で言えるなら orderedMonth を使う。" },
+      orderedTo: { type: "string", description: "受注日の上限。YYYY-MM-DD。" },
+      deliveryMonth: {
+        type: "string",
+        description:
+          "お渡しの月。YYYY-MM。お渡し日が空なら納品日で見ます。" +
+          "**まだ渡していない予定も含みます**（「今月お渡しの方」は予定を含む問いなので）。",
+      },
+      deliveryFrom: { type: "string", description: "お渡しの下限。YYYY-MM-DD。" },
+      deliveryTo: { type: "string", description: "お渡しの上限。YYYY-MM-DD。" },
+      fabric: {
+        type: "string",
+        description:
+          "生地の色名か原反ＮＯ の一部（「ネイビー」「AC-1001」）。" +
+          "**色の系統では引けません** — 紙に書かれた色名の文字が一致するかだけを見ます。" +
+          "生地名が入っていない注文は fabricUnknownCount に出るので、返事に必ず添えてください。",
+      },
+      purpose: {
+        type: "string",
+        enum: ["business", "formal", "wedding", "casual"],
+        description: "用途。business=ビジネス / formal=礼装 / wedding=結婚式 / casual=カジュアル。",
+      },
+      minAmount: { type: "integer", description: "税込の売上金額の下限（円）。" },
+      maxAmount: { type: "integer", description: "税込の売上金額の上限（円）。" },
+      undelivered: {
+        type: "boolean",
+        description: "まだお渡ししていない注文だけに絞る（お渡し日が空のもの）。",
+      },
+    },
+    [],
+  ),
+  fn(
+    "get_revenue",
+    "売上の実績と目標を見る。**既定はあなたの担当分**です。" +
+      "「今月どう？」「目標にどれくらい？」「先月は？」はこれ。" +
+      "**店全体は管理者だけ**で、そうでなければ自分の担当分に落ちて返ります" +
+      "（落ちたことは返り値に書いてあるので、そのまま伝えてください）。" +
+      "**店全体では目標を扱えません。**実績と件数だけをお答えください。",
+    {
+      storeWide: {
+        type: "boolean",
+        description: "「店全体で」と言われたときだけ true。**既定は false。**",
+      },
+      month: { type: "string", description: "単月を名指しするとき。YYYY-MM（例 2026-07）。" },
+      months: {
+        type: "integer",
+        description: "今月を含む直近何ヶ月か（1〜12、既定 3）。month を渡したときは使いません。",
+      },
+    },
+    [],
   ),
 
   // ── 提案する（書き込まない） ──
@@ -257,12 +328,49 @@ export const AGENT_TOOLS: Tool[] = [
     ["customerId", "subjectFrom", "status"],
   ),
   fn(
+    "propose_order_draft",
+    "聞き取った注文を、**注文の登録画面へ送る**提案をする。**ここでは登録しません。**" +
+      "画面が開いてから、人が金額（税込）を入れて登録します。" +
+      "**金額は渡せません**（引数がありません）。いくらだったかを聞かれても、この道具には載りません。" +
+      "「◯◯さんにスーツが売れた」「今日ジャケットとパンツを 1 着ずつ」のように、" +
+      "**実際に受けた注文**を言われたときだけ使うこと。" +
+      "「今度スーツを作りたいらしい」のような見込みや意向では使わない。",
+    {
+      customerId,
+      subjectFrom,
+      orderedAt: {
+        type: "string",
+        description: "受注日。YYYY-MM-DD。言われていなければ渡さない（画面が本日を入れます）。",
+      },
+      arrivedAt: {
+        type: "string",
+        description: "工場から店に届く予定日。YYYY-MM-DD。言われていなければ渡さない。",
+      },
+      purpose: {
+        type: "string",
+        enum: ["business", "formal", "wedding", "casual"],
+        description: "用途。business=ビジネス / formal=礼装 / wedding=結婚式 / casual=カジュアル。",
+      },
+      items: {
+        type: "array",
+        items: { type: "string", enum: ["jacket", "pants", "vest"] },
+        description: "作るもの。jacket=ジャケット / pants=パンツ / vest=ベスト。",
+      },
+      fabricColorName: { type: "string", description: "生地の色名。紙の表記のまま（「ネイビー無地」）。" },
+      fabricProductNumber: { type: "string", description: "原反ＮＯ（「AC5601」）。" },
+      quote,
+    },
+    ["customerId", "subjectFrom"],
+  ),
+  fn(
     "propose_ask",
     "決められないときに人へ聞く。**あらゆる曖昧さの落ち先はここ。**" +
       "同姓が複数いる、誰の話か分からない、どの項目のことか分からない、いずれもこれを使う。" +
       "道具で確かめられるなら聞かずに確かめること。" +
-      "**できないことを聞き返さない。**予定・売上・他スタッフの顧客のように、" +
-      "そもそも扱えない話題は、相手を絞っても答えられない。聞き返さず「できません」と答える。",
+      "**できないことを聞き返さない。**予定・在庫・送信・本日のアプローチの一覧・" +
+      "他スタッフが担当している顧客の中身は、相手を絞っても答えられない。" +
+      "聞き返さず「できません」と答える。" +
+      "**注文と売上は道具で読める。**こちらを聞き返しに落とさないこと。",
     {
       question: { type: "string", description: "短く 1 つだけ聞く。" },
       options: {

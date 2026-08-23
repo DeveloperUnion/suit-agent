@@ -4,6 +4,9 @@ import type {
   AgentAction,
   AgentCustomerRef,
   CustomerFieldKey,
+  IsoDate,
+  ItemTypeId,
+  OrderPurpose,
   SubjectOrigin,
 } from "@/lib/types";
 import { actionSentence } from "@/lib/ai/action-sentence";
@@ -18,7 +21,9 @@ import {
   findCustomer,
   getCustomer,
   planFactAdd,
+  revenueSummary,
   searchCustomers,
+  searchOrders,
   type ToolContext,
 } from "@/lib/ai/agent-tools";
 import { CUSTOMER_FIELD_LABELS } from "@/lib/constants/customer-fields";
@@ -49,6 +54,20 @@ type Body = {
 
 /** モデルへ渡す履歴の窓。画面の表示件数とは別の値 */
 const HISTORY_TURNS = 20;
+
+/** 注文の用途。**手で並べ直さない** — 会話から来た値をここで検算する */
+const ORDER_PURPOSES: OrderPurpose[] = ["business", "formal", "wedding", "casual"];
+
+/**
+ * 会話に渡す「今日」。**サーバ（Vercel = UTC）の日付をそのまま渡さない。**
+ *
+ * 店は JST で動いているので、UTC のままだと朝 9 時前が前日になる。
+ * ここは会話の手がかりで、「今月」の境界を決めるのは SQL 側
+ * （app.revenue_summary が JST で計算する）。**両方で計算しないこと。**
+ */
+function todayInJst(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo" }).format(new Date());
+}
 
 export async function POST(request: Request) {
   const startedAt = performance.now();
@@ -93,6 +112,8 @@ export async function POST(request: Request) {
         unknown
       >;
       facts: { id: string; label: string | null; body: string }[];
+      /** 採寸履歴。p_measurement_detail を上げたときだけ入る */
+      measurements?: unknown;
     };
     const dossiers = new Map<string, Dossier>();
     /** このターンで実際に返した記録。出典の検証はこれだけを正とする */
@@ -100,9 +121,17 @@ export async function POST(request: Request) {
       string,
       { id: string; customerId: string; label?: string; body: string }
     >();
-    const dossierOf = async (id: string): Promise<Dossier | null> => {
-      if (!dossiers.has(id)) {
-        const d = (await getCustomer(ctx, id)) as Dossier | null;
+    /**
+     * カルテを読む。同じターンで 2 度引かないようキャッシュする。
+     *
+     * detail は採寸を何枚まで詳しく読むか。**浅く読んだ後で「最近痩せた？」と
+     * 聞かれることがある**ので、キャッシュに履歴が無ければ引き直す
+     * （キャッシュをそのまま返すと、履歴を頼まれたのに 1 枚だけ返る）。
+     */
+    const dossierOf = async (id: string, detail = 1): Promise<Dossier | null> => {
+      const cached = dossiers.get(id);
+      if (!cached || (detail > 1 && cached.measurements == null)) {
+        const d = (await getCustomer(ctx, id, detail)) as Dossier | null;
         if (!d) return null;
         dossiers.set(id, d);
         for (const f of d.facts) {
@@ -228,6 +257,15 @@ export async function POST(request: Request) {
       return { ok: true, from };
     };
 
+    /** 空文字は「渡されなかった」と同じ扱いにする。SQL 側で null と '' は別物になる */
+    const str = (v: unknown): string | undefined =>
+      typeof v === "string" && v.trim().length > 0 ? v.trim() : undefined;
+    /** 日付は形だけ見る。中身の妥当性（2 月 30 日）は画面の入力欄が弾く */
+    const isoDate = (v: unknown): IsoDate | undefined =>
+      typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined;
+    const num = (v: unknown): number | undefined =>
+      typeof v === "number" && Number.isFinite(v) ? v : undefined;
+
     const handle = async (name: string, args: Record<string, unknown>): Promise<unknown> => {
       const cid = typeof args.customerId === "string" ? args.customerId : "";
       const quote = typeof args.quote === "string" ? args.quote : undefined;
@@ -295,12 +333,126 @@ export async function POST(request: Request) {
         }
 
         case "get_customer": {
-          const dossier = await dossierOf(cid);
+          // 上限を付ける。モデルに 999 と書かれてカルテ 1 通が肥大するのを防ぐ
+          const detail =
+            typeof args.measurements === "number"
+              ? Math.max(1, Math.min(Math.trunc(args.measurements), 5))
+              : 1;
+          const dossier = await dossierOf(cid, detail);
           if (!dossier) return { error: "そのカルテは開けませんでした。" };
           // 読んだ相手も足跡にする。「天野さんってどんな人だっけ」の次に
           // 名前なしで話が続くのは普通で、そこで前の提案の相手へ飛ばれると困る
           pinned.add(cid);
           return dossier;
+        }
+
+        case "search_orders": {
+          const result = await searchOrders(ctx, {
+            orderedMonth: str(args.orderedMonth),
+            orderedFrom: str(args.orderedFrom),
+            orderedTo: str(args.orderedTo),
+            deliveryMonth: str(args.deliveryMonth),
+            deliveryFrom: str(args.deliveryFrom),
+            deliveryTo: str(args.deliveryTo),
+            fabric: str(args.fabric),
+            purpose: str(args.purpose),
+            minAmount: num(args.minAmount),
+            maxAmount: num(args.maxAmount),
+            undelivered: args.undelivered === true,
+          });
+          // 条件が 1 つも来なかったとき。全件は返さない（上限で隠すと
+          // 「見えていない分がある」が静かに生まれるので、入口で止めている）
+          if (result.error) return { error: result.error };
+
+          action = {
+            kind: "order_list",
+            countMeans: result.countMeans,
+            scopeLabel: result.scopeLabel,
+            orderCount: result.orderCount,
+            customerCount: result.customerCount,
+            totalAmount: result.totalAmount,
+            fabricUnknownCount: result.fabricUnknownCount,
+            orders: result.orders.map((o) => ({
+              orderId: o.orderId,
+              customer: remember({
+                id: o.customerId,
+                name: o.customerName,
+                nameKana: o.customerNameKana,
+              }),
+              orderNumber: o.orderNumber,
+              orderedAt: o.orderedAt,
+              deliveryDate: o.deliveryDate ?? undefined,
+              deliveryIsPlanned: o.deliveryIsPlanned,
+              purpose: o.purpose as OrderPurpose,
+              fabricColorName: o.fabricColorName ?? undefined,
+              totalAmount: o.totalAmount,
+            })),
+          };
+
+          // **モデルには数と最小限だけ返す。**一覧を描くのは画面で、
+          // 全件の詳細を渡すと散文で並べ直そうとする（search_customers と同じ扱い）。
+          // 数と一緒に「何の数か」を返すのも同じ理由。
+          return {
+            countMeans: result.countMeans,
+            orderCount: result.orderCount,
+            customerCount: result.customerCount,
+            totalAmount: result.totalAmount,
+            fabricUnknownCount: result.fabricUnknownCount,
+            orders: result.orders.map((o) => ({
+              customerName: o.customerName,
+              orderedAt: o.orderedAt,
+              totalAmount: o.totalAmount,
+            })),
+          };
+        }
+
+        case "get_revenue": {
+          const result = await revenueSummary(ctx, {
+            storeWide: args.storeWide === true,
+            month: str(args.month),
+            months: num(args.months),
+          });
+
+          // **店全体を頼まれて落としたことを、黙って通さない。**
+          // 通すと自担当の数字が「店全体」というラベルで伝わる。
+          if (result.scopeDenied) {
+            return {
+              error:
+                "店全体の集計は管理者だけです。" +
+                "**聞き返さないでください。**「店全体は見られません」と答えたうえで、" +
+                "ご自身の担当の数字を知りたいか尋ねてください。",
+            };
+          }
+
+          action = {
+            kind: "revenue",
+            scope: result.scope,
+            scopeLabel: result.scopeLabel,
+            countsBy: result.countsBy,
+            targetAvailable: result.targetAvailable,
+            months: result.months.map((m) => ({
+              month: m.month,
+              revenue: m.revenue,
+              orderCount: m.orderCount,
+              target: m.target ?? undefined,
+              rate: m.rate ?? undefined,
+              remaining: m.remaining ?? undefined,
+              monthProgress: m.monthProgress,
+              isCurrent: m.isCurrent,
+            })),
+            byStaffMeans: result.byStaffMeans ?? undefined,
+            byStaff: result.byStaff ?? undefined,
+          };
+
+          return {
+            scope: result.scope,
+            scopeLabel: result.scopeLabel,
+            countsBy: result.countsBy,
+            targetAvailable: result.targetAvailable,
+            months: result.months,
+            byStaffMeans: result.byStaffMeans,
+            byStaff: result.byStaff,
+          };
         }
 
         case "propose_add_fact": {
@@ -311,7 +463,7 @@ export async function POST(request: Request) {
           // どちらも「提案は作れません」で返していたので、モデルがそれを
           // 「すでに登録済みです」と読み、DB に無いことを断言して返していた。
           if (labels.length === 0) {
-            return { error: "labels が空です。足す語を 1 つ以上渡してください。" };
+            return { error: "labels が空です。追加するパーソナルを 1 つ以上渡してください。" };
           }
           const plan = await planFactAdd(ctx, { customerId: cid, labels });
           const ref = await refOf(cid);
@@ -321,7 +473,7 @@ export async function POST(request: Request) {
           if (plan.labelNames.length === 0) {
             return {
               alreadyHas: plan.alreadyHas,
-              note: `渡された語はすべて ${ref.name} さんに登録済みです（${plan.alreadyHas.join("・")}）。提案は作りません。`,
+              note: `渡されたパーソナルはすべて ${ref.name} さんに登録済みです（${plan.alreadyHas.join("・")}）。提案は作りません。`,
             };
           }
           action = {
@@ -486,6 +638,52 @@ export async function POST(request: Request) {
           return { ok: true };
         }
 
+        case "propose_order_draft": {
+          const ref = await refOf(cid);
+          if (!ref) return { error: "そのカルテは開けませんでした。" };
+          const subject = checkSubject(args.subjectFrom, ref);
+          if (!subject.ok) return { error: subject.error };
+
+          // **存在しない値を提案に載せない。**分類キーを手書きしていた頃、
+          // モデルが返した `life` が外部キー違反になり、**人が「適用」を押した瞬間**に
+          // 落ちた（agent-schema.ts の冒頭）。ここは画面へ送るだけなので落ちはしないが、
+          // 知らない用途やアイテムが入ると、フォームが黙って既定値に戻る。
+          const items = (Array.isArray(args.items) ? (args.items as unknown[]) : []).filter(
+            (t): t is ItemTypeId => t === "jacket" || t === "pants" || t === "vest",
+          );
+          const purpose = ORDER_PURPOSES.find((p) => p === args.purpose);
+          const orderedAt = isoDate(args.orderedAt);
+          const arrivedAt = isoDate(args.arrivedAt);
+          const colorName = str(args.fabricColorName);
+          const productNumber = str(args.fabricProductNumber);
+
+          action = {
+            kind: "order_draft",
+            customer: ref,
+            subjectFrom: subject.from,
+            draft: {
+              orderedAt,
+              arrivedAt,
+              purpose,
+              items: items.length > 0 ? items : undefined,
+              fabric:
+                colorName || productNumber
+                  ? { fabricColorName: colorName, fabricProductNumber: productNumber }
+                  : undefined,
+            },
+            quote,
+          };
+          // 拾えなかった項目をモデルに伝える。**「登録しました」と言わせない**ため、
+          // 何が起きるのかもここで返しておく
+          return {
+            ok: true,
+            note:
+              "注文の登録画面へ送る提案を作りました。**まだ登録されていません。**" +
+              "金額（税込）は画面で人が入れます。",
+            picked: { orderedAt, arrivedAt, purpose, items, colorName, productNumber },
+          };
+        }
+
         case "propose_ask": {
           const question = String(args.question ?? "").trim();
           const raw = (Array.isArray(args.options) ? args.options : []).map(
@@ -558,7 +756,7 @@ export async function POST(request: Request) {
       ...(body.history ?? [])
         .slice(-HISTORY_TURNS)
         .map((m) => ({ role: m.role, content: m.body }) as const),
-      { role: "user" as const, content: `${contextLine(contextCustomer, recentCustomer)}\n\n${text}` },
+      { role: "user" as const, content: `${contextLine(todayInJst(), contextCustomer, recentCustomer)}\n\n${text}` },
     ];
 
     const system = systemPrompt(await factVocabulary(ctx));

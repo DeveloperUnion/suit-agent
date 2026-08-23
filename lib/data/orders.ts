@@ -106,6 +106,10 @@ export type OwnedItemSummary = {
  * 累計購入額・購入回数もここに含めない。顧客を金額で格付けする表示は、
  * 本システムが信頼関係の維持を目的としていることと衝突するため
  * （個々の注文の金額は事実の記録として注文カードに残す）。
+ *
+ * **禁じているのは「序列を画面に常設すること」であって、金額を知ること自体ではない。**
+ * 会話から「50 万以上のご注文は」と引ける（app.search_orders）。
+ * その線引きは docs/database-design.md の「金額で引くことと、格付けすること」。
  */
 export async function getOwnedItemSummary(customerId: Uuid): Promise<OwnedItemSummary> {
   const { data, error } = await supabase()

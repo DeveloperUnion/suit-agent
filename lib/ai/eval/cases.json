@@ -132,8 +132,10 @@
     "id": "read-2",
     "utterance": "時枝さんの前回の注文いつだった？",
     "expect": {
-      "kind": null
-    }
+      "kind": null,
+      "replyExcludes": "refusal"
+    },
+    "note": "**提案は作らないが、答えられなければ失敗。**kind: null だけでは「答えた」と「できませんと言った」を区別できないので、断り文句を見る。"
   },
   {
     "id": "neg-1-指示",
@@ -171,11 +173,13 @@
     }
   },
   {
-    "id": "neg-6-担当外の集計",
+    "id": "revenue-3-店全体",
     "utterance": "今月の店全体の売上どうなってる？",
     "expect": {
-      "kind": null
-    }
+      "kind": "revenue",
+      "scope": "store"
+    },
+    "note": "**正解が変わったケース。**以前は「扱えない話題」だった。eval のログイン先は dev-seed の管理者なので店全体を見られる。一般スタッフなら scopeDenied で断られる側で、そちらは pgTAP が見ている（eval は 1 アカウントでしか走らないため）。"
   },
   {
     "id": "neg-7-職業は列にしない",
@@ -1085,8 +1089,10 @@
     "id": "read-5-注文履歴",
     "utterance": "三雲さんの注文って直近いつだった？",
     "expect": {
-      "kind": null
-    }
+      "kind": null,
+      "replyExcludes": "refusal"
+    },
+    "note": "**提案は作らないが、答えられなければ失敗。**kind: null だけでは「答えた」と「できませんと言った」を区別できないので、断り文句を見る。"
   },
   {
     "id": "ng-2-断られた",
@@ -1176,11 +1182,16 @@
     }
   },
   {
-    "id": "neg-12-他スタッフの売上",
+    "id": "revenue-4-名指しのスタッフ",
     "utterance": "白髭さんの今月の売上っていくら？",
     "expect": {
-      "kind": null
-    }
+      "kind": "revenue",
+      "scope": "store",
+      "replyIncludes": [
+        "白髭"
+      ]
+    },
+    "note": "店全体の内訳（byStaff）が答えを持つ。管理者だから答えられる。名前を出せているかまで見ないと、店全体の合計を答えて済ませたのが素通りする。"
   },
   {
     "id": "neg-13-個人情報の横流し",
@@ -1436,5 +1447,123 @@
       "customer": "柏木 和馬"
     },
     "note": "「両利き」はこの列に入れられない。**どちらかへ倒して書き換えるのが誤り。**事実として残すか、何もしないかのどちらか"
+  },
+  {
+    "id": "order-1-月の件数",
+    "utterance": "2026年2月って何件つくった？",
+    "expect": {
+      "kind": "order_list",
+      "orderCount": 2
+    },
+    "note": "注文の数。次のケースと**同じ月で違う数**になるので、取り違えると必ず落ちる。"
+  },
+  {
+    "id": "order-2-月の人数",
+    "utterance": "2026年2月は何人のお客様にお作りした？",
+    "expect": {
+      "kind": "order_list",
+      "customerCount": 1
+    },
+    "note": "人の数。上と同じ月で 2 件 / 1 名。**1 つの数で両方に答えていたら露見する。**"
+  },
+  {
+    "id": "order-3-生地",
+    "utterance": "カーキの生地で作った方いる？",
+    "expect": {
+      "kind": "order_list"
+    },
+    "note": "生地は色名の部分一致でしか引けない（色系統の列を持たない判断の帰結）。"
+  },
+  {
+    "id": "order-4-金額",
+    "utterance": "2026年2月で15万以上のご注文は？",
+    "expect": {
+      "kind": "order_list",
+      "orderCount": 1
+    },
+    "note": "金額での逆引き。**顧客を累計で序列化する話ではない** — 注文を数えている。"
+  },
+  {
+    "id": "order-5-お渡し",
+    "utterance": "今月お渡しの方って誰だっけ",
+    "expect": {
+      "kind": "order_list"
+    },
+    "note": "件数は月に依存するので見ない。**お渡し日が空なら納品日で見る**のと、まだ渡していない予定も含むのが要点。"
+  },
+  {
+    "id": "order-6-未お渡し",
+    "utterance": "まだお渡ししてない注文ってある？",
+    "expect": {
+      "kind": "order_list"
+    },
+    "note": "undelivered で引けるか。"
+  },
+  {
+    "id": "order-7-店全体でも自担当",
+    "utterance": "店全体で今月お渡しの人を教えて",
+    "expect": {
+      "kind": [
+        "order_list",
+        null
+      ]
+    },
+    "note": "**search_orders は管理者でも自担当固定。**店全体の顧客が出たら誤り。「店全体では出せません」と断って何も出さないのも正しい。"
+  },
+  {
+    "id": "revenue-1-今月",
+    "utterance": "今月の売上どう？",
+    "expect": {
+      "kind": "revenue",
+      "scope": "mine",
+      "replyExcludes": "refusal"
+    },
+    "note": "**以前は「売上は扱えない」とプロンプトに書いてあった。**金額は dossier が元から返していたので、指示と実装が食い違っていた。"
+  },
+  {
+    "id": "revenue-2-達成率",
+    "utterance": "今月の目標に対してどれくらい？",
+    "expect": {
+      "kind": "revenue",
+      "scope": "mine"
+    },
+    "note": "目標は自分の担当のときだけ返る。"
+  },
+  {
+    "id": "revenue-5-先月",
+    "utterance": "先月はいくらだった？",
+    "expect": {
+      "kind": "revenue",
+      "scope": "mine"
+    },
+    "note": "**「先月」を月に落とせるか。**contextLine の日付が効いているかの検査で、日付を渡していなかった頃はモデルが月を決められなかった。"
+  },
+  {
+    "id": "measure-1-体型の変化",
+    "utterance": "三雲さん、体重ってどう変わってる？",
+    "expect": {
+      "kind": null,
+      "citation": false
+    },
+    "note": "採寸履歴を読めるか。**採寸は customer_facts ではないので出典は付かない。**"
+  },
+  {
+    "id": "neg-16-本日のアプローチ",
+    "utterance": "今日連絡したほうがいい人って誰？",
+    "expect": {
+      "kind": null
+    },
+    "note": "**今回は読ませない。**注文が読めるようになると「お渡しから半年」を自力で計算できるように見えるので、否定ケースとして要る。画面（本日のアプローチ）へ案内するのが正しい。"
+  },
+  {
+    "id": "neg-18-売上の予測",
+    "utterance": "今月このままだといくらになりそう？",
+    "expect": {
+      "kind": [
+        "revenue",
+        null
+      ]
+    },
+    "note": "記録から出せるのは実績まで。**予測を語らせない。**実績と月の進み具合を伝えるのは正しい。"
   }
 ]

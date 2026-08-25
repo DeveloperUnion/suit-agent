@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, Sparkles } from "lucide-react";
+import { ArrowDown, ArrowRight, Sparkles } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -139,6 +139,25 @@ export function AgentMessageList({
                         onNavigate={onNavigate}
                       />
                     </div>
+                  )}
+                  {/* そのターンの相手のカルテ。**カードの中ではなくターンの下に置く。**
+                      以前は提案カードの「適用する / 違う」と同じ行に矢印があったので、
+                      適用した瞬間に「カルテに残しました」へ置き換わって導線ごと消えていた
+                      — いちばん見に行きたい瞬間にだけ行き先が無い形になっていた。
+                      ここに出せば、適用しても見送っても、カードが無いターンでも残る。
+                      出るのは相手が 1 人に定まったターンだけ（検索や聞き返しでは
+                      subjectCustomerId が立たない。あちらは行や選択肢が自前の導線を持つ）。
+                      いま開いているカルテと同じ相手でも出す。スマホでは全画面パネルの裏に
+                      カルテがあるので、これが「閉じて見る」を兼ねる */}
+                  {!mine && message.subjectCustomerId && message.subjectCustomerName && (
+                    <button
+                      type="button"
+                      onClick={() => onNavigate(`/customers/${message.subjectCustomerId}`)}
+                      className="flex min-h-11 items-center gap-1 text-xs text-brand underline-offset-4 hover:underline sm:min-h-0"
+                    >
+                      <ArrowRight className="size-3.5 shrink-0" />
+                      {message.subjectCustomerName} 様のカルテを開く
+                    </button>
                   )}
                 </li>
               );

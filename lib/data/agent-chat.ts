@@ -13,8 +13,18 @@ import { bump } from "@/lib/store/revision";
  * 同じ関数が既定値になっている。他人の会話は覗けないし、他人名義でも書けない。
  */
 
+/**
+ * 相手の氏名は**保存せず、読むときに顧客から引く。**
+ *
+ * subject_customer_id には外部キーが張ってあるので（20260815120000_agent_message_subject.sql）、
+ * 埋め込みで氏名だけ取れる。列を足して写しを持つと、改名したときに会話の中だけが
+ * 古い名前のまま残る。左結合なので、顧客が消えた過去の発言は氏名が null で返り、
+ * カルテへの導線もそのまま出なくなる（customers の RLS も同じようにここへ効く）。
+ */
 const COLUMNS =
-  "id, staffId:staff_id, role, body, action, citations, subjectCustomerId:subject_customer_id, appliedAt:applied_at, rejectedAt:rejected_at, sentAt:sent_at";
+  "id, staffId:staff_id, role, body, action, citations, " +
+  "subjectCustomerId:subject_customer_id, subjectCustomer:customers ( name ), " +
+  "appliedAt:applied_at, rejectedAt:rejected_at, sentAt:sent_at";
 
 /**
  * 画面に出す件数。
@@ -41,12 +51,16 @@ export async function listAgentMessages(limit = DEFAULT_LIMIT): Promise<AgentMes
       action: AgentAction | null;
       citations: AgentCitation[] | null;
       subjectCustomerId: Uuid | null;
+      subjectCustomer: { name: string } | null;
     };
+    const { subjectCustomer, ...rest } = m;
     return {
-      ...m,
+      ...rest,
       action: m.action ?? undefined,
       citations: m.citations ?? undefined,
       subjectCustomerId: m.subjectCustomerId ?? undefined,
+      // 埋め込みの結果は画面へ持ち出さない。氏名 1 つに畳む
+      subjectCustomerName: subjectCustomer?.name ?? undefined,
       appliedAt: m.appliedAt ?? undefined,
       rejectedAt: m.rejectedAt ?? undefined,
     };

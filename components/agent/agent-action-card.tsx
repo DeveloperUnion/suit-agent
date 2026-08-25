@@ -345,7 +345,6 @@ export function AgentActionCard({
       onReject={onReject}
       disabled={action.kind === "add_fact" && keep.length === 0}
       onApply={() => onApply(edited)}
-      onNavigate={onNavigate}
     >
       {action.kind === "add_fact" && (
         <>
@@ -502,7 +501,6 @@ const ANNIVERSARY_LABELS: Record<string, string> = {
   wedding: "結婚記念日",
 };
 
-/** 提案カードの外枠。種類が増えても、見出し・根拠・ボタンの並びは動かさない */
 /** アイテムの表示名。マスタ（lib/constants/measurement-fields.ts）から引く */
 const ITEM_LABEL: Record<string, string> = Object.fromEntries(
   Object.entries(ITEM_TYPE_MAP).map(([id, t]) => [id, t.name]),
@@ -513,6 +511,13 @@ const ORIGIN_NOTE: Record<string, string> = {
   recent_topic: "さきほどの話から",
 };
 
+/**
+ * 提案カードの外枠。種類が増えても、見出し・根拠・ボタンの並びは動かさない。
+ *
+ * **カルテへの導線はここに置かない。**「適用する / 違う」と同じ行に矢印を並べていた
+ * ころは、適用した瞬間に「カルテに残しました」へ置き換わって導線ごと消えていた。
+ * いまはターンの下に 1 本だけ出す（agent-message-list.tsx）ので、押した後も残る。
+ */
 function Proposal({
   title,
   customer,
@@ -523,7 +528,6 @@ function Proposal({
   disabled,
   onApply,
   onReject,
-  onNavigate,
   children,
 }: {
   title: string;
@@ -535,7 +539,6 @@ function Proposal({
   disabled?: boolean;
   onApply: () => Promise<void> | void;
   onReject: () => Promise<void> | void;
-  onNavigate: (href: string) => void;
   children: React.ReactNode;
 }) {
   const [applying, setApplying] = useState(false);
@@ -589,16 +592,6 @@ function Proposal({
             onClick={() => onReject()}
           >
             違う
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="カルテを開く"
-            className="size-11 shrink-0 sm:size-9"
-            disabled={applying}
-            onClick={() => onNavigate(`/customers/${customer.id}`)}
-          >
-            <ArrowRight className="size-4" />
           </Button>
         </div>
       )}

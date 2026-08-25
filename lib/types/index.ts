@@ -718,6 +718,14 @@ export type AgentMessage = {
    * （読んだだけで足跡が残らないと、もっと前の提案の相手へ飛ぶ）。
    */
   subjectCustomerId?: Uuid;
+  /**
+   * その相手の氏名。**保存はしない** — 会話を読むときに顧客から引く
+   * （lib/data/agent-chat.ts の COLUMNS）。
+   *
+   * カルテへの導線をこの 2 つで出す。顧客が消えた／他人の担当になった過去の発言では
+   * 埋め込みが null で返るので undefined になり、**開けないカルテへの導線は出ない。**
+   */
+  subjectCustomerName?: string;
   /** 適用済みなら日時が入る。カードの適用ボタンはこれで消す */
   appliedAt?: IsoDateTime;
   /** 「違う」を押したなら日時が入る。適用と同じく一度きり */
